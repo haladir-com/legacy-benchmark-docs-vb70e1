@@ -1,0 +1,226 @@
+/**
+ * Custom CSS for Haladir Rosetta Documentation
+ * Matches the Haladir Rosetta frontend design system
+ */
+
+/* Import Geist font from Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap');
+
+:root {
+  /* Black accent color palette */
+  --ifm-color-primary: #171717;
+  --ifm-color-primary-dark: #0f0f0f;
+  --ifm-color-primary-darker: #0a0a0a;
+  --ifm-color-primary-darkest: #000000;
+  --ifm-color-primary-light: #262626;
+  --ifm-color-primary-lighter: #404040;
+  --ifm-color-primary-lightest: #525252;
+  
+  /* Typography */
+  --ifm-font-family-base: 'Geist', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --ifm-heading-font-family: 'Geist', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --ifm-font-family-monospace: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  
+  /* Code styling */
+  --ifm-code-font-size: 95%;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.05);
+  
+  /* Subtle borders matching frontend */
+  --ifm-color-emphasis-300: #e5e5e5;
+  --ifm-hr-border-color: #e5e5e5;
+  
+  /* Clean background */
+  --ifm-background-color: #ffffff;
+  --ifm-navbar-background-color: #ffffff;
+  --ifm-footer-background-color: #fafafa;
+  
+  /* Link colors */
+  --ifm-link-color: #171717;
+  --ifm-link-hover-color: #525252;
+  
+  /* Border radius matching frontend (0.625rem) */
+  --ifm-border-radius: 0.625rem;
+  --ifm-code-border-radius: 0.375rem;
+  
+  /* Table styling */
+  --ifm-table-stripe-background: #fafafa;
+  --ifm-table-border-color: #f0f0f0;
+}
+
+/* Global font smoothing */
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Headings with tighter tracking */
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+
+h1 {
+  font-weight: 700;
+}
+
+/* Navbar styling */
+.navbar {
+  border-bottom: 1px solid #f0f0f0;
+  box-shadow: none;
+}
+
+.navbar__title {
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+
+/* Logo container styling */
+.navbar__brand {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.navbar__logo {
+  height: 24px;
+  width: auto;
+}
+
+/* Rosetta subtitle styling - appears after the logo */
+.navbar__brand::after {
+  content: 'Rosetta';
+  font-family: 'Geist', system-ui, sans-serif;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: #525252;
+}
+
+/* Hide the default title text completely */
+.navbar__title {
+  display: none;
+}
+
+/* Sidebar styling */
+.menu__link {
+  font-size: 0.875rem;
+  border-radius: 0.375rem;
+}
+
+.menu__link--active:not(.menu__link--sublist) {
+  background-color: #f5f5f5;
+}
+
+.menu__link:hover {
+  background-color: #fafafa;
+}
+
+/* Table of contents */
+.table-of-contents__link {
+  font-size: 0.8125rem;
+}
+
+.table-of-contents__link--active {
+  font-weight: 500;
+  color: #171717;
+}
+
+/* Code blocks */
+pre {
+  border: 1px solid #f0f0f0;
+}
+
+code {
+  background-color: #f5f5f5;
+  border: 1px solid #e5e5e5;
+  padding: 0.125rem 0.375rem;
+}
+
+/* Inline code in prose */
+article code {
+  font-size: 0.875em;
+}
+
+/* Footer styling */
+.footer {
+  border-top: 1px solid #f0f0f0;
+}
+
+.footer--dark {
+  --ifm-footer-background-color: #fafafa;
+  --ifm-footer-color: #525252;
+  --ifm-footer-link-color: #171717;
+  --ifm-footer-title-color: #171717;
+  background-color: #fafafa;
+  color: #525252;
+}
+
+.footer__copyright {
+  font-size: 0.8125rem;
+  color: #a3a3a3;
+}
+
+/* Cards and admonitions */
+.alert {
+  border-radius: 0.625rem;
+  border-left-width: 4px;
+}
+
+/* Tables */
+table {
+  font-size: 0.875rem;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+th {
+  background-color: #fafafa;
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+}
+
+/* Pagination */
+.pagination-nav__link {
+  border: 1px solid #e5e5e5;
+  border-radius: 0.625rem;
+}
+
+.pagination-nav__link:hover {
+  border-color: #d4d4d4;
+}
+
+/* Search styling */
+.DocSearch-Button {
+  border-radius: 0.5rem !important;
+}
+
+/* Breadcrumbs */
+.breadcrumbs__link {
+  font-size: 0.8125rem;
+}
+
+/* Doc item styling */
+.markdown > h2 {
+  margin-top: 2.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid #f0f0f0;
+}
+
+.markdown > h2:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+/* Clean button styling */
+.button--secondary {
+  border-color: #e5e5e5;
+  color: #171717;
+}
+
+.button--secondary:hover {
+  border-color: #d4d4d4;
+  background-color: #fafafa;
+}

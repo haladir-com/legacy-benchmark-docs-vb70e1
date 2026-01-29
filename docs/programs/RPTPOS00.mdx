@@ -1,0 +1,216 @@
+---
+title: "RPTPOS00"
+description: "Daily Position Report Generator - Batch program that produces comprehensive portfolio position reports with transaction activity, exceptions, and performance metrics"
+---
+
+## Overview
+
+RPTPOS00 is a batch COBOL program that generates daily position reports for portfolio management. The program reads position data and transaction history from indexed VSAM files and produces a formatted sequential report file suitable for printing or further processing.
+
+The report includes four main sections:
+1. **Portfolio Position Summary** - Current holdings with quantities, values, and percentage changes
+2. **Transaction Activity** - Summary of daily trading activity
+3. **Exception Reporting** - Flags positions or transactions that require attention
+4. **Performance Metrics** - Key performance indicators for the reporting period
+
+This program is a key component of the daily batch cycle, typically run after market close when position values have been updated with end-of-day prices. The 132-character fixed-length report format is standard for mainframe print files.
+
+## Program Structure
+
+```mermaid
+graph TD
+    A["0000-MAIN"] --> B["1000-INITIALIZE"]
+    A --> C["2000-PROCESS-REPORT"]
+    A --> D["3000-CLEANUP"]
+    
+    B --> B1["1100-OPEN-FILES"]
+    B --> B2["1200-WRITE-HEADERS"]
+    
+    B1 -->|"on error"| E["9999-ERROR-HANDLER"]
+    
+    C --> C1["2100-READ-POSITIONS"]
+    C --> C2["2200-PROCESS-TRANSACTIONS"]
+    C --> C3["2300-WRITE-SUMMARY"]
+    
+    C1 --> C1a["2110-FORMAT-POSITION"]
+    
+    C2 --> C2a["2210-READ-TRANSACTIONS"]
+    C2 --> C2b["2220-SUMMARIZE-ACTIVITY"]
+    
+    C3 --> C3a["2310-WRITE-TOTALS"]
+    C3 --> C3b["2320-WRITE-EXCEPTIONS"]
+    C3 --> C3c["2330-WRITE-METRICS"]
+```
+
+## Data Structures
+
+### Working Storage
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 01 | WS-FILE-STATUS | - | File status group |
+| 05 | WS-POSITION-STATUS | PIC XX | Position master file status |
+| 05 | WS-TRAN-STATUS | PIC XX | Transaction history file status |
+| 05 | WS-REPORT-STATUS | PIC XX | Report output file status |
+
+### Report Headers
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 01 | WS-REPORT-HEADERS | - | Report header lines group |
+| 05 | WS-HEADER1 | PIC X(132) | Border line (all asterisks) |
+| 05 | WS-HEADER2 | PIC X(132) | Report title "DAILY POSITION REPORT" |
+| 05 | WS-HEADER3 | - | Date line |
+| 10 | WS-REPORT-DATE | PIC X(10) | Report generation date |
+
+### Position Detail Line
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 01 | WS-POSITION-DETAIL | - | Position detail print line |
+| 05 | WS-POS-PORTFOLIO | PIC X(10) | Portfolio identifier |
+| 05 | WS-POS-DESCRIPTION | PIC X(30) | Position description |
+| 05 | WS-POS-QUANTITY | PIC ZZZ,ZZZ,ZZ9.99 | Formatted quantity with commas |
+| 05 | WS-POS-VALUE | PIC $$$$,$$$,$$9.99 | Formatted currency value |
+| 05 | WS-POS-CHANGE-PCT | PIC +ZZ9.99 | Percentage change with sign |
+
+### Position Record (from POSREC copybook)
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 01 | POSITION-RECORD | - | Position master file record |
+| 05 | POS-KEY | - | Composite record key |
+| 10 | POS-PORTFOLIO-ID | PIC X(08) | Portfolio identifier |
+| 10 | POS-DATE | PIC X(08) | Position date (YYYYMMDD) |
+| 10 | POS-INVESTMENT-ID | PIC X(10) | Investment/security identifier |
+| 05 | POS-DATA | - | Position data fields |
+| 10 | POS-QUANTITY | PIC S9(11)V9(4) COMP-3 | Holding quantity |
+| 10 | POS-COST-BASIS | PIC S9(13)V9(2) COMP-3 | Total cost basis |
+| 10 | POS-MARKET-VALUE | PIC S9(13)V9(2) COMP-3 | Current market value |
+| 10 | POS-CURRENCY | PIC X(03) | Currency code |
+| 10 | POS-STATUS | PIC X(01) | Status: `A`=Active, `C`=Closed, `P`=Pending |
+
+### Transaction Record (from TRNREC copybook)
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 01 | TRANSACTION-RECORD | - | Transaction history record |
+| 05 | TRN-KEY | - | Composite record key |
+| 10 | TRN-DATE | PIC X(08) | Transaction date (YYYYMMDD) |
+| 10 | TRN-TIME | PIC X(06) | Transaction time (HHMMSS) |
+| 10 | TRN-PORTFOLIO-ID | PIC X(08) | Portfolio identifier |
+| 10 | TRN-SEQUENCE-NO | PIC X(06) | Sequence number |
+| 05 | TRN-DATA | - | Transaction data fields |
+| 10 | TRN-TYPE | PIC X(02) | Type: `BU`=Buy, `SL`=Sell, `TR`=Transfer, `FE`=Fee |
+| 10 | TRN-QUANTITY | PIC S9(11)V9(4) COMP-3 | Transaction quantity |
+| 10 | TRN-PRICE | PIC S9(11)V9(4) COMP-3 | Transaction price |
+| 10 | TRN-AMOUNT | PIC S9(13)V9(2) COMP-3 | Transaction amount |
+| 10 | TRN-STATUS | PIC X(01) | Status: `P`=Pending, `D`=Done, `F`=Failed, `R`=Reversed |
+
+## File I/O
+
+### File Definitions
+
+| Logical Name | DD Name | Organization | Access Mode | Record Key | Description |
+|--------------|---------|--------------|-------------|------------|-------------|
+| POSITION-MASTER | POSMSTRE | Indexed (VSAM KSDS) | Sequential | POS-KEY | Position master input file |
+| TRANSACTION-HISTORY | TRANHIST | Indexed (VSAM KSDS) | Sequential | TRAN-KEY | Transaction history input file |
+| REPORT-FILE | RPTFILE | Sequential | Sequential | - | Report output file (132-byte fixed) |
+
+### File Operations Summary
+
+| File | Operation | Paragraph | Purpose |
+|------|-----------|-----------|---------|
+| POSITION-MASTER | OPEN INPUT | 1100-OPEN-FILES | Open for sequential read |
+| POSITION-MASTER | READ | 2100-READ-POSITIONS | Read position records |
+| POSITION-MASTER | CLOSE | 3000-CLEANUP | Close input file |
+| TRANSACTION-HISTORY | OPEN INPUT | 1100-OPEN-FILES | Open for sequential read |
+| TRANSACTION-HISTORY | READ | 2210-READ-TRANSACTIONS | Read transaction records |
+| TRANSACTION-HISTORY | CLOSE | 3000-CLEANUP | Close input file |
+| REPORT-FILE | OPEN OUTPUT | 1100-OPEN-FILES | Open for write |
+| REPORT-FILE | WRITE | 1200-WRITE-HEADERS | Write header lines |
+| REPORT-FILE | WRITE | 2110-FORMAT-POSITION | Write position detail lines |
+| REPORT-FILE | CLOSE | 3000-CLEANUP | Close output file |
+
+## Control Flow
+
+### Main Processing Logic
+
+1. **Initialization (1000-INITIALIZE)**
+   - Opens all three files (two input, one output)
+   - Validates file status after each OPEN; errors trigger `9999-ERROR-HANDLER`
+   - Accepts current date from system using `ACCEPT ... FROM DATE`
+   - Writes report headers (border, title, date line)
+
+2. **Report Processing (2000-PROCESS-REPORT)**
+   - **Position Processing (2100-READ-POSITIONS)**:
+     - Reads POSITION-MASTER sequentially until end-of-file
+     - For each position, calls `2110-FORMAT-POSITION` to:
+       - Move position fields to formatted output line
+       - Calculate percentage change: `(Current - Previous) / Previous * 100`
+       - Write formatted detail line to report
+   - **Transaction Processing (2200-PROCESS-TRANSACTIONS)**:
+     - Reads transaction records via `2210-READ-TRANSACTIONS`
+     - Summarizes activity via `2220-SUMMARIZE-ACTIVITY`
+   - **Summary Writing (2300-WRITE-SUMMARY)**:
+     - `2310-WRITE-TOTALS` - Portfolio totals
+     - `2320-WRITE-EXCEPTIONS` - Exception conditions
+     - `2330-WRITE-METRICS` - Performance metrics
+
+3. **Cleanup (3000-CLEANUP)**
+   - Closes all three files in a single CLOSE statement
+
+### Error Handling
+
+The program uses a simple but effective error handling approach:
+
+- **File Status Checking**: Each file OPEN is followed by a status check against `'00'` (success)
+- **Error Handler (9999-ERROR-HANDLER)**:
+  - Displays the error message stored in `WS-ERROR-MESSAGE`
+  - Sets RETURN-CODE to 12 (severe error)
+  - Immediately terminates with GOBACK
+
+### Report Format Notes
+
+The report uses a fixed 132-character line format, standard for mainframe print files. Key formatting features:
+- **Edited numeric fields**: `ZZZ,ZZZ,ZZ9.99` suppresses leading zeros and inserts commas
+- **Currency formatting**: `$$$$,$$$,$$9.99` floats the dollar sign to the leftmost digit
+- **Signed percentage**: `+ZZ9.99` shows explicit plus/minus sign for change direction
+
+### COMP-3 Usage
+
+Financial fields use `COMP-3` (packed decimal) format for:
+- Exact decimal representation (no floating-point rounding errors)
+- Efficient storage (approximately half the space of display format)
+- Direct arithmetic operations without conversion
+
+## Dependencies
+
+### Copybooks
+
+- **POSREC** - Position record structure defining the position master file layout
+- **TRNREC** - Transaction record structure defining the transaction history file layout
+- **RTNCODE** - Return code management definitions for standardized program return codes
+- **ERRHAND** - Standard error handling definitions including `WS-ERROR-MESSAGE`
+
+### Called Programs
+
+This program does not CALL any external programs.
+
+### Related Programs
+
+Programs that share the POSREC copybook (position data):
+- INQPORT - Portfolio inquiry
+- UTLVAL00 - Validation utility
+
+Programs that share the TRNREC copybook (transaction data):
+- PORTTRAN - Portfolio transaction processing
+- TSTGEN00 - Test data generation
+- UTLVAL00 - Validation utility
+
+Programs that share the RTNCODE copybook (return codes):
+- RPTAUD00 - Audit report generator
+- RPTSTA00 - Status report generator
+- RTNCDE00 - Return code handler
+- TSTGEN00, TSTVAL00 - Test utilities
+- UTLMNT00, UTLMON00, UTLVAL00 - Maintenance and monitoring utilities

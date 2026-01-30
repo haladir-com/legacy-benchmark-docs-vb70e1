@@ -1,41 +1,47 @@
 ---
 title: "RTNANA00"
-description: "Return Code Analysis Utility - Analyzes return codes across the system and generates trend analysis reports"
+description: "Return Code Analysis Utility - analyzes program return codes, identifies error patterns, and generates trend reports"
 ---
 
 ## Overview
 
-RTNANA00 is a batch utility program that analyzes return codes captured from program executions across the system. It queries a DB2 database table containing historical return code information and generates a formatted analysis report summarizing success, warning, error, and severe conditions by program.
+RTNANA00 is a batch utility program that performs analysis of return codes across the system. It queries a DB2 database table containing return code history and generates a formatted report summarizing the success, warning, error, and severe failure rates for each program.
 
-The program serves as a key component in system monitoring and operational intelligence, helping operations teams identify problematic programs, track error patterns, and monitor overall system health. By aggregating return code data, it enables trend analysis and proactive issue identification.
+The program serves as a monitoring and diagnostic tool, enabling operations staff and developers to identify programs with high failure rates, track error trends over time, and pinpoint systemic issues. By aggregating return codes by program, it provides visibility into the overall health of the batch processing environment.
 
-The report is written to a sequential file suitable for printing or viewing through SDSF, with a standard 133-character print line format including carriage control.
+The analysis report is written to a sequential file in a fixed-format layout suitable for printing or archival. The report includes headers with the generation timestamp, a detail section with per-program statistics, and a totals line summarizing all programs.
 
 ## Program Structure
 
 ```mermaid
 graph TD
     A[PROCEDURE DIVISION] --> B[P100-INIT-PROGRAM]
-    B --> C[P200-PROCESS-ANALYSIS]
-    C --> D[P300-GENERATE-REPORT]
-    D --> E[P900-CLOSE-FILES]
-    E --> F[GOBACK]
+    A --> C[P200-PROCESS-ANALYSIS]
+    A --> D[P300-GENERATE-REPORT]
+    A --> E[P900-CLOSE-FILES]
     
-    C --> C1[P210-WRITE-HEADERS]
-    C --> C2[P220-PROCESS-DETAIL]
-    C2 -->|Loop until SQLCODE=100| C2
+    B --> B1[Get Current Date/Time]
+    B --> B2[Open Report File]
+    B --> B3[Initialize Analysis Area]
     
-    subgraph "DB2 Operations"
-        C1a[DECLARE CURSOR]
-        C1b[OPEN CURSOR]
-        C2a[FETCH CURSOR]
-        C1c[CLOSE CURSOR]
-    end
+    C --> C1[Declare DB2 Cursor]
+    C --> C2[Open Cursor]
+    C --> C3[P210-WRITE-HEADERS]
+    C --> C4[P220-PROCESS-DETAIL]
+    C --> C5[Close Cursor]
     
-    C --> C1a
-    C --> C1b
-    C2 --> C2a
-    C --> C1c
+    C4 --> C4a{SQLCODE = 100?}
+    C4a -->|No| C4b[Fetch Row]
+    C4b --> C4c[Write Detail Line]
+    C4c --> C4d[Accumulate Totals]
+    C4d --> C4
+    C4a -->|Yes| C5
+    
+    D --> D1[Write Separator]
+    D --> D2[Format Totals Line]
+    D --> D3[Write Totals]
+    
+    E --> E1[Close Report File]
 ```
 
 ## Data Structures
@@ -44,84 +50,84 @@ graph TD
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 05 | WS-REPORT-STATUS | XX | File status for report file |
+| 01 | WS-FILE-STATUS | - | File status area |
+| 05 | WS-REPORT-STATUS | XX | Report file status code |
+| 01 | WS-DB2-AREA | - | DB2 communication area |
+| - | SQLCA | (included) | SQL Communication Area for DB2 |
 
-### Date/Time Area
+### Date/Time Fields
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | WS-CURRENT-DATE-DATA | - | Current date/time from FUNCTION CURRENT-DATE |
-| 10 | WS-CURRENT-YEAR | 9(4) | Current year (YYYY) |
-| 10 | WS-CURRENT-MONTH | 9(2) | Current month (MM) |
-| 10 | WS-CURRENT-DAY | 9(2) | Current day (DD) |
-| 10 | WS-CURRENT-HOUR | 9(2) | Current hour (HH) |
-| 10 | WS-CURRENT-MINUTE | 9(2) | Current minute (MM) |
-| 10 | WS-CURRENT-SECOND | 9(2) | Current second (SS) |
+| 01 | WS-CURRENT-DATE-DATA | - | Current date/time from system |
+| 10 | WS-CURRENT-YEAR | 9(4) | 4-digit year |
+| 10 | WS-CURRENT-MONTH | 9(2) | Month (01-12) |
+| 10 | WS-CURRENT-DAY | 9(2) | Day of month (01-31) |
+| 10 | WS-CURRENT-HOUR | 9(2) | Hour (00-23) |
+| 10 | WS-CURRENT-MINUTE | 9(2) | Minute (00-59) |
+| 10 | WS-CURRENT-SECOND | 9(2) | Second (00-59) |
+| 10 | WS-CURRENT-MS | 9(2) | Milliseconds |
 
 ### Analysis Counters
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
+| 01 | WS-ANALYSIS-AREA | - | Analysis working area |
 | 05 | WS-START-TIME | X(26) | Analysis start timestamp |
 | 05 | WS-END-TIME | X(26) | Analysis end timestamp |
 | 05 | WS-PROGRAM-COUNT | S9(8) COMP | Total execution count |
 | 05 | WS-ERROR-COUNT | S9(8) COMP | Total error count |
 | 05 | WS-WARNING-COUNT | S9(8) COMP | Total warning count |
 | 05 | WS-SUCCESS-COUNT | S9(8) COMP | Total success count |
-| 05 | WS-SEVERE-COUNT | S9(8) COMP | Total severe error count |
+| 05 | WS-SEVERE-COUNT | S9(8) COMP | Total severe failure count |
 
 ### Report Detail Line
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
+| 05 | WS-DETAIL-LINE | - | Detail output line |
 | 10 | WS-DTL-PROGRAM | X(8) | Program identifier |
-| 10 | WS-DTL-TOTAL | ZZZ,ZZ9 | Total executions |
-| 10 | WS-DTL-SUCCESS | ZZZ,ZZ9 | Success count |
-| 10 | WS-DTL-WARNING | ZZZ,ZZ9 | Warning count |
-| 10 | WS-DTL-ERROR | ZZZ,ZZ9 | Error count |
-| 10 | WS-DTL-SEVERE | ZZZ,ZZ9 | Severe error count |
+| 10 | WS-DTL-TOTAL | ZZZ,ZZ9 | Total executions (edited) |
+| 10 | WS-DTL-SUCCESS | ZZZ,ZZ9 | Success count (edited) |
+| 10 | WS-DTL-WARNING | ZZZ,ZZ9 | Warning count (edited) |
+| 10 | WS-DTL-ERROR | ZZZ,ZZ9 | Error count (edited) |
+| 10 | WS-DTL-SEVERE | ZZZ,ZZ9 | Severe count (edited) |
 
 ## File I/O
 
-### Report File (RPTFILE)
+### File Definitions
 
-| Attribute | Value |
-|-----------|-------|
-| DDname | RPTFILE |
-| Organization | Sequential |
-| Access Mode | Sequential |
-| Recording Mode | Fixed (F) |
-| Record Length | 133 bytes |
-| File Status | WS-REPORT-STATUS |
+| File Name | DD Name | Organization | Access | Record Length | Description |
+|-----------|---------|--------------|--------|---------------|-------------|
+| REPORT-FILE | RPTFILE | Sequential | Sequential | 133 bytes | Analysis report output |
 
-**Operations:**
-- OPEN OUTPUT - Opens file for writing at program initialization
-- WRITE - Writes header and detail lines to the report
-- CLOSE - Closes file at program termination
+### File Section
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 01 | REPORT-RECORD | X(133) | Output record for report file |
+
+### I/O Operations
+
+| File | Operation | Paragraph | Purpose |
+|------|-----------|-----------|---------|
+| REPORT-FILE | OPEN OUTPUT | P100-INIT-PROGRAM | Open for writing |
+| REPORT-FILE | WRITE | P210-WRITE-HEADERS | Write header lines |
+| REPORT-FILE | WRITE | P220-PROCESS-DETAIL | Write detail lines |
+| REPORT-FILE | WRITE | P300-GENERATE-REPORT | Write totals |
+| REPORT-FILE | CLOSE | P900-CLOSE-FILES | Close file |
 
 ## Database Access
 
-### RTNCODES Table
+### DB2 Table
 
-The program queries the RTNCODES DB2 table which stores historical return code information.
+| Table Name | Purpose |
+|------------|---------|
+| RTNCODES | Stores return code history for all programs |
 
-**Table Structure:**
+### Cursor Definition
 
-| Column | Type | Description |
-|--------|------|-------------|
-| TIMESTAMP | TIMESTAMP | When the return code was logged |
-| PROGRAM_ID | CHAR(8) | Program that produced the return code |
-| RETURN_CODE | INTEGER | Numeric return code value |
-| HIGHEST_CODE | INTEGER | Highest return code in the job |
-| STATUS_CODE | CHAR(1) | Status category: S=Success, W=Warning, E=Error, F=Severe/Fatal |
-| MESSAGE_TEXT | VARCHAR(80) | Associated message text |
-
-**Indexes:**
-- Primary Key: (TIMESTAMP, PROGRAM_ID)
-- RTNCODES_PRG_IDX: (PROGRAM_ID, TIMESTAMP) - for program analysis
-- RTNCODES_STS_IDX: (STATUS_CODE, TIMESTAMP) - for status analysis
-
-### SQL Cursor (PRGCUR)
+The program declares a cursor `PRGCUR` that aggregates return code data by program:
 
 ```sql
 SELECT PROGRAM_ID,
@@ -135,115 +141,133 @@ GROUP BY PROGRAM_ID
 ORDER BY PROGRAM_ID
 ```
 
-This query aggregates return codes by program, counting occurrences of each status type using conditional COUNT expressions.
+### Status Code Values
+
+| Code | Meaning |
+|------|---------|
+| S | Success (RC=0) |
+| W | Warning (RC=4) |
+| E | Error (RC=8) |
+| F | Severe/Fatal (RC>=12) |
+
+### DB2 Operations
+
+| Operation | Paragraph | Purpose |
+|-----------|-----------|---------|
+| DECLARE CURSOR | P200-PROCESS-ANALYSIS | Define result set cursor |
+| OPEN CURSOR | P200-PROCESS-ANALYSIS | Begin cursor processing |
+| FETCH | P220-PROCESS-DETAIL | Retrieve next program's statistics |
+| CLOSE CURSOR | P200-PROCESS-ANALYSIS | End cursor processing |
 
 ## Control Flow
 
-### P100-INIT-PROGRAM
-1. Retrieves current date and time using FUNCTION CURRENT-DATE
+### P100-INIT-PROGRAM (Initialization)
+
+1. Retrieves the current system date and time using the `FUNCTION CURRENT-DATE` intrinsic function
 2. Opens the report file for output
-3. Validates file open status; terminates with RC=12 if open fails
-4. Initializes all analysis counters to zero
+3. If the file open fails (status not `'00'`), displays an error message, sets return code to 12, and terminates
+4. Initializes all counters in the analysis area to zero
 
-### P200-PROCESS-ANALYSIS
-1. Declares the PRGCUR cursor with the aggregation query
-2. Opens the cursor
-3. Calls P210-WRITE-HEADERS to output report headers
-4. Loops through P220-PROCESS-DETAIL until SQLCODE=100 (end of data)
-5. Closes the cursor
+### P200-PROCESS-ANALYSIS (Main Processing)
 
-### P210-WRITE-HEADERS
-1. Writes separator line (dashes)
-2. Writes centered report title
-3. Formats and writes report date/time using STRING statement
-4. Writes column headers for the detail section
+1. Declares a DB2 cursor that groups return codes by program ID and counts occurrences by status
+2. Opens the cursor to begin fetching results
+3. Calls P210-WRITE-HEADERS to output the report header section
+4. Loops through P220-PROCESS-DETAIL until SQLCODE = 100 (end of data)
+5. Closes the cursor when all rows have been processed
 
-### P220-PROCESS-DETAIL
-1. Fetches next row from cursor into detail line fields
-2. If SQLCODE=0 (successful fetch):
-   - Writes detail line to report
-   - Accumulates totals for summary
+### P210-WRITE-HEADERS (Header Output)
 
-### P300-GENERATE-REPORT
-1. Writes separator line
-2. Formats totals line with accumulated counts
-3. Writes totals to report
-4. Writes final separator line
+1. Writes a separator line (dashes)
+2. Writes the report title "Return Code Analysis Report"
+3. Formats and writes the report date and time using STRING to format the time as `HH:MM:SS`
+4. Writes another separator line
+5. Writes the column headers (Program, Total, Success, Warning, Error, Severe)
+6. Writes a final separator line before detail data
 
-### P900-CLOSE-FILES
+### P220-PROCESS-DETAIL (Detail Processing)
+
+1. Fetches the next row from the cursor into the detail line fields
+2. If SQLCODE = 0 (successful fetch):
+   - Writes the detail line to the report
+   - Accumulates the counts into the running totals for the summary
+
+### P300-GENERATE-REPORT (Summary Output)
+
+1. Writes a separator line
+2. Moves 'TOTALS' to the program name field
+3. Moves accumulated counts to the detail line fields
+4. Writes the totals line
+5. Writes a final separator line
+
+### P900-CLOSE-FILES (Cleanup)
+
 1. Closes the report file
 
-## Report Output Format
+## Report Format
+
+The generated report follows this structure:
 
 ```
 -------------------------------------------------------------------------
-                         Return Code Analysis Report
+                    Return Code Analysis Report
 Report Date: YYYY-MM-DD     Report Time: HH:MM:SS
 -------------------------------------------------------------------------
 Program   Total      Success    Warning    Error      Severe
 -------------------------------------------------------------------------
-PROG0001   1,234      1,100         50         80          4
-PROG0002     567        500         25         40          2
+PROG0001     1,234      1,200         30          4          0
+PROG0002       567        500         50         15          2
 ...
 -------------------------------------------------------------------------
-TOTALS     1,801      1,600         75        120          6
+TOTALS       1,801      1,700         80         19          2
 -------------------------------------------------------------------------
 ```
 
-## Return Codes
+## Dependencies
+
+### Copybooks
+
+This program does not use any external copybooks. It includes the SQLCA directly via:
+
+```cobol
+EXEC SQL INCLUDE SQLCA END-EXEC
+```
+
+### Called Programs
+
+This program does not call any external programs.
+
+### Related Programs
+
+- **RTNCDE00** - Return code management program (likely populates the RTNCODES table that this program reads)
+
+## Technical Notes
+
+### Return Codes
 
 | Code | Meaning |
 |------|---------|
 | 0 | Successful completion |
 | 12 | Error opening report file |
 
-## Dependencies
+### COBOL Features Used
 
-### Copybooks
+- **FUNCTION CURRENT-DATE**: Intrinsic function that returns the current system date and time in a standardized format (YYYYMMDDHHMMSSFF)
+- **STRING statement**: Used to concatenate hour, minute, and second with colons for the formatted time display
+- **Edited PIC clauses**: `ZZZ,ZZ9` suppresses leading zeros and inserts comma separators for readability
+- **PERFORM THRU**: Executes from a starting paragraph through an exit paragraph
 
-- **SQLCA** - DB2 SQL Communication Area (included via EXEC SQL INCLUDE)
+### DB2 Considerations
 
-### Called Programs
+- The program uses a cursor-based approach for memory efficiency when processing large result sets
+- SQLCODE 100 indicates end-of-data and controls the processing loop
+- The CASE expressions in the SELECT provide efficient conditional counting within the database engine
+- Results are ordered by PROGRAM_ID for consistent report output
 
-None - this is a standalone batch utility.
+### Record Layout
 
-### Database Objects
+The report file uses a 133-byte fixed-length record, which is a standard print line format:
+- 1 byte for carriage control (implicit)
+- 132 bytes for data
 
-- **RTNCODES** - DB2 table containing return code history
-
-### Related Programs
-
-Programs that may log to the RTNCODES table for analysis by this program include any batch or online programs using the return code logging infrastructure.
-
-## JCL Example
-
-```jcl
-//RTNANA00 JOB (ACCT),'RETURN CODE ANALYSIS',
-//             CLASS=A,MSGCLASS=X,MSGLEVEL=(1,1)
-//*
-//RTNANA   EXEC PGM=RTNANA00
-//STEPLIB  DD DSN=PROD.LOAD.LIBRARY,DISP=SHR
-//RPTFILE  DD SYSOUT=*,
-//            DCB=(RECFM=FBA,LRECL=133,BLKSIZE=0)
-//SYSOUT   DD SYSOUT=*
-//SYSUDUMP DD SYSOUT=*
-//SYSPRINT DD SYSOUT=*
-```
-
-## Technical Notes
-
-1. **FUNCTION CURRENT-DATE**: Uses COBOL intrinsic function to retrieve system date and time in a portable format (YYYYMMDDHHMMSSFF)
-
-2. **STRING Statement**: Concatenates time components with colons for formatted display
-
-3. **Embedded SQL**: Uses DB2 embedded SQL with:
-   - EXEC SQL INCLUDE SQLCA - includes the SQL Communication Area for status checking
-   - DECLARE CURSOR - defines a scrollable result set
-   - OPEN/FETCH/CLOSE - standard cursor operations
-   - SQLCODE checking - 0 for success, 100 for end-of-data
-
-4. **Conditional COUNT**: Uses CASE expressions within COUNT to categorize and count records by status code in a single pass
-
-5. **COMP Fields**: Uses computational (binary) fields for efficient counter arithmetic
-
-6. **Report Formatting**: Uses edited PIC clauses (ZZZ,ZZ9) for automatic comma insertion and zero suppression in numeric output
+This format is compatible with standard mainframe print utilities and SYSOUT processing.

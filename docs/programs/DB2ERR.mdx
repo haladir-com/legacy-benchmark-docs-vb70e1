@@ -1,59 +1,64 @@
 ---
 title: "DB2ERR"
-description: "DB2 SQL Error Handler - Centralized service for logging, diagnosing, and retrieving DB2 errors"
+description: "DB2 SQL Error Handler - provides centralized error logging, diagnosis, and retrieval for DB2 database operations"
 ---
 
 ## Overview
 
-DB2ERR is a common utility program that provides centralized DB2 error handling services for the application. It serves as a reusable component that can be called by any program needing to log SQL errors, diagnose error conditions, or retrieve error history from the database.
+DB2ERR is a reusable utility program that provides centralized DB2 error handling services for the application. It serves as a common error management component that can be called by any program experiencing DB2-related errors, ensuring consistent error handling, logging, and diagnosis across the system.
 
-The program implements three key functions:
-- **LOG** - Records SQL errors to the ERRLOG database table with full diagnostic information
-- **DIAG** - Analyzes SQLCODE values and provides human-readable error descriptions with retry guidance
-- **RETR** - Retrieves the most recent error for a given program from the error log
+The program supports three main functions: logging errors to a database error log table, diagnosing SQLCODEs to provide human-readable explanations, and retrieving the most recent error for a given program. This centralized approach simplifies error handling in calling programs and creates a comprehensive audit trail of database errors.
 
-By centralizing error handling logic, DB2ERR ensures consistent error categorization, severity assignment, and logging across all DB2-enabled programs in the system. It also provides intelligent retry recommendations for transient errors like deadlocks and timeouts.
+A key feature of DB2ERR is its intelligent retry logic. When it encounters transient errors like deadlocks or timeouts, it sets a retry flag to inform the caller that the operation may succeed if retried. For permanent errors like connection failures or duplicate key violations, it indicates that retry would not be appropriate.
 
 ## Program Structure
 
 ```mermaid
 graph TD
-    A[0000-MAIN] --> B{EVALUATE Function}
+    A[0000-MAIN] --> B{Function?}
     B -->|LOG| C[1000-LOG-ERROR]
     B -->|DIAG| D[2000-DIAGNOSE-ERROR]
     B -->|RETR| E[3000-RETRIEVE-ERROR]
-    B -->|OTHER| F[9000-ERROR-ROUTINE]
+    B -->|Other| F[9000-ERROR-ROUTINE]
     
     C --> C1[1100-SET-SEVERITY]
     C --> C2[1200-INSERT-ERROR]
+    C1 --> C1a{SQLCODE?}
+    C1a -->|Deadlock/Timeout| C1b[Set Retry=Y, Severity=2]
+    C1a -->|Connection Error| C1c[Set Retry=N, Severity=4]
+    C1a -->|Dup Key/Not Found| C1d[Set Retry=N, Severity=1]
+    C1a -->|Other Negative| C1e[Set Retry=N, Severity=3]
+    C1a -->|Other| C1f[Set Retry=N, Severity=1]
     
-    C1 -->|Deadlock/Timeout| G[Set Retry Flag Y]
-    C1 -->|Other Errors| H[Set Retry Flag N]
+    D --> D1{SQLCODE?}
+    D1 -->|Deadlock| D2[Return RC=4, Retry message]
+    D1 -->|Timeout| D3[Return RC=4, Retry message]
+    D1 -->|Connection| D4[Return RC=12, Check availability]
+    D1 -->|Dup Key| D5[Return RC=8, Duplicate key]
+    D1 -->|Other| D6[Return RC based on sign]
     
-    C2 -->|SQLCODE=0| I[Return Success]
-    C2 -->|Error| F
-    
-    D --> J[Return Diagnostic Message]
-    E --> K[SELECT from ERRLOG]
+    E --> E1[SELECT from ERRLOG]
+    E1 --> E2{SQLCODE=0?}
+    E2 -->|Yes| E3[Return error info]
+    E2 -->|No| E4[Return 'No history found']
 ```
 
 ## Data Structures
 
-### Linkage Section Interface
-
-The program receives control through a standardized error request structure:
+### Linkage Section - Input/Output Parameters
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | LS-ERROR-REQUEST | - | Main linkage area for caller communication |
-| 05 | LS-FUNCTION | X(4) | Function code: `LOG `, `DIAG`, or `RETR` |
+| 01 | LS-ERROR-REQUEST | - | Main communication area |
+| 05 | LS-FUNCTION | X(4) | Function code: `'LOG '`, `'DIAG'`, or `'RETR'` |
 | 05 | LS-PROGRAM-ID | X(8) | Calling program identifier |
-| 10 | LS-SQLCODE | S9(9) COMP | SQL return code to process |
+| 05 | LS-ERROR-INFO | - | Error details group |
+| 10 | LS-SQLCODE | S9(9) COMP | SQL return code from failed operation |
 | 10 | LS-SQLSTATE | X(5) | SQL state code |
-| 10 | LS-ERROR-TEXT | X(80) | Error message text |
+| 10 | LS-ERROR-TEXT | X(80) | Error message text (input or output) |
 | 05 | LS-ADDITIONAL-INFO | X(100) | Additional context information |
-| 05 | LS-RETURN-CODE | S9(4) COMP | Return code from operation |
-| 05 | LS-RETRY-FLAG | X(1) | `Y` = should retry, `N` = no retry |
+| 05 | LS-RETURN-CODE | S9(4) COMP | Return code from this program |
+| 05 | LS-RETRY-FLAG | X(1) | Retry indicator: 'Y' or 'N' |
 
 ### Working Storage
 
@@ -62,68 +67,61 @@ The program receives control through a standardized error request structure:
 | 01 | WS-CURRENT-TIMESTAMP | X(26) | Current system timestamp |
 | 01 | WS-FORMATTED-SQLCODE | -Z(8)9 | Edited SQLCODE for display |
 
-### Error Categories (Known SQLCODEs)
+### Error Category Constants
 
-| Field | Value | Description |
-|-------|-------|-------------|
-| WS-DEADLOCK | -911 | Deadlock or timeout with rollback |
-| WS-TIMEOUT | -913 | Unsuccessful execution due to deadlock/timeout |
-| WS-CONNECTION-ERROR | -30081 | Communication error |
-| WS-DUP-KEY | -803 | Duplicate key on insert/update |
-| WS-NOT-FOUND | +100 | Row not found (end of data) |
+| Level | Name | Picture | Value | Description |
+|-------|------|---------|-------|-------------|
+| 05 | WS-DEADLOCK | S9(8) | -911 | DB2 deadlock detected |
+| 05 | WS-TIMEOUT | S9(8) | -913 | Lock timeout occurred |
+| 05 | WS-CONNECTION-ERROR | S9(8) | -30081 | TCP/IP connection error |
+| 05 | WS-DUP-KEY | S9(8) | -803 | Duplicate key on insert/update |
+| 05 | WS-NOT-FOUND | S9(8) | +100 | Row not found |
 
 ### ERRLOG Record Structure (from DBTBLS copybook)
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 05 | EL-ERROR-TIMESTAMP | X(26) | When the error occurred |
-| 05 | EL-PROGRAM-ID | X(8) | Program that encountered the error |
-| 05 | EL-ERROR-TYPE | X(1) | S=System, A=Application, D=Data |
+| 01 | ERRLOG-RECORD | - | Error log table record |
+| 05 | EL-ERROR-TIMESTAMP | X(26) | When error occurred |
+| 05 | EL-PROGRAM-ID | X(8) | Program that encountered error |
+| 05 | EL-ERROR-TYPE | X(1) | 'S'=System, 'A'=Application, 'D'=Data |
 | 05 | EL-ERROR-SEVERITY | S9(4) COMP | 1=Info, 2=Warning, 3=Error, 4=Severe |
-| 05 | EL-ERROR-CODE | X(8) | Formatted SQLCODE and SQLSTATE |
-| 05 | EL-ERROR-MESSAGE | X(200) | Error description |
+| 05 | EL-ERROR-CODE | X(8) | Formatted error code |
+| 05 | EL-ERROR-MESSAGE | X(200) | Detailed error message |
 | 05 | EL-PROCESS-DATE | X(10) | Processing date |
 | 05 | EL-PROCESS-TIME | X(8) | Processing time |
-| 05 | EL-USER-ID | X(8) | User ID (if available) |
-| 05 | EL-ADDITIONAL-INFO | X(500) | Additional context |
+| 05 | EL-USER-ID | X(8) | User identifier |
+| 05 | EL-ADDITIONAL-INFO | X(500) | Extended error context |
 
 ## Database Access
 
-### ERRLOG Table
+### Tables Used
 
-The program interacts with the ERRLOG table for error persistence and retrieval.
-
-**Table Structure:**
-
-| Column | Type | Description |
-|--------|------|-------------|
-| ERROR_TIMESTAMP | TIMESTAMP | When the error occurred (PK) |
-| PROGRAM_ID | CHAR(8) | Program identifier (PK) |
-| ERROR_TYPE | CHAR(1) | S=System, A=Application, D=Data |
-| ERROR_SEVERITY | INTEGER | 1=Info, 2=Warning, 3=Error, 4=Severe |
-| ERROR_CODE | CHAR(8) | Formatted error code |
-| ERROR_MESSAGE | VARCHAR(200) | Error description |
-| PROCESS_DATE | DATE | Processing date |
-| PROCESS_TIME | TIME | Processing time |
-| USER_ID | CHAR(8) | User ID |
-| ADDITIONAL_INFO | VARCHAR(500) | Additional context |
-
-**Indexes:**
-- Primary Key: (ERROR_TIMESTAMP, PROGRAM_ID)
-- Secondary Index: (PROCESS_DATE, ERROR_SEVERITY DESC)
+| Table Name | Operation | Purpose |
+|------------|-----------|---------|
+| ERRLOG | INSERT | Log error records |
+| ERRLOG | SELECT | Retrieve most recent error for a program |
 
 ### SQL Operations
 
-**Insert (LOG function):**
+#### Insert Error (1200-INSERT-ERROR)
+
 ```sql
 INSERT INTO ERRLOG
 VALUES (:WS-ERRLOG-REC)
 ```
 
-**Select (RETR function):**
+Inserts a complete error record using the host variable structure.
+
+#### Retrieve Error (3000-RETRIEVE-ERROR)
+
 ```sql
-SELECT ERROR_MESSAGE, ERROR_SEVERITY, ADDITIONAL_INFO
-INTO :EL-ERROR-MESSAGE, :EL-ERROR-SEVERITY, :EL-ADDITIONAL-INFO
+SELECT ERROR_MESSAGE,
+       ERROR_SEVERITY,
+       ADDITIONAL_INFO
+INTO :EL-ERROR-MESSAGE,
+     :EL-ERROR-SEVERITY,
+     :EL-ADDITIONAL-INFO
 FROM ERRLOG
 WHERE PROGRAM_ID = :LS-PROGRAM-ID
 AND ERROR_TIMESTAMP = 
@@ -132,143 +130,158 @@ AND ERROR_TIMESTAMP =
      WHERE PROGRAM_ID = :LS-PROGRAM-ID)
 ```
 
+Retrieves the most recent error for the specified program using a correlated subquery.
+
 ## Control Flow
 
-### 1000-LOG-ERROR (Function: LOG)
+### Function: LOG (Log Error)
 
-1. Initializes the error log record structure
-2. Accepts current timestamp from system
-3. Populates error record fields:
-   - Timestamp, program ID, error type (`D` for DB2)
+The LOG function records a DB2 error to the ERRLOG table for audit and troubleshooting purposes.
+
+1. **1000-LOG-ERROR**: Main logging routine
+   - Initializes the error log record
+   - Captures the current timestamp using `ACCEPT FROM TIME STAMP`
+   - Populates the error record fields from linkage section inputs
+   - Sets error type to 'D' (Data/DB2 error)
    - Calls 1100-SET-SEVERITY to determine severity and retry flag
-   - Formats SQLCODE and SQLSTATE into error code field using STRING
-   - Captures error text and additional info
-4. Calls 1200-INSERT-ERROR to persist the record
+   - Formats SQLCODE and SQLSTATE into EL-ERROR-CODE using STRING
+   - Calls 1200-INSERT-ERROR to write the record
 
-### 1100-SET-SEVERITY
+2. **1100-SET-SEVERITY**: Severity classification
+   - Evaluates the SQLCODE to determine appropriate severity level:
+     - Deadlock (-911) or Timeout (-913): Severity 2, retry recommended
+     - Connection error (-30081): Severity 4, no retry
+     - Duplicate key (-803): Severity 1, no retry
+     - Not found (+100): Severity 1, no retry
+     - Other negative codes: Severity 3, no retry
+     - Other positive codes: Severity 1, no retry
 
-Evaluates SQLCODE to determine appropriate severity and retry guidance:
+3. **1200-INSERT-ERROR**: Database insert
+   - Executes the INSERT statement
+   - Sets return code to 0 on success
+   - Calls 9000-ERROR-ROUTINE if insert fails
 
-| SQLCODE | Severity | Retry? | Rationale |
-|---------|----------|--------|-----------|
-| -911 (Deadlock) | 2 (Warning) | Yes | Transient condition, retry likely to succeed |
-| -913 (Timeout) | 2 (Warning) | Yes | Transient condition, retry likely to succeed |
-| -30081 (Connection) | 4 (Severe) | No | Infrastructure issue, manual intervention needed |
-| -803 (Duplicate Key) | 1 (Info) | No | Application logic issue, not transient |
-| +100 (Not Found) | 1 (Info) | No | Normal condition, not an error |
-| Other negative | 3 (Error) | No | Unhandled DB2 error |
-| Other positive | 1 (Info) | No | Warning condition |
+### Function: DIAG (Diagnose Error)
 
-### 2000-DIAGNOSE-ERROR (Function: DIAG)
+The DIAG function provides human-readable diagnostic information for a given SQLCODE.
 
-Provides human-readable diagnostic messages based on SQLCODE:
+1. **2000-DIAGNOSE-ERROR**: Diagnosis routine
+   - Evaluates the SQLCODE and provides appropriate message and return code:
 
 | SQLCODE | Message | Return Code |
 |---------|---------|-------------|
-| -911 | "Deadlock detected - retry transaction" | 4 |
-| -913 | "Timeout occurred - retry transaction" | 4 |
-| -30081 | "DB2 connection error - check availability" | 12 |
-| -803 | "Duplicate key violation" | 8 |
-| Other negative | "Unhandled DB2 error" | 12 |
-| Other positive | "DB2 warning condition" | 4 |
+| -911 | Deadlock detected - retry transaction | 4 |
+| -913 | Timeout occurred - retry transaction | 4 |
+| -30081 | DB2 connection error - check availability | 12 |
+| -803 | Duplicate key violation | 8 |
+| Other < 0 | Unhandled DB2 error | 12 |
+| Other >= 0 | DB2 warning condition | 4 |
 
-### 3000-RETRIEVE-ERROR (Function: RETR)
+### Function: RETR (Retrieve Error)
 
-1. Executes SELECT to find the most recent error for the specified program
-2. Uses a correlated subquery to find MAX(ERROR_TIMESTAMP)
-3. Returns error message, severity, and additional info to caller
-4. If no error found, returns "No error history found" with RC=4
+The RETR function retrieves the most recent error logged for a specific program.
 
-### 9000-ERROR-ROUTINE
+1. **3000-RETRIEVE-ERROR**: Retrieval routine
+   - Executes SELECT to find the most recent error for LS-PROGRAM-ID
+   - If found (SQLCODE = 0):
+     - Copies error message to LS-ERROR-TEXT
+     - Sets return code to the stored severity
+   - If not found:
+     - Sets error text to "No error history found"
+     - Sets return code to 4
 
-Handles internal errors within DB2ERR itself:
-1. Sets program name to 'DB2ERR' in error structure
-2. Sets return code to 12 (severe)
-3. Calls ERRPROC for standard error processing
+### Error Handling
 
-## Return Codes
-
-| Code | Meaning |
-|------|---------|
-| 0 | Successful completion |
-| 4 | Warning condition or retry recommended |
-| 8 | Error condition (e.g., duplicate key) |
-| 12 | Severe error (connection failure, unhandled error) |
+**9000-ERROR-ROUTINE**: Called when DB2ERR itself encounters an error
+- Sets ERR-PROGRAM to 'DB2ERR'
+- Sets return code to 12
+- Calls ERRPROC for error processing
 
 ## Dependencies
 
 ### Copybooks
 
-- **SQLCA** - SQL Communication Area for DB2 status checking
-- **DBPROC** - DB2 standard procedures and error handling structures
-- **ERRHAND** - Standard error handling definitions and message structure
-- **DBTBLS** - DB2 table record definitions (included via COPY REPLACING)
+- **SQLCA** - SQL Communication Area for DB2 operations, includes standard SQL status codes
+- **DBPROC** - DB2 standard procedures including error handling routines and retry logic
+- **ERRHAND** - Standard error handling definitions, error categories, and return codes
+- **DBTBLS** - DB2 table definitions including ERRLOG-RECORD structure (included via REPLACING)
 
 ### Called Programs
 
-- **ERRPROC** - Error processing routine for logging internal errors
-
-### Database Objects
-
-- **ERRLOG** - DB2 table for error persistence
+- **ERRPROC** - Error processing routine for handling errors within DB2ERR itself
 
 ### Related Programs
 
-Programs that may call DB2ERR for error handling:
-- HISTLD00 - History loader (uses SQLCA, DBPROC, ERRHAND)
-- DB2CMT - DB2 commit processing (uses SQLCA, DBPROC, ERRHAND)
-- DB2CONN - DB2 connection handling (uses SQLCA, DBPROC, ERRHAND)
-- DB2STAT - DB2 statistics (uses SQLCA, DBPROC, ERRHAND)
+Programs that share the same copybooks and may call DB2ERR:
 
-## Usage Example
-
-```cobol
-*---------------------------------------------------------*
-* Log a DB2 error after a failed SQL operation
-*---------------------------------------------------------*
-    IF SQLCODE NOT = 0
-        MOVE 'LOG ' TO LS-FUNCTION
-        MOVE 'MYPROG00' TO LS-PROGRAM-ID
-        MOVE SQLCODE TO LS-SQLCODE
-        MOVE SQLSTATE TO LS-SQLSTATE
-        MOVE 'Error updating customer record' TO LS-ERROR-TEXT
-        MOVE WS-CUSTOMER-ID TO LS-ADDITIONAL-INFO
-        CALL 'DB2ERR' USING LS-ERROR-REQUEST
-        
-        IF LS-SHOULD-RETRY
-            PERFORM RETRY-TRANSACTION
-        END-IF
-    END-IF
-
-*---------------------------------------------------------*
-* Get diagnostic message for an error
-*---------------------------------------------------------*
-    MOVE 'DIAG' TO LS-FUNCTION
-    MOVE SQLCODE TO LS-SQLCODE
-    CALL 'DB2ERR' USING LS-ERROR-REQUEST
-    DISPLAY 'Error: ' LS-ERROR-TEXT
-
-*---------------------------------------------------------*
-* Retrieve last error for a program
-*---------------------------------------------------------*
-    MOVE 'RETR' TO LS-FUNCTION
-    MOVE 'BATCHPGM' TO LS-PROGRAM-ID
-    CALL 'DB2ERR' USING LS-ERROR-REQUEST
-    DISPLAY 'Last error: ' LS-ERROR-TEXT
-```
+- **DB2CMT** - DB2 commit handler (uses SQLCA, DBPROC, ERRHAND)
+- **DB2CONN** - DB2 connection manager (uses SQLCA, DBPROC, ERRHAND)
+- **DB2STAT** - DB2 statistics collector (uses SQLCA, DBPROC, ERRHAND)
+- **HISTLD00** - History load program (uses SQLCA, DBPROC, ERRHAND)
 
 ## Technical Notes
 
-1. **COPY REPLACING**: Uses COBOL's COPY REPLACING directive to include DBTBLS copybook while renaming record structures to avoid conflicts
+### Return Codes
 
-2. **EXEC SQL DECLARE SECTION**: Host variables used in SQL statements are declared within BEGIN/END DECLARE SECTION
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 4 | Warning - may indicate retry possible |
+| 8 | Error - data issue like duplicate key |
+| 12 | Severe - connection or unhandled error |
 
-3. **STRING Statement**: Formats SQLCODE and SQLSTATE into a single error code field for readability
+### Retry Logic
 
-4. **Correlated Subquery**: The RETR function uses a correlated subquery to find the most recent error timestamp
+The retry flag (LS-RETRY-FLAG) helps callers decide whether to retry a failed operation:
 
-5. **88-Level Conditions**: Uses condition names for function codes (`FUNC-LOG`, `FUNC-DIAG`, `FUNC-RETR`) and retry flags (`LS-SHOULD-RETRY`, `LS-NO-RETRY`)
+| Value | Meaning | When Set |
+|-------|---------|----------|
+| 'Y' | Retry recommended | Deadlock (-911), Timeout (-913) |
+| 'N' | Do not retry | All other errors |
 
-6. **FUNCTION CURRENT-DATE**: Uses COBOL intrinsic function to capture process date and time
+Deadlocks and timeouts are transient conditions that often resolve on retry. Other errors like duplicate keys or connection failures require corrective action rather than simple retry.
 
-7. **Severity Mapping**: Maps DB2 SQLCODEs to application-specific severity levels for consistent error categorization across the system
+### Severity Levels
+
+| Level | Meaning | Example Conditions |
+|-------|---------|-------------------|
+| 1 | Informational | Not found, duplicate key |
+| 2 | Warning | Deadlock, timeout |
+| 3 | Error | Unhandled negative SQLCODE |
+| 4 | Severe | Connection error |
+
+### Common SQLCODEs Handled
+
+| SQLCODE | SQLSTATE | Description |
+|---------|----------|-------------|
+| +100 | 02000 | Row not found |
+| -803 | 23505 | Duplicate key violation |
+| -911 | 40001 | Deadlock or timeout with rollback |
+| -913 | 40003 | Deadlock or timeout, no rollback |
+| -30081 | 08001 | TCP/IP communication error |
+
+### Usage Example
+
+```cobol
+* After a DB2 error occurs...
+MOVE 'LOG ' TO LS-FUNCTION
+MOVE 'MYPROG01' TO LS-PROGRAM-ID
+MOVE SQLCODE TO LS-SQLCODE
+MOVE SQLSTATE TO LS-SQLSTATE
+MOVE 'Insert to CUSTOMER failed' TO LS-ERROR-TEXT
+MOVE 'Customer ID: 12345' TO LS-ADDITIONAL-INFO
+CALL 'DB2ERR' USING LS-ERROR-REQUEST
+
+IF LS-SHOULD-RETRY
+    PERFORM RETRY-LOGIC
+END-IF
+```
+
+### COBOL Features Used
+
+- **COPY REPLACING**: Used to include DBTBLS copybook with renamed record structures
+- **EXEC SQL BEGIN/END DECLARE SECTION**: Defines host variables for DB2
+- **ACCEPT FROM TIME STAMP**: Retrieves current system timestamp
+- **FUNCTION CURRENT-DATE**: Intrinsic function for formatted date/time
+- **STRING DELIMITED BY SIZE**: Concatenates SQLCODE and SQLSTATE into error code field
+- **88-level condition names**: Used for function codes and retry flag values

@@ -1,21 +1,21 @@
 ---
 title: "RCVPRC00"
-description: "Process Recovery Handler - manages batch process recovery operations including restart, bypass, and termination of failed processes"
+description: "Process Recovery Handler - manages recovery operations for failed batch processes including restart, bypass, and termination"
 ---
 
 ## Overview
 
-RCVPRC00 is a batch process recovery handler that provides automated recovery capabilities for failed or interrupted batch processes. It operates as a callable subprogram, receiving recovery requests through its linkage section and executing appropriate recovery actions based on process definitions and current state.
+RCVPRC00 is a Process Recovery Handler that manages recovery operations for failed or interrupted batch processes. It provides intelligent recovery logic that can restart, bypass, or terminate processes based on their configuration and current state.
 
-The program supports three recovery scopes: recovering a single process, recovering all processes for a specific date, or recovering all processes in the system. For each failed process, it determines the appropriate recovery action (restart, bypass, or terminate) based on the process definition and the number of previous restart attempts.
+The program operates as a callable subprogram that examines both the batch control file (runtime state) and the process sequence file (configuration) to determine the appropriate recovery action. It supports three recovery modes: single process recovery, sequence-based recovery (all processes for a date), and full recovery (all processes in the system).
 
-This utility is essential for maintaining batch processing continuity by providing a standardized mechanism to handle process failures and resume normal operations without manual intervention.
+RCVPRC00 is designed to be invoked by job schedulers or operations staff when batch processing encounters failures. It implements configurable recovery behavior that respects maximum restart limits and process-specific restartability settings defined in the PRCSEQ file.
 
 ## Program Structure
 
 ```mermaid
 graph TD
-    A[0000-MAIN] --> B{Evaluate Function}
+    A[0000-MAIN] --> B{EVALUATE Function}
     B -->|INIT| C[1000-INITIALIZE-RECOVERY]
     B -->|RECV| D[2000-PROCESS-RECOVERY]
     B -->|TERM| E[3000-TERMINATE-RECOVERY]
@@ -25,21 +25,21 @@ graph TD
     C --> C2[1200-VALIDATE-REQUEST]
     C --> C3[1300-SET-RECOVERY-MODE]
     
-    D --> G{Recovery Mode?}
-    G -->|P| H[2100-RECOVER-PROCESS]
-    G -->|S| I[2200-RECOVER-SEQUENCE]
-    G -->|A| J[2300-RECOVER-ALL]
+    D --> G{EVALUATE Recovery Mode}
+    G -->|P - Process| D1[2100-RECOVER-PROCESS]
+    G -->|S - Sequence| D2[2200-RECOVER-SEQUENCE]
+    G -->|A - All| D3[2300-RECOVER-ALL]
     
-    H --> H1[2110-DETERMINE-ACTION]
-    H --> H2[2120-EXECUTE-RECOVERY]
+    D1 --> D1A[2110-DETERMINE-ACTION]
+    D1 --> D1B[2120-EXECUTE-RECOVERY]
     
-    H2 --> K{Action?}
-    K -->|Restart| L[2121-RESTART-PROCESS]
-    K -->|Bypass| M[2122-BYPASS-PROCESS]
-    K -->|Terminate| N[2123-TERMINATE-PROCESS]
+    D1B --> H{EVALUATE Action}
+    H -->|Restart| H1[2121-RESTART-PROCESS]
+    H -->|Bypass| H2[2122-BYPASS-PROCESS]
+    H -->|Terminate| H3[2123-TERMINATE-PROCESS]
     
-    I --> H
-    J --> H
+    D2 --> D1
+    D3 --> D1
     
     E --> E1[3100-UPDATE-FINAL-STATUS]
     E --> E2[3200-CLOSE-FILES]
@@ -49,261 +49,211 @@ graph TD
 
 ## Data Structures
 
-### Linkage Section (Input/Output Parameters)
+### Linkage Section
 
-The program receives a recovery request structure through the linkage section:
+The program receives recovery requests via the linkage section:
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | LS-RECOVERY-REQUEST | - | Main request structure |
-| 05 | LS-FUNCTION | X(4) | Function code: `INIT`, `RECV`, `TERM` |
-| 05 | LS-PROCESS-DATE | X(8) | Processing date (YYYYMMDD format) |
-| 05 | LS-PROCESS-ID | X(8) | Process identifier (for single process recovery) |
-| 05 | LS-RECOVERY-TYPE | X(1) | Recovery scope: `P`, `S`, or `A` |
+| 01 | LS-RECOVERY-REQUEST | | Recovery request structure |
+| 05 | LS-FUNCTION | X(4) | Function code: `INIT`, `RECV`, or `TERM` |
+| 05 | LS-PROCESS-DATE | X(8) | Processing date for recovery scope |
+| 05 | LS-PROCESS-ID | X(8) | Specific process ID (for mode `P`) |
+| 05 | LS-RECOVERY-TYPE | X(1) | Recovery type: `P`=Process, `S`=Sequence, `A`=All |
 | 05 | LS-RECOVERY-PARM | X(50) | Additional recovery parameters |
 | 05 | LS-RETURN-CODE | S9(4) COMP | Return code from operation |
-
-### Recovery Type Values
-
-| Value | Description |
-|-------|-------------|
-| `P` | Process - Recover a single specified process |
-| `S` | Sequence - Recover all processes for a specific date |
-| `A` | All - Recover all processes in the control file |
 
 ### Working Storage
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 05 | WS-BCT-STATUS | X(2) | Batch control file status code |
-| 05 | WS-PSR-STATUS | X(2) | Process sequence file status code |
-| 05 | WS-CURRENT-TIME | X(26) | Current timestamp for restart tracking |
-| 05 | WS-RECOVERY-MODE | X(1) | Current recovery mode (`P`/`S`/`A`) |
-| 05 | WS-RECOVERY-ACTION | X(1) | Determined action (`R`/`B`/`T`) |
+| 05 | WS-BCT-STATUS | X(2) | File status for BATCH-CONTROL-FILE |
+| 05 | WS-PSR-STATUS | X(2) | File status for PROCESS-SEQ-FILE |
+| 05 | WS-CURRENT-TIME | X(26) | Current timestamp |
+| 05 | WS-RECOVERY-MODE | X(1) | Active recovery mode (`P`, `S`, or `A`) |
+| 05 | WS-RECOVERY-ACTION | X(1) | Determined action (`R`=Restart, `B`=Bypass, `T`=Terminate) |
 
-#### Recovery Action Values (88-level conditions)
+### Recovery Mode Values
 
-| Condition | Value | Description |
-|-----------|-------|-------------|
-| WS-ACTION-RESTART | `R` | Restart the process |
-| WS-ACTION-BYPASS | `B` | Bypass/skip the process |
-| WS-ACTION-TERMINATE | `T` | Terminate the process |
+| Value | Condition Name | Description |
+|-------|----------------|-------------|
+| `P` | WS-RECOVER-PROCESS | Recover a single specific process |
+| `S` | WS-RECOVER-SEQUENCE | Recover all processes for a date |
+| `A` | WS-RECOVER-ALL | Recover all processes in system |
+
+### Recovery Action Values
+
+| Value | Condition Name | Description |
+|-------|----------------|-------------|
+| `R` | WS-ACTION-RESTART | Reset process to Ready status for re-execution |
+| `B` | WS-ACTION-BYPASS | Mark process as Done with warning |
+| `T` | WS-ACTION-TERMINATE | Mark process as Error and stop |
 
 ## File I/O
 
 ### BATCH-CONTROL-FILE
 
-An indexed VSAM file that stores batch control records for job management.
-
-| Property | Value |
-|----------|-------|
-| Logical Name | BATCH-CONTROL-FILE |
+| Attribute | Value |
+|-----------|-------|
 | DD Name | BCHCTL |
-| Organization | INDEXED |
-| Access Mode | DYNAMIC |
-| Open Mode | I-O (Input-Output) |
+| Organization | Indexed (VSAM KSDS) |
+| Access Mode | Dynamic |
+| Open Mode | I-O (read/update) |
 | Record Key | BCT-KEY |
-| File Status | WS-BCT-STATUS |
+| Copybook | BCHCTL |
 
-**Operations:**
-- READ (random by key)
-- READ NEXT (sequential after START)
-- START (position for sequential reading)
-- REWRITE (update existing records)
+Operations:
+- **READ** - Retrieve control record by key or sequential
+- **REWRITE** - Update process status after recovery action
+- **START** - Position for sequential reading by date
 
 ### PROCESS-SEQ-FILE
 
-An indexed VSAM file containing process sequence definitions.
-
-| Property | Value |
-|----------|-------|
-| Logical Name | PROCESS-SEQ-FILE |
+| Attribute | Value |
+|-----------|-------|
 | DD Name | PRCSEQ |
-| Organization | INDEXED |
-| Access Mode | DYNAMIC |
-| Open Mode | INPUT |
+| Organization | Indexed (VSAM KSDS) |
+| Access Mode | Dynamic |
+| Open Mode | INPUT (read-only) |
 | Record Key | PSR-KEY |
-| File Status | WS-PSR-STATUS |
+| Copybook | PRCSEQ |
 
-**Operations:**
-- READ (random by key to get process definitions)
+Operations:
+- **READ** - Retrieve process definition to check restartability
 
 ## Control Flow
 
-### Main Routing (0000-MAIN)
+### Function: INIT (Initialize Recovery)
 
-The program uses an `EVALUATE TRUE` statement to dispatch requests based on the function code:
+1. **1100-OPEN-FILES** - Opens BATCH-CONTROL-FILE for I-O and PROCESS-SEQ-FILE for input
+2. **1200-VALIDATE-REQUEST** - Validates that process date is provided and recovery type is valid (`P`, `S`, or `A`)
+3. **1300-SET-RECOVERY-MODE** - Sets the working storage recovery mode; validates that process ID is provided for process-level recovery
 
-1. **FUNC-INIT** → Initialize recovery environment
-2. **FUNC-RECV** → Execute recovery operations
-3. **FUNC-TERM** → Finalize and terminate
-4. **Other** → Error handling for invalid function codes
+### Function: RECV (Process Recovery)
 
-### Initialize Recovery (1000-INITIALIZE-RECOVERY)
+The recovery processing branches based on the recovery mode:
 
-Prepares the recovery environment:
-1. **1100-OPEN-FILES**: Opens control file for I-O and sequence file for INPUT
-2. **1200-VALIDATE-REQUEST**: Validates that process date is provided and recovery type is valid (`P`, `S`, or `A`)
-3. **1300-SET-RECOVERY-MODE**: Sets the recovery mode and validates that process ID is provided for single process recovery
+#### Mode P - Single Process Recovery (2100-RECOVER-PROCESS)
 
-### Process Recovery (2000-PROCESS-RECOVERY)
+1. Reads the batch control record for the specified job/date
+2. **2110-DETERMINE-ACTION** - Reads process definition from PRCSEQ to check:
+   - If `PSR-RESTARTABLE` = 'Y', sets action to Restart
+   - If restart count exceeds `BCT-MAX-RESTARTS`, sets action to Terminate
+   - Otherwise, sets action to Bypass
+3. **2120-EXECUTE-RECOVERY** - Executes the determined action:
 
-Routes to the appropriate recovery handler based on mode:
+| Action | Paragraph | Status | Return Code | Description |
+|--------|-----------|--------|-------------|-------------|
+| Restart | 2121 | Ready (`R`) | (unchanged) | Increments restart count, updates attempt timestamp |
+| Bypass | 2122 | Done (`D`) | Warning (4) | Sets "Process bypassed by recovery" |
+| Terminate | 2123 | Error (`E`) | Error (8) | Sets "Process terminated by recovery" |
 
-#### Single Process Recovery (2100-RECOVER-PROCESS)
+#### Mode S - Sequence Recovery (2200-RECOVER-SEQUENCE)
 
-1. Builds the key from process ID and date
-2. Reads the batch control record
-3. Calls **2110-DETERMINE-ACTION** to decide recovery action
-4. Calls **2120-EXECUTE-RECOVERY** to perform the action
+1. Positions to start of records for the specified process date using START
+2. Reads sequentially through all records matching the date
+3. Calls 2100-RECOVER-PROCESS for each matching record
+4. Continues until end-of-file (status `10`)
 
-#### Determine Action Logic (2110-DETERMINE-ACTION)
+#### Mode A - Full Recovery (2300-RECOVER-ALL)
 
-The action is determined based on process configuration:
-
-```
-IF process is restartable (PSR-RESTARTABLE = 'Y')
-    Action = RESTART
-ELSE IF restart count > maximum restarts allowed
-    Action = TERMINATE
-ELSE
-    Action = BYPASS
-```
-
-#### Execute Recovery (2120-EXECUTE-RECOVERY)
-
-Performs the determined action:
-
-| Action | Paragraph | Status Set | Return Code |
-|--------|-----------|------------|-------------|
-| Restart | 2121-RESTART-PROCESS | READY | (unchanged) |
-| Bypass | 2122-BYPASS-PROCESS | DONE | WARNING (4) |
-| Terminate | 2123-TERMINATE-PROCESS | ERROR | ERROR (8) |
-
-**Restart Process (2121):**
-- Sets status to READY for re-execution
-- Increments restart count
-- Records attempt timestamp
-
-**Bypass Process (2122):**
-- Sets status to DONE (completed)
-- Sets return code to WARNING
-- Records bypass reason in error description
-
-**Terminate Process (2123):**
-- Sets status to ERROR
-- Sets return code to ERROR
-- Records termination reason in error description
-
-#### Sequence Recovery (2200-RECOVER-SEQUENCE)
-
-Recovers all processes for a specific date:
-1. Positions to the first record for the date using START
-2. Reads sequentially through all records
-3. For each record matching the process date, calls 2100-RECOVER-PROCESS
-
-#### Full Recovery (2300-RECOVER-ALL)
-
-Recovers all processes in the control file:
-1. Positions to the beginning of the file using START with LOW-VALUES
-2. Reads sequentially through all records
+1. Positions to beginning of BATCH-CONTROL-FILE using LOW-VALUES
+2. Reads all records sequentially
 3. Calls 2100-RECOVER-PROCESS for each record
+4. Continues until end-of-file
 
-### Terminate Recovery (3000-TERMINATE-RECOVERY)
+### Function: TERM (Terminate Recovery)
 
-Finalizes the recovery operation:
-1. **3100-UPDATE-FINAL-STATUS**: Logs completion message (success or with errors)
-2. **3200-CLOSE-FILES**: Closes both files and checks for errors
+1. **3100-UPDATE-FINAL-STATUS** - Logs completion message via ERRPROC (success or with errors based on return code)
+2. **3200-CLOSE-FILES** - Closes both files, reports any close errors
 
-### Error Handling (9000-ERROR-ROUTINE)
+### Error Handling
 
-Handles errors by:
-1. Setting program name to 'RCVPRC00'
-2. Setting return code to BCT-RC-ERROR (8)
-3. Calling ERRPROC to log the error
+All errors invoke 9000-ERROR-ROUTINE which:
+- Sets ERR-PROGRAM to 'RCVPRC00'
+- Sets return code to BCT-RC-ERROR (8)
+- Calls ERRPROC for centralized error logging
 
-## Recovery Decision Matrix
+## Recovery Decision Logic
 
-| Restartable? | Restart Count | Action | Result |
-|--------------|---------------|--------|--------|
-| Yes | Any | RESTART | Process queued for re-execution |
-| No | ≤ Max | BYPASS | Process marked complete with warning |
-| No | > Max | TERMINATE | Process marked as error |
-
-## Return Codes
-
-| Code | Constant | Description |
-|------|----------|-------------|
-| 0 | BCT-RC-SUCCESS | Recovery completed successfully |
-| 4 | BCT-RC-WARNING | Process bypassed during recovery |
-| 8 | BCT-RC-ERROR | Error occurred or process terminated |
+```mermaid
+flowchart TD
+    A[Read Process Definition] --> B{Is Process Restartable?}
+    B -->|Yes| C[Action: RESTART]
+    B -->|No| D{Restart Count > Max?}
+    D -->|Yes| E[Action: TERMINATE]
+    D -->|No| F[Action: BYPASS]
+    
+    C --> G[Set Status = Ready<br/>Increment Restart Count]
+    F --> H[Set Status = Done<br/>RC = Warning]
+    E --> I[Set Status = Error<br/>RC = Error]
+```
 
 ## Dependencies
 
 ### Copybooks
 
-- **BCHCTL** - Batch control file record definition
-- **PRCSEQ** - Process sequence definitions (includes restart configuration)
-- **BCHCON** - Batch control constants (status values, return codes)
+- **BCHCTL** - Batch control file record definition with job status, dependencies, and restart statistics
+- **PRCSEQ** - Process sequence definitions with restartability settings and dependencies
+- **BCHCON** - Batch control constants including status values and return codes
 - **ERRHAND** - Standard error handling definitions
 
 ### Called Programs
 
-- **ERRPROC** - Error processing routine for logging and handling errors
+- **ERRPROC** - Error processing routine for centralized error logging
 
 ### Related Programs
 
-Programs that share the BCHCTL copybook (batch control integration):
-- BCHCTL00 - Batch control processor
-- HISTLD00 - History load processing
-- PRCSEQ00 - Process sequencing
-- RPTSTA00 - Status reporting
+Programs that share copybooks with RCVPRC00:
 
-Programs that share the PRCSEQ copybook:
-- PRCSEQ00 - Process sequencing
-
-Programs that share the BCHCON copybook:
-- BCHCTL00
-- HISTLD00
-- PRCSEQ00
+| Program | Shared Copybooks | Relationship |
+|---------|-----------------|--------------|
+| BCHCTL00 | BCHCTL, BCHCON, ERRHAND | Batch control processor - manages process lifecycle |
+| PRCSEQ00 | BCHCTL, PRCSEQ, BCHCON, ERRHAND | Process sequencing - orchestrates process execution |
+| HISTLD00 | BCHCTL, BCHCON, ERRHAND | History loading - batch data processing |
+| RPTSTA00 | BCHCTL, ERRHAND | Status reporting - reports on batch status |
 
 ## Usage Example
 
-To recover all failed processes for a specific date:
-
 ```cobol
-* Initialize recovery
-MOVE 'INIT'     TO LS-FUNCTION
+* Initialize recovery handler
+MOVE 'INIT' TO LS-FUNCTION
 MOVE '20240115' TO LS-PROCESS-DATE
-MOVE 'S'        TO LS-RECOVERY-TYPE
+MOVE 'P' TO LS-RECOVERY-TYPE
+MOVE 'MYJOB001' TO LS-PROCESS-ID
 CALL 'RCVPRC00' USING LS-RECOVERY-REQUEST
 
-* Execute recovery
-IF LS-RETURN-CODE = 0
-    MOVE 'RECV' TO LS-FUNCTION
-    CALL 'RCVPRC00' USING LS-RECOVERY-REQUEST
-END-IF
+* Execute recovery for the specific process
+MOVE 'RECV' TO LS-FUNCTION
+CALL 'RCVPRC00' USING LS-RECOVERY-REQUEST
 
-* Terminate
+* Terminate and close files
 MOVE 'TERM' TO LS-FUNCTION
 CALL 'RCVPRC00' USING LS-RECOVERY-REQUEST
+
+* Check result
+IF LS-RETURN-CODE = ZERO
+    DISPLAY 'Recovery completed successfully'
+ELSE
+    DISPLAY 'Recovery completed with errors: ' LS-RETURN-CODE
+END-IF
 ```
 
-To recover a single process:
+### Recovery Type Examples
 
+**Single Process Recovery:**
 ```cobol
-MOVE 'INIT'     TO LS-FUNCTION
-MOVE '20240115' TO LS-PROCESS-DATE
-MOVE 'MYJOB001' TO LS-PROCESS-ID
-MOVE 'P'        TO LS-RECOVERY-TYPE
-CALL 'RCVPRC00' USING LS-RECOVERY-REQUEST
+MOVE 'P' TO LS-RECOVERY-TYPE
+MOVE 'TRNVAL00' TO LS-PROCESS-ID
 ```
 
-## Technical Notes
+**All Processes for a Date:**
+```cobol
+MOVE 'S' TO LS-RECOVERY-TYPE
+MOVE '20240115' TO LS-PROCESS-DATE
+```
 
-- The program uses **DYNAMIC** access mode for both files, enabling both random and sequential access
-- The **START** statement positions the file for sequential reading without retrieving a record
-- **REWRITE** is used to update records in place, requiring the file to be opened for I-O
-- The **ACCEPT ... FROM TIME STAMP** retrieves the current system timestamp in ISO format
-- File status `'10'` indicates end-of-file condition during sequential reading
-- Recovery of sequences and all processes reuses the single process recovery logic for consistency
+**Full System Recovery:**
+```cobol
+MOVE 'A' TO LS-RECOVERY-TYPE
+```

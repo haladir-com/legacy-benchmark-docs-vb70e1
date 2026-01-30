@@ -1,0 +1,305 @@
+---
+title: "PORTREC"
+description: "Portfolio Position Record - defines the record layout for portfolio holdings with units and cost basis tracking"
+---
+
+## Overview
+
+PORTREC (Portfolio Record) is a copybook that defines the record layout for portfolio position data used in transaction processing. Unlike the PORTFLIO copybook which focuses on portfolio master information (client details, status), PORTREC is designed for tracking portfolio holdings with emphasis on units owned and cost basis.
+
+The copybook is used primarily by the PORTTRAN (Portfolio Transaction) program for processing buy, sell, transfer, and fee transactions. It provides the file description and record structure needed for an indexed VSAM file that supports random access by portfolio ID.
+
+This record layout enables efficient position updates during transaction processing, maintaining running totals of units and cost for each portfolio.
+
+## Data Structures
+
+### File Definition
+
+```cobol
+FD  PORTFOLIO-FILE
+    RECORDING MODE IS F
+    BLOCK CONTAINS 0 RECORDS.
+```
+
+The file is defined as:
+- **Organization**: Indexed (VSAM KSDS)
+- **Access Mode**: Random
+- **Record Key**: PORT-ID
+- **Recording Mode**: Fixed-length records
+
+### PORTFOLIO-RECORD (Main Structure)
+
+```cobol
+01  PORTFOLIO-RECORD.
+    05  PORT-KEY.
+        10  PORT-ID             PIC X(8).
+        10  PORT-ACCOUNT-NO     PIC X(10).
+    05  PORT-POSITION-DATA.
+        10  PORT-SECURITY-ID    PIC X(12).
+        10  PORT-SECURITY-NAME  PIC X(30).
+        10  PORT-TOTAL-UNITS    PIC S9(12)V9(4) COMP-3.
+        10  PORT-TOTAL-COST     PIC S9(13)V99 COMP-3.
+        10  PORT-CURRENT-VALUE  PIC S9(13)V99 COMP-3.
+        10  PORT-UNREALIZED-GL  PIC S9(13)V99 COMP-3.
+    05  PORT-TRANSACTION-INFO.
+        10  PORT-LAST-TRN-DATE  PIC 9(8).
+        10  PORT-LAST-TRN-TYPE  PIC X(2).
+        10  PORT-LAST-TRN-AMT   PIC S9(13)V99 COMP-3.
+    05  PORT-STATUS-INFO.
+        10  PORT-STATUS         PIC X(1).
+            88  PORT-ACTIVE       VALUE 'A'.
+            88  PORT-FROZEN       VALUE 'F'.
+            88  PORT-CLOSED       VALUE 'C'.
+        10  PORT-LAST-UPDATE    PIC X(26).
+    05  PORT-FILLER             PIC X(50).
+```
+
+### PORT-KEY Group (Record Key)
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | PORT-KEY | - | Composite record key |
+| 10 | PORT-ID | X(8) | Unique portfolio identifier |
+| 10 | PORT-ACCOUNT-NO | X(10) | Associated account number |
+
+### PORT-POSITION-DATA Group
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | PORT-POSITION-DATA | - | Holdings information |
+| 10 | PORT-SECURITY-ID | X(12) | Security/instrument identifier |
+| 10 | PORT-SECURITY-NAME | X(30) | Security description |
+| 10 | PORT-TOTAL-UNITS | S9(12)V9(4) COMP-3 | Total units/shares held |
+| 10 | PORT-TOTAL-COST | S9(13)V99 COMP-3 | Total cost basis |
+| 10 | PORT-CURRENT-VALUE | S9(13)V99 COMP-3 | Current market value |
+| 10 | PORT-UNREALIZED-GL | S9(13)V99 COMP-3 | Unrealized gain/loss |
+
+### PORT-TRANSACTION-INFO Group
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | PORT-TRANSACTION-INFO | - | Last transaction details |
+| 10 | PORT-LAST-TRN-DATE | 9(8) | Date of last transaction (YYYYMMDD) |
+| 10 | PORT-LAST-TRN-TYPE | X(2) | Last transaction type code |
+| 10 | PORT-LAST-TRN-AMT | S9(13)V99 COMP-3 | Last transaction amount |
+
+### PORT-STATUS-INFO Group
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | PORT-STATUS-INFO | - | Position status |
+| 10 | PORT-STATUS | X(1) | Position status code |
+| 10 | PORT-LAST-UPDATE | X(26) | Last update timestamp |
+
+### Status Values (88-level conditions)
+
+| Value | Condition Name | Description |
+|-------|----------------|-------------|
+| 'A' | PORT-ACTIVE | Position is active and tradeable |
+| 'F' | PORT-FROZEN | Position is frozen (no transactions) |
+| 'C' | PORT-CLOSED | Position is closed |
+
+## Record Layout
+
+```
++------------------------------------------------------------------+
+| PORTFOLIO-RECORD                                                  |
++------------------------------------------------------------------+
+| PORT-KEY (18 bytes)                                              |
+|   PORT-ID (8) | PORT-ACCOUNT-NO (10)                             |
++------------------------------------------------------------------+
+| PORT-POSITION-DATA (~72 bytes)                                   |
+|   SECURITY-ID (12) | SECURITY-NAME (30)                          |
+|   TOTAL-UNITS (9 packed) | TOTAL-COST (8 packed)                 |
+|   CURRENT-VALUE (8 packed) | UNREALIZED-GL (8 packed)            |
++------------------------------------------------------------------+
+| PORT-TRANSACTION-INFO (~18 bytes)                                |
+|   LAST-TRN-DATE (8) | LAST-TRN-TYPE (2) | LAST-TRN-AMT (8 packed)|
++------------------------------------------------------------------+
+| PORT-STATUS-INFO (27 bytes)                                      |
+|   PORT-STATUS (1) | PORT-LAST-UPDATE (26)                        |
++------------------------------------------------------------------+
+| PORT-FILLER (50 bytes)                                           |
++------------------------------------------------------------------+
+Total: ~185 bytes
+```
+
+## Usage Examples
+
+### Processing a Buy Transaction
+
+```cobol
+* Read the portfolio record
+MOVE TRN-PORTFOLIO-ID TO PORT-ID
+READ PORTFOLIO-FILE
+    INVALID KEY
+        MOVE 'Portfolio not found' TO ERR-TEXT
+        PERFORM ERROR-ROUTINE
+END-READ
+
+* Update position for buy
+ADD TRN-QUANTITY TO PORT-TOTAL-UNITS
+ADD TRN-AMOUNT   TO PORT-TOTAL-COST
+
+* Update transaction info
+MOVE FUNCTION CURRENT-DATE(1:8) TO PORT-LAST-TRN-DATE
+MOVE 'BU' TO PORT-LAST-TRN-TYPE
+MOVE TRN-AMOUNT TO PORT-LAST-TRN-AMT
+MOVE FUNCTION CURRENT-DATE TO PORT-LAST-UPDATE
+
+* Rewrite the record
+REWRITE PORTFOLIO-RECORD
+    INVALID KEY
+        MOVE 'Error updating portfolio' TO ERR-TEXT
+        PERFORM ERROR-ROUTINE
+END-REWRITE
+```
+
+### Processing a Sell Transaction
+
+```cobol
+* Read the portfolio record
+MOVE TRN-PORTFOLIO-ID TO PORT-ID
+READ PORTFOLIO-FILE
+    INVALID KEY
+        MOVE 'Portfolio not found' TO ERR-TEXT
+        PERFORM ERROR-ROUTINE
+        EXIT PARAGRAPH
+END-READ
+
+* Validate sufficient units
+IF PORT-TOTAL-UNITS < TRN-QUANTITY
+    MOVE 'Insufficient units for sale' TO ERR-TEXT
+    PERFORM ERROR-ROUTINE
+    EXIT PARAGRAPH
+END-IF
+
+* Update position for sell
+SUBTRACT TRN-QUANTITY FROM PORT-TOTAL-UNITS
+SUBTRACT TRN-AMOUNT   FROM PORT-TOTAL-COST
+
+* Update transaction info
+MOVE FUNCTION CURRENT-DATE(1:8) TO PORT-LAST-TRN-DATE
+MOVE 'SL' TO PORT-LAST-TRN-TYPE
+MOVE TRN-AMOUNT TO PORT-LAST-TRN-AMT
+
+* Rewrite the record
+REWRITE PORTFOLIO-RECORD
+```
+
+### Calculating Unrealized Gain/Loss
+
+```cobol
+* After updating current market value
+COMPUTE PORT-UNREALIZED-GL = 
+    PORT-CURRENT-VALUE - PORT-TOTAL-COST
+```
+
+### Reading for Position Inquiry
+
+```cobol
+MOVE WS-PORTFOLIO-ID TO PORT-ID
+READ PORTFOLIO-FILE
+    INVALID KEY
+        MOVE 'Position not found' TO WS-ERROR-MSG
+    NOT INVALID KEY
+        DISPLAY 'Portfolio: ' PORT-ID
+        DISPLAY 'Security:  ' PORT-SECURITY-NAME
+        DISPLAY 'Units:     ' PORT-TOTAL-UNITS
+        DISPLAY 'Cost:      ' PORT-TOTAL-COST
+        DISPLAY 'Value:     ' PORT-CURRENT-VALUE
+        DISPLAY 'Gain/Loss: ' PORT-UNREALIZED-GL
+END-READ
+```
+
+## Programs Using This Copybook
+
+| Program | Usage | Description |
+|---------|-------|-------------|
+| PORTTRAN | I-O | Portfolio Transaction Processing - updates positions |
+
+## Related Copybooks
+
+| Copybook | Relationship |
+|----------|--------------|
+| PORTFLIO | Portfolio master record - client and account info |
+| TRNREC | Transaction record - used with PORTREC for processing |
+| POSREC | Position record - alternative position tracking structure |
+| AUDITLOG | Audit trail - logs changes to portfolio positions |
+
+## Technical Notes
+
+### Transaction Types
+
+The PORT-LAST-TRN-TYPE field uses standard transaction codes:
+
+| Code | Description | Effect on Position |
+|------|-------------|-------------------|
+| BU | Buy | Add units, add cost |
+| SL | Sell | Subtract units, subtract cost |
+| TR | Transfer | Move units between portfolios |
+| FE | Fee | Subtract from cost (no unit change) |
+| DV | Dividend | Add to value (typically cash) |
+| SP | Split | Multiply units (no cost change) |
+
+### Numeric Precision
+
+| Field | Precision | Typical Values |
+|-------|-----------|----------------|
+| PORT-TOTAL-UNITS | 12.4 | Supports fractional shares (up to 4 decimals) |
+| PORT-TOTAL-COST | 13.2 | Currency with cents |
+| PORT-CURRENT-VALUE | 13.2 | Currency with cents |
+| PORT-UNREALIZED-GL | 13.2 | Can be negative (loss) |
+
+### COMP-3 Storage
+
+The financial fields use COMP-3 (packed decimal) for:
+- Efficient storage (approximately half the bytes of display format)
+- Support for decimal places without floating-point rounding
+- Compatibility with DB2 DECIMAL data types
+
+| Picture | Bytes | Range |
+|---------|-------|-------|
+| S9(12)V9(4) COMP-3 | 9 bytes | -999,999,999,999.9999 to +999,999,999,999.9999 |
+| S9(13)V99 COMP-3 | 8 bytes | -9,999,999,999,999.99 to +9,999,999,999,999.99 |
+
+### File Organization
+
+The portfolio file uses VSAM KSDS:
+- **Primary Key**: PORT-ID (8 bytes)
+- **Access**: Random for transaction processing
+- **Update**: I-O mode for read/modify/rewrite pattern
+
+### Comparison with PORTFLIO
+
+| Aspect | PORTREC | PORTFLIO |
+|--------|---------|----------|
+| Focus | Position/holdings | Master account info |
+| Key | Portfolio ID | Portfolio ID + Account |
+| Contains | Units, cost, value | Client name, type, status |
+| Updated by | Transaction processing | Account maintenance |
+| Primary use | Trading operations | Account management |
+
+### JCL Definition
+
+```jcl
+//PORTFILE DD DSN=PROD.PORTFOLIO.POSITION,
+//            DISP=SHR,
+//            AMP=(AMORG)
+```
+
+### Audit Considerations
+
+When modifying portfolio positions:
+1. Capture PORT-RECORD in AUD-BEFORE-IMAGE before changes
+2. Log transaction details (type, amount, units)
+3. Record success/failure status
+4. Store updated PORT-RECORD in AUD-AFTER-IMAGE
+
+### COBOL Features Used
+
+- **COMP-3 (PACKED-DECIMAL)**: Efficient storage for financial values
+- **88-level conditions**: Status flags (PORT-ACTIVE, PORT-FROZEN, PORT-CLOSED)
+- **Indexed file organization**: VSAM KSDS with random access
+- **REWRITE statement**: Updates records in place
+- **INVALID KEY clause**: Handles missing record conditions

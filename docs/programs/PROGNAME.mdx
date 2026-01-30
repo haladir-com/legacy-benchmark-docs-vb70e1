@@ -1,217 +1,149 @@
 ---
 title: "PROGNAME"
-description: "Standard COBOL Program Template - skeleton structure for new batch programs"
+description: "Standard COBOL program template providing a baseline structure for new batch program development"
 ---
 
 ## Overview
 
-PROGNAME is a standard COBOL program template that provides a skeleton structure for creating new batch programs. It establishes the foundational pattern used across the application portfolio, including standard paragraph naming conventions, working storage organization, and control flow structure.
+PROGNAME is a standard COBOL program template that provides a baseline structure for developing new batch programs. It establishes the fundamental coding patterns, paragraph organization, and working storage layout that should be followed when creating new programs in the system.
 
-This template serves as a starting point for developers creating new programs. It includes:
-- **Standard Division Structure**: All four COBOL divisions with placeholder sections
-- **Naming Conventions**: Consistent paragraph numbering scheme (0000, 1000, 2000, 3000, 9000)
-- **Working Storage Organization**: Constants, switches, and work areas grouped logically
-- **Control Flow Pattern**: Initialize → Process → Terminate with error handling
-- **Documentation Headers**: Maintenance log template for tracking changes
+This template is not intended to be executed directly but rather serves as a starting point for developers creating new COBOL programs. It demonstrates the standard program structure with initialization, main processing loop, termination, and error handling paragraphs.
 
-When creating a new program, developers should copy this template, rename PROGNAME to the new program ID, and implement the placeholder sections.
+The template follows mainframe COBOL best practices including proper division organization, consistent naming conventions, standard return code handling, and placeholder sections for file definitions, copybooks, and linkage parameters.
 
 ## Program Structure
 
 ```mermaid
 graph TD
     A[0000-MAIN] --> B[1000-INITIALIZE]
-    A --> C[2000-PROCESS<br/>UNTIL END-OF-FILE]
+    A --> C[2000-PROCESS]
     A --> D[3000-TERMINATE]
     A --> E[GOBACK]
     
-    B --> B1[INITIALIZE WS-WORK-AREAS]
+    B --> F[INITIALIZE WS-WORK-AREAS]
     
-    C --> C1[Main Processing Logic<br/>- placeholder -]
-    C --> C2[SET END-OF-FILE TO TRUE]
+    C --> G{END-OF-FILE?}
+    G -->|No| C
+    G -->|Yes| D
     
-    D --> D1[MOVE WS-RETURN-CODE<br/>TO RETURN-CODE]
+    D --> H[Set RETURN-CODE]
     
-    F[9000-HANDLE-ERROR] --> F1[MOVE WS-ERROR<br/>TO WS-RETURN-CODE]
+    I[9000-HANDLE-ERROR] --> J[Set WS-RETURN-CODE = 8]
     
-    style C1 fill:#f9f,stroke:#333,stroke-dasharray: 5 5
-    style F fill:#fbb,stroke:#333
+    style A fill:#e1f5fe
+    style I fill:#ffebee
 ```
 
 ## Data Structures
 
 ### Working Storage
 
-#### Constants
+#### Constants (WS-CONSTANTS)
 
 | Level | Name | Picture | Value | Description |
 |-------|------|---------|-------|-------------|
-| 01 | WS-CONSTANTS | - | - | Program constants group |
-| 05 | WS-PROGRAM-NAME | X(8) | `'PROGNAME'` | Program identifier |
+| 01 | WS-CONSTANTS | | | Program constants group |
+| 05 | WS-PROGRAM-NAME | X(8) | 'PROGNAME' | Program identifier |
 | 05 | WS-SUCCESS | S9(4) | +0 | Success return code |
 | 05 | WS-ERROR | S9(4) | +8 | Error return code |
 
-#### Switches
+#### Switches (WS-SWITCHES)
 
-| Level | Name | Picture | Value | Description |
-|-------|------|---------|-------|-------------|
-| 01 | WS-SWITCHES | - | - | Processing switches group |
-| 05 | WS-END-OF-FILE-SW | X | `'N'` | End-of-file indicator |
+| Level | Name | Picture | Initial | Description |
+|-------|------|---------|---------|-------------|
+| 01 | WS-SWITCHES | | | Processing control switches |
+| 05 | WS-END-OF-FILE-SW | X | 'N' | End of file indicator |
 
-##### End of File Switch (WS-END-OF-FILE-SW)
+**88-level Conditions:**
+- `END-OF-FILE` - Value 'Y' - Processing complete
+- `NOT-END-OF-FILE` - Value 'N' - Continue processing
 
-| Value | 88-Level Name | Meaning |
-|-------|---------------|---------|
-| `'Y'` | END-OF-FILE | Processing complete |
-| `'N'` | NOT-END-OF-FILE | Continue processing |
+#### Work Areas (WS-WORK-AREAS)
 
-#### Work Areas
-
-| Level | Name | Picture | Value | Description |
-|-------|------|---------|-------|-------------|
-| 01 | WS-WORK-AREAS | - | - | Work areas group |
+| Level | Name | Picture | Initial | Description |
+|-------|------|---------|---------|-------------|
+| 01 | WS-WORK-AREAS | | | Working variables group |
 | 05 | WS-RETURN-CODE | S9(4) | +0 | Program return code |
 
 ### Placeholder Sections
 
-The following sections contain placeholder comments for implementation:
+The template includes placeholder comments for:
 
-| Section | Purpose |
-|---------|---------|
-| FILE-CONTROL | File SELECT statements |
-| FILE SECTION | FD entries and record layouts |
-| LINKAGE SECTION | Parameters passed to program |
+- **FILE SECTION**: File descriptions (FD entries)
+- **LINKAGE SECTION**: Parameters passed to the program
+- **FILE-CONTROL**: SELECT statements for file definitions
 
 ## Control Flow
 
-### 0000-MAIN
+### Main Processing (0000-MAIN)
 
-The main entry point that orchestrates program execution:
-1. **PERFORM 1000-INITIALIZE**: Set up the program
-2. **PERFORM 2000-PROCESS UNTIL END-OF-FILE**: Execute main logic loop
-3. **PERFORM 3000-TERMINATE**: Clean up and exit
-4. **GOBACK**: Return to caller
+The standard batch processing pattern:
 
-This is the standard "IPO" (Initialize-Process-Output/Terminate) pattern used in batch COBOL programs.
+```
+1. PERFORM 1000-INITIALIZE
+2. PERFORM 2000-PROCESS UNTIL END-OF-FILE
+3. PERFORM 3000-TERMINATE
+4. GOBACK
+```
 
-### 1000-INITIALIZE
+### Initialization (1000-INITIALIZE)
 
-Performs program initialization:
-- **INITIALIZE WS-WORK-AREAS**: Clears work area fields to default values
+Standard initialization tasks:
+- Initializes WS-WORK-AREAS to default values
+- **Customize**: Add file opens, parameter validation, initial reads
 
-**Customization points:**
-- Open files
-- Initialize counters and accumulators
-- Read control cards or parameters
-- Perform first read (priming read) for sequential processing
+### Main Processing (2000-PROCESS)
 
-### 2000-PROCESS
+The main processing loop placeholder:
+- Currently sets END-OF-FILE to TRUE (exits immediately)
+- **Customize**: Add actual business logic, file reads, record processing
 
-Main processing paragraph (placeholder implementation):
-- Currently sets END-OF-FILE to TRUE immediately (single iteration)
+### Termination (3000-TERMINATE)
 
-**Customization points:**
-- Read input records
-- Apply business logic
-- Write output records
-- Update counters
-- Handle record-level errors
+Standard termination tasks:
+- Moves WS-RETURN-CODE to RETURN-CODE (system return code)
+- **Customize**: Add file closes, summary displays, cleanup logic
 
-### 3000-TERMINATE
+### Error Handling (9000-HANDLE-ERROR)
 
-Performs cleanup and sets the return code:
-- **MOVE WS-RETURN-CODE TO RETURN-CODE**: Sets the job step return code
+Standard error handling placeholder:
+- Sets WS-RETURN-CODE to WS-ERROR (+8)
+- **Customize**: Add error logging, cleanup, specific error handling
 
-**Customization points:**
-- Close files
-- Write control totals
-- Display statistics
-- Write audit records
+## Usage Guidelines
 
-### 9000-HANDLE-ERROR
+### Creating a New Program from Template
 
-Error handling routine (placeholder):
-- **MOVE WS-ERROR TO WS-RETURN-CODE**: Sets return code to 8
-
-**Customization points:**
-- Log error details
-- Write to error file
-- Display error messages
-- Determine if processing should continue or abort
-
-## Template Usage
-
-### Creating a New Program
-
-1. **Copy the template:**
-   ```
-   cp standard-program.cbl NEWPROG.cbl
-   ```
-
-2. **Update identifiers:**
-   - Change `PROGRAM-ID. PROGNAME` to your program name
-   - Update `WS-PROGRAM-NAME` value
-   - Fill in documentation header fields
-
-3. **Add file definitions:**
-   ```cobol
-   FILE-CONTROL.
-       SELECT INPUT-FILE ASSIGN TO INFILE
-           FILE STATUS IS WS-INPUT-STATUS.
-   ```
-
-4. **Define record layouts:**
-   ```cobol
-   FILE SECTION.
-   FD  INPUT-FILE.
-   01  INPUT-RECORD    PIC X(80).
-   ```
-
-5. **Implement processing logic:**
-   ```cobol
-   2000-PROCESS.
-       READ INPUT-FILE
-           AT END
-               SET END-OF-FILE TO TRUE
-           NOT AT END
-               PERFORM 2100-PROCESS-RECORD
-       END-READ.
-   ```
+1. **Copy the template** to a new source file with the actual program name
+2. **Update PROGRAM-ID** in the IDENTIFICATION DIVISION
+3. **Update WS-PROGRAM-NAME** constant
+4. **Add file definitions** in FILE-CONTROL and FILE SECTION
+5. **Add copybook references** with COPY statements
+6. **Add linkage section** if program receives parameters
+7. **Implement business logic** in 2000-PROCESS
+8. **Add initialization logic** (file opens) in 1000-INITIALIZE
+9. **Add termination logic** (file closes) in 3000-TERMINATE
+10. **Implement error handling** in 9000-HANDLE-ERROR
 
 ### Naming Conventions
+
+| Element | Convention | Example |
+|---------|------------|---------|
+| Working Storage | WS- prefix | WS-CUSTOMER-NAME |
+| File Status | WS-xxx-STATUS | WS-FILE-STATUS |
+| Switches | WS-xxx-SW | WS-END-OF-FILE-SW |
+| Counters | WS-xxx-COUNT | WS-RECORD-COUNT |
+| Linkage Section | LS- prefix | LS-INPUT-PARM |
+
+### Paragraph Numbering
 
 | Range | Purpose |
 |-------|---------|
 | 0000-0999 | Main control paragraphs |
 | 1000-1999 | Initialization paragraphs |
-| 2000-2999 | Processing paragraphs |
+| 2000-2999 | Main processing paragraphs |
 | 3000-3999 | Termination paragraphs |
 | 9000-9999 | Error handling paragraphs |
-
-### Recommended Additions
-
-When implementing a production program, consider adding:
-
-| Category | Items to Add |
-|----------|--------------|
-| **Files** | Input files, output files, report files |
-| **Copybooks** | Record layouts, error handling, common routines |
-| **Counters** | Records read, processed, written, errors |
-| **Timestamps** | Start time, end time for logging |
-| **Error handling** | File status checks, validation errors |
-| **Audit trail** | Processing statistics, control totals |
-
-## Configuration Section
-
-The template includes standard IBM z/OS configuration:
-
-```cobol
-CONFIGURATION SECTION.
-SOURCE-COMPUTER. IBM-ZOS.
-OBJECT-COMPUTER. IBM-ZOS.
-```
-
-This specifies the compilation and execution environment.
 
 ## Return Codes
 
@@ -220,60 +152,112 @@ This specifies the compilation and execution environment.
 | 0 | WS-SUCCESS | Successful completion |
 | 8 | WS-ERROR | Error occurred |
 
-Additional return codes can be defined as needed:
-- 4: Warning (processing completed with warnings)
-- 12: Severe error
-- 16: Fatal error (immediate termination)
+Additional return codes can be added as needed:
+- 4 = Warning
+- 12 = Severe error
+- 16 = Terminal error
 
 ## Dependencies
 
 ### Copybooks
-
-None - this is a minimal template. Production programs should include:
-- Record layout copybooks
-- Error handling copybooks (ERRHAND)
-- Common definitions (COMMON)
+None - Template does not include copybooks. Add as needed:
+- Common data structures
+- File record layouts
+- Error handling definitions
 
 ### Called Programs
+None - Template does not call external programs. Add as needed.
 
-None - placeholder for subprogram calls.
+## Template Customization Example
+
+### Adding a File
+
+```cobol
+INPUT-OUTPUT SECTION.
+FILE-CONTROL.
+    SELECT INPUT-FILE
+        ASSIGN TO INFILE
+        ORGANIZATION IS SEQUENTIAL
+        FILE STATUS IS WS-INPUT-STATUS.
+
+FILE SECTION.
+FD  INPUT-FILE.
+01  INPUT-RECORD              PIC X(80).
+
+WORKING-STORAGE SECTION.
+01  WS-FILE-STATUS.
+    05  WS-INPUT-STATUS       PIC X(2).
+        88  WS-INPUT-OK       VALUE '00'.
+        88  WS-INPUT-EOF      VALUE '10'.
+```
+
+### Adding Initialization Logic
+
+```cobol
+1000-INITIALIZE.
+    INITIALIZE WS-WORK-AREAS
+    
+    OPEN INPUT INPUT-FILE
+    IF NOT WS-INPUT-OK
+        DISPLAY 'Error opening input file: ' WS-INPUT-STATUS
+        PERFORM 9000-HANDLE-ERROR
+    END-IF
+    
+    PERFORM 1100-READ-FIRST-RECORD
+    .
+```
+
+### Adding Processing Logic
+
+```cobol
+2000-PROCESS.
+    *> Process current record
+    PERFORM 2100-PROCESS-RECORD
+    
+    *> Read next record
+    READ INPUT-FILE
+        AT END
+            SET END-OF-FILE TO TRUE
+        NOT AT END
+            ADD 1 TO WS-RECORD-COUNT
+    END-READ
+    .
+```
+
+### Adding Termination Logic
+
+```cobol
+3000-TERMINATE.
+    CLOSE INPUT-FILE
+    
+    DISPLAY 'Records processed: ' WS-RECORD-COUNT
+    
+    MOVE WS-RETURN-CODE TO RETURN-CODE
+    .
+```
 
 ## Technical Notes
 
-### COBOL Constructs Used
+### GOBACK vs STOP RUN
 
-- **INITIALIZE**: Sets all elementary items in a group to their default values (spaces for alphanumeric, zeros for numeric). Used to clear work areas at program start.
+The template uses `GOBACK` rather than `STOP RUN`. GOBACK returns control to the calling program or operating system, making it suitable for both standalone programs and subprograms. STOP RUN would terminate the entire run unit.
 
-- **PERFORM UNTIL**: Loop construct that continues executing 2000-PROCESS until the END-OF-FILE condition becomes true. The condition is tested before each iteration.
+### RETURN-CODE Special Register
 
-- **88-Level Conditions**: Boolean condition names (END-OF-FILE, NOT-END-OF-FILE) provide readable condition testing in PERFORM UNTIL and IF statements.
+The template moves WS-RETURN-CODE to RETURN-CODE in the termination paragraph. RETURN-CODE is a COBOL special register that sets the return code passed back to the operating system or calling program.
 
-- **SET TO TRUE**: Sets an 88-level condition to true by moving its associated value to the parent field. `SET END-OF-FILE TO TRUE` moves `'Y'` to WS-END-OF-FILE-SW.
+### INITIALIZE Statement
 
-- **GOBACK**: Returns control to the calling program or operating system. Preferred over STOP RUN for subprograms and modern batch programs.
+The template uses `INITIALIZE WS-WORK-AREAS` to set working storage fields to their default values (spaces for alphanumeric, zeros for numeric). This ensures a clean starting state.
 
-- **RETURN-CODE**: Special register that sets the job step return code. The value is passed to JCL for conditional step execution.
+### 88-Level Conditions
+
+The template demonstrates the use of 88-level condition names (END-OF-FILE, NOT-END-OF-FILE) for improved readability. Use `SET condition-name TO TRUE` to set these flags.
 
 ### Comment Style
 
 The template uses two comment styles:
-- **Asterisk in column 7**: Traditional COBOL comments for documentation blocks
-- **`*>` inline comments**: COBOL 2002 style for end-of-line comments
+- `*` in column 7 for full-line comments
+- `*>` for inline comments (COBOL 2002+)
 
-### Documentation Header
-
-The header template includes:
-```cobol
-*================================================================*
-* Program Name: PROGNAME
-* Description: [Description of program purpose]
-* Author: [Author name]
-* Date Written: [Date]
-* Maintenance Log:
-* Date       Author        Description
-* ---------- ------------- -------------------------------------
-* [Date]     [Author]      Initial Creation
-*================================================================*
-```
-
-This provides standardized program documentation and change history tracking.
+For maximum compatibility, use `*` in column 7 for all comments.

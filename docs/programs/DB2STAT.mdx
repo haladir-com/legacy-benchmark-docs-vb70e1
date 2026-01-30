@@ -1,21 +1,21 @@
 ---
 title: "DB2STAT"
-description: "DB2 Statistics Collector - collects, tracks, and reports database operation statistics including row counts, commits, rollbacks, and timing metrics"
+description: "DB2 Statistics Collector - tracks and reports database operation metrics including row counts, commits, rollbacks, and timing information"
 ---
 
 ## Overview
 
-DB2STAT is a DB2 statistics collector that provides centralized tracking and reporting of database operation metrics for batch programs. It operates as a callable subprogram that programs can use to monitor their DB2 activity throughout execution.
+DB2STAT is a DB2 Statistics Collector that provides comprehensive tracking of database operations for batch programs. It captures metrics such as rows read, inserted, updated, and deleted, along with commit/rollback counts and timing information.
 
-The program creates a Global Temporary Table to store statistics for the current session, tracking key metrics such as rows read, inserted, updated, and deleted, as well as commit and rollback counts. Upon termination, it calculates CPU and elapsed time and produces a formatted statistics report.
+The program uses a DB2 Global Temporary Table (GTT) to store statistics during program execution. This approach ensures that statistics are session-specific and automatically cleaned up when the session ends, without affecting permanent database objects. The GTT is created with `ON COMMIT PRESERVE ROWS` to maintain data across commits within the session.
 
-This utility is essential for performance monitoring, capacity planning, and troubleshooting database-intensive batch processes by providing visibility into DB2 resource utilization.
+DB2STAT is designed to be called as a subprogram at key points during batch processing: initialization at program start, periodic updates during processing, and termination at program end. The terminate function automatically calculates elapsed time and estimates CPU time, then displays a formatted statistics report.
 
 ## Program Structure
 
 ```mermaid
 graph TD
-    A[0000-MAIN] --> B{Evaluate Function}
+    A[0000-MAIN] --> B{EVALUATE Function}
     B -->|INIT| C[1000-INITIALIZE]
     B -->|UPDT| D[2000-UPDATE-STATS]
     B -->|TERM| E[3000-TERMINATE]
@@ -27,283 +27,310 @@ graph TD
     C --> C3[1100-CREATE-STATS-TABLE]
     C --> C4[1200-INSERT-INITIAL]
     
-    C3 --> C3a[DECLARE GLOBAL TEMPORARY TABLE]
-    C4 --> C4a[INSERT initial record]
+    C3 --> C3A[DECLARE GLOBAL TEMP TABLE]
+    C4 --> C4A[INSERT initial row]
     
-    D --> D1[Move counters from linkage]
+    D --> D1[Copy linkage stats to WS]
     D --> D2[UPDATE SESSION.DBSTATS]
     
     E --> E1[Capture end timestamp]
     E --> E2[3100-CALC-TIMES]
-    E --> E3[UPDATE with final times]
-    E --> F
+    E --> E3[UPDATE with times]
+    E --> E4[4000-DISPLAY-STATS]
     
-    E2 --> E2a[Calculate elapsed time]
-    E2 --> E2b[Estimate CPU time]
+    E2 --> E2A[Calculate elapsed time]
+    E2 --> E2B[Estimate CPU time]
     
-    F --> F1[SELECT statistics]
-    F --> F2[DISPLAY formatted report]
+    F --> F1[SELECT from SESSION.DBSTATS]
+    F --> F2[DISPLAY formatted stats]
     
     G --> G1[CALL ERRPROC]
-    
-    H[GOBACK] --> I((End))
 ```
 
 ## Data Structures
 
-### Linkage Section (Input/Output Parameters)
+### Linkage Section
 
-The program receives a statistics request structure through the linkage section:
+The program receives statistics requests via the linkage section:
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | LS-STAT-REQUEST | - | Main request structure |
-| 05 | LS-FUNCTION | X(4) | Function code: `INIT`, `UPDT`, `TERM`, `DISP` |
-| 05 | LS-PROGRAM-ID | X(8) | Program identifier being tracked |
-| 05 | LS-STAT-DATA | - | Statistics data area |
+| 01 | LS-STAT-REQUEST | | Statistics request structure |
+| 05 | LS-FUNCTION | X(4) | Function: `INIT`, `UPDT`, `TERM`, or `DISP` |
+| 05 | LS-PROGRAM-ID | X(8) | Program being monitored |
 | 10 | LS-ROWS-READ | S9(9) COMP | Count of rows read |
 | 10 | LS-ROWS-INSRT | S9(9) COMP | Count of rows inserted |
 | 10 | LS-ROWS-UPDT | S9(9) COMP | Count of rows updated |
 | 10 | LS-ROWS-DELT | S9(9) COMP | Count of rows deleted |
 | 10 | LS-COMMITS | S9(9) COMP | Count of commits |
 | 10 | LS-ROLLBACKS | S9(9) COMP | Count of rollbacks |
-| 05 | LS-RETURN-CODE | S9(4) COMP | Return code from operation |
+| 05 | LS-RETURN-CODE | S9(4) COMP | Return code (0=success, 12=error) |
 
-### Function Codes
+### Function Values
 
-| Value | 88-Level Condition | Description |
-|-------|-------------------|-------------|
-| `INIT` | FUNC-INIT | Initialize statistics collection |
-| `UPDT` | FUNC-UPDT | Update statistics counters |
-| `TERM` | FUNC-TERM | Terminate and finalize with timing |
-| `DISP` | FUNC-DISP | Display statistics report |
+| Value | Condition Name | Description |
+|-------|----------------|-------------|
+| `INIT` | FUNC-INIT | Initialize statistics tracking |
+| `UPDT` | FUNC-UPDT | Update statistics counts |
+| `TERM` | FUNC-TERM | Finalize and display statistics |
+| `DISP` | FUNC-DISP | Display current statistics |
 
 ### Working Storage - Statistics Record
 
-The WS-STATS-RECORD is defined within a SQL DECLARE SECTION for use in DB2 statements:
-
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
+| 01 | WS-STATS-RECORD | | SQL host variable structure |
 | 05 | WS-PROGRAM-ID | X(8) | Program identifier |
-| 05 | WS-START-TIME | X(26) | Start timestamp |
-| 05 | WS-END-TIME | X(26) | End timestamp |
+| 05 | WS-START-TIME | X(26) | Processing start timestamp |
+| 05 | WS-END-TIME | X(26) | Processing end timestamp |
 | 05 | WS-ROWS-READ | S9(9) COMP | Rows read counter |
 | 05 | WS-ROWS-INSERTED | S9(9) COMP | Rows inserted counter |
 | 05 | WS-ROWS-UPDATED | S9(9) COMP | Rows updated counter |
 | 05 | WS-ROWS-DELETED | S9(9) COMP | Rows deleted counter |
-| 05 | WS-COMMITS | S9(9) COMP | Commits counter |
-| 05 | WS-ROLLBACKS | S9(9) COMP | Rollbacks counter |
-| 05 | WS-CPU-TIME | S9(9)V99 COMP-3 | CPU time in seconds |
-| 05 | WS-ELAPSED-TIME | S9(9)V99 COMP-3 | Elapsed time in seconds |
+| 05 | WS-COMMITS | S9(9) COMP | Commit counter |
+| 05 | WS-ROLLBACKS | S9(9) COMP | Rollback counter |
+| 05 | WS-CPU-TIME | S9(9)V99 COMP-3 | Estimated CPU time (seconds) |
+| 05 | WS-ELAPSED-TIME | S9(9)V99 COMP-3 | Elapsed time (seconds) |
 
-### Additional Working Storage
+### Working Storage - Other Fields
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | WS-CURRENT-TIMESTAMP | X(26) | Current timestamp holder |
-| 01 | WS-START-TIMESTAMP | X(26) | Saved start timestamp for calculation |
-| 01 | WS-FORMATTED-TIME | ZZ,ZZ9.99 | Formatted time for display |
+| 01 | WS-CURRENT-TIMESTAMP | X(26) | Current system timestamp |
+| 01 | WS-START-TIMESTAMP | X(26) | Saved start timestamp for calculations |
+| 01 | WS-FORMATTED-TIME | ZZ,ZZ9.99 | Edited time for display |
+
+## Database Operations
+
+### SESSION.DBSTATS Global Temporary Table
+
+The program creates and uses a session-scoped temporary table:
+
+| Column | Type | Nullable | Description |
+|--------|------|----------|-------------|
+| PROGRAM_ID | CHAR(8) | NOT NULL | Program identifier |
+| START_TIME | TIMESTAMP | NOT NULL | Processing start time |
+| END_TIME | TIMESTAMP | YES | Processing end time |
+| ROWS_READ | INTEGER | NOT NULL | Count of rows read |
+| ROWS_INSERTED | INTEGER | NOT NULL | Count of rows inserted |
+| ROWS_UPDATED | INTEGER | NOT NULL | Count of rows updated |
+| ROWS_DELETED | INTEGER | NOT NULL | Count of rows deleted |
+| COMMITS | INTEGER | NOT NULL | Count of commits |
+| ROLLBACKS | INTEGER | NOT NULL | Count of rollbacks |
+| CPU_TIME | DECIMAL(11,2) | YES | CPU time in seconds |
+| ELAPSED_TIME | DECIMAL(11,2) | YES | Elapsed time in seconds |
+
+### SQL Operations
+
+**1100-CREATE-STATS-TABLE:**
+```sql
+DECLARE GLOBAL TEMPORARY TABLE SESSION.DBSTATS
+  (PROGRAM_ID      CHAR(8)      NOT NULL,
+   START_TIME      TIMESTAMP    NOT NULL,
+   END_TIME        TIMESTAMP,
+   ROWS_READ       INTEGER      NOT NULL,
+   ROWS_INSERTED   INTEGER      NOT NULL,
+   ROWS_UPDATED    INTEGER      NOT NULL,
+   ROWS_DELETED    INTEGER      NOT NULL,
+   COMMITS         INTEGER      NOT NULL,
+   ROLLBACKS       INTEGER      NOT NULL,
+   CPU_TIME        DECIMAL(11,2),
+   ELAPSED_TIME    DECIMAL(11,2))
+  ON COMMIT PRESERVE ROWS
+```
+
+**1200-INSERT-INITIAL:**
+```sql
+INSERT INTO SESSION.DBSTATS
+  (PROGRAM_ID, START_TIME, ROWS_READ, ROWS_INSERTED, 
+   ROWS_UPDATED, ROWS_DELETED, COMMITS, ROLLBACKS)
+VALUES (:WS-PROGRAM-ID, CURRENT TIMESTAMP, 0, 0, 0, 0, 0, 0)
+```
+
+**2000-UPDATE-STATS:**
+```sql
+UPDATE SESSION.DBSTATS
+SET ROWS_READ = :WS-ROWS-READ,
+    ROWS_INSERTED = :WS-ROWS-INSERTED,
+    ROWS_UPDATED = :WS-ROWS-UPDATED,
+    ROWS_DELETED = :WS-ROWS-DELETED,
+    COMMITS = :WS-COMMITS,
+    ROLLBACKS = :WS-ROLLBACKS
+WHERE PROGRAM_ID = :WS-PROGRAM-ID
+```
+
+**3000-TERMINATE:**
+```sql
+UPDATE SESSION.DBSTATS
+SET END_TIME = :WS-END-TIME,
+    CPU_TIME = :WS-CPU-TIME,
+    ELAPSED_TIME = :WS-ELAPSED-TIME
+WHERE PROGRAM_ID = :WS-PROGRAM-ID
+```
+
+**4000-DISPLAY-STATS:**
+```sql
+SELECT ROWS_READ, ROWS_INSERTED, ROWS_UPDATED, ROWS_DELETED,
+       COMMITS, ROLLBACKS, CPU_TIME, ELAPSED_TIME
+INTO :WS-STATS-RECORD
+FROM SESSION.DBSTATS
+WHERE PROGRAM_ID = :WS-PROGRAM-ID
+```
 
 ## Control Flow
 
-### Main Dispatch (0000-MAIN)
+### Function: INIT (Initialize)
 
-The program uses an `EVALUATE TRUE` statement to route requests based on the function code. After processing, it returns control via `GOBACK`.
-
-### Initialize (1000-INITIALIZE)
-
-Sets up statistics collection for a program:
-
+**1000-INITIALIZE:**
 1. Initializes WS-STATS-RECORD to zeros/spaces
-2. Stores the program ID from linkage section
-3. Captures the current timestamp as start time
-4. Calls **1100-CREATE-STATS-TABLE** to create the temporary table
-5. Calls **1200-INSERT-INITIAL** to create the initial statistics record
+2. Copies LS-PROGRAM-ID to WS-PROGRAM-ID
+3. Captures current timestamp as start time
+4. Calls 1100-CREATE-STATS-TABLE to declare the GTT
+5. Calls 1200-INSERT-INITIAL to create the initial statistics row
 
-#### Create Stats Table (1100-CREATE-STATS-TABLE)
+**Note:** SQLCODE -601 (table already exists) is ignored in 1100-CREATE-STATS-TABLE, allowing the program to be called multiple times in a session.
 
-Creates a Global Temporary Table for the session:
+### Function: UPDT (Update Statistics)
 
-```sql
-DECLARE GLOBAL TEMPORARY TABLE SESSION.DBSTATS
-    (PROGRAM_ID      CHAR(8)      NOT NULL,
-     START_TIME      TIMESTAMP    NOT NULL,
-     END_TIME        TIMESTAMP,
-     ROWS_READ       INTEGER      NOT NULL,
-     ROWS_INSERTED   INTEGER      NOT NULL,
-     ROWS_UPDATED    INTEGER      NOT NULL,
-     ROWS_DELETED    INTEGER      NOT NULL,
-     COMMITS         INTEGER      NOT NULL,
-     ROLLBACKS       INTEGER      NOT NULL,
-     CPU_TIME        DECIMAL(11,2),
-     ELAPSED_TIME    DECIMAL(11,2))
-    ON COMMIT PRESERVE ROWS
-```
+**2000-UPDATE-STATS:**
+1. Copies all statistics from linkage section to working storage
+2. Updates the SESSION.DBSTATS row with current counts
+3. Sets LS-RETURN-CODE to 0 on success
 
-**Note:** SQLCODE -601 (table already exists) is ignored, allowing multiple programs to share the same session table.
+### Function: TERM (Terminate)
 
-#### Insert Initial (1200-INSERT-INITIAL)
+**3000-TERMINATE:**
+1. Captures current timestamp as end time
+2. Calls 3100-CALC-TIMES to calculate timing metrics
+3. Updates SESSION.DBSTATS with end time and calculated times
+4. Automatically calls 4000-DISPLAY-STATS to show final report
 
-Inserts the initial record with all counters set to zero.
+**3100-CALC-TIMES:**
+- Calculates elapsed time by subtracting start from end timestamp
+- Estimates CPU time as 65% of elapsed time (using factor 0.65)
 
-### Update Stats (2000-UPDATE-STATS)
+### Function: DISP (Display Statistics)
 
-Updates the statistics counters during program execution:
-
-1. Copies counter values from linkage section to working storage
-2. Executes UPDATE to set the current values in SESSION.DBSTATS
-3. Sets return code based on SQLCODE
-
-### Terminate (3000-TERMINATE)
-
-Finalizes statistics collection:
-
-1. Captures the end timestamp
-2. Calls **3100-CALC-TIMES** to calculate timing metrics
-3. Updates the record with END_TIME, CPU_TIME, and ELAPSED_TIME
-4. Automatically calls **4000-DISPLAY-STATS** to show the report
-
-#### Calculate Times (3100-CALC-TIMES)
-
-Calculates timing metrics:
-
-1. **Elapsed Time**: Computed using `FUNCTION NUMVAL` on timestamp substrings
-2. **CPU Time**: Estimated as 65% of elapsed time (a rough approximation)
-
-### Display Stats (4000-DISPLAY-STATS)
-
-Retrieves and displays a formatted statistics report:
-
-1. Executes SELECT to retrieve all statistics
-2. Displays formatted output to SYSOUT:
+**4000-DISPLAY-STATS:**
+1. Retrieves statistics from SESSION.DBSTATS
+2. Displays formatted report to SYSOUT:
 
 ```
-DB2 Statistics for PROGRAMX
+DB2 Statistics for PROGNAME
   Records Read:     nnnnnnnnn
   Records Inserted: nnnnnnnnn
   Records Updated:  nnnnnnnnn
   Records Deleted:  nnnnnnnnn
   Commits:          nnnnnnnnn
   Rollbacks:        nnnnnnnnn
-  CPU Time:         nn,nnn.nn seconds
-  Elapsed Time:     nn,nnn.nn seconds
+  CPU Time:         ZZ,ZZ9.99 seconds
+  Elapsed Time:     ZZ,ZZ9.99 seconds
 ```
 
-### Error Handling (9000-ERROR-ROUTINE)
+### Error Handling
 
-Handles errors by:
-1. Setting program name to 'DB2STAT'
-2. Setting return code to 12 (severe error)
-3. Calling ERRPROC for error logging
+**9000-ERROR-ROUTINE:**
+- Sets ERR-PROGRAM to 'DB2STAT'
+- Sets LS-RETURN-CODE to 12
+- Calls ERRPROC for centralized error logging
 
-## Database Integration
+## Statistics Flow
 
-### Global Temporary Table
+```mermaid
+sequenceDiagram
+    participant Caller as Calling Program
+    participant DB2STAT
+    participant GTT as SESSION.DBSTATS
 
-The program uses `DECLARE GLOBAL TEMPORARY TABLE` to create a session-scoped table:
+    Caller->>DB2STAT: CALL with INIT
+    DB2STAT->>GTT: DECLARE TABLE
+    DB2STAT->>GTT: INSERT (zeros)
+    DB2STAT-->>Caller: RC=0
 
-- **Table Name**: SESSION.DBSTATS
-- **Scope**: Current DB2 session only
-- **Persistence**: `ON COMMIT PRESERVE ROWS` keeps data across commits
-- **Cleanup**: Automatically dropped when the session ends
+    loop During Processing
+        Caller->>DB2STAT: CALL with UPDT
+        DB2STAT->>GTT: UPDATE counts
+        DB2STAT-->>Caller: RC=0
+    end
 
-### SQL Operations
-
-| Operation | Paragraph | Purpose |
-|-----------|-----------|---------|
-| DECLARE GTT | 1100 | Create session table |
-| INSERT | 1200 | Create initial statistics record |
-| UPDATE | 2000 | Update counter values |
-| UPDATE | 3000 | Set final timestamps and times |
-| SELECT | 4000 | Retrieve statistics for display |
-
-### SQLCODE Handling
-
-| SQLCODE | Meaning | Action |
-|---------|---------|--------|
-| 0 | Success | Continue processing |
-| -601 | Table already exists | Ignored (expected on re-initialization) |
-| Other | Error | Call error routine |
-
-## Return Codes
-
-| Code | Description |
-|------|-------------|
-| 0 | Operation completed successfully |
-| 12 | Error occurred (severe) |
-
-## Statistics Metrics
-
-| Metric | Description | Updated By |
-|--------|-------------|------------|
-| ROWS_READ | Number of SELECT operations returning rows | Caller |
-| ROWS_INSERTED | Number of INSERT operations | Caller |
-| ROWS_UPDATED | Number of UPDATE operations | Caller |
-| ROWS_DELETED | Number of DELETE operations | Caller |
-| COMMITS | Number of COMMIT operations | Caller |
-| ROLLBACKS | Number of ROLLBACK operations | Caller |
-| CPU_TIME | Estimated CPU time (65% of elapsed) | DB2STAT |
-| ELAPSED_TIME | Wall clock time from INIT to TERM | DB2STAT |
+    Caller->>DB2STAT: CALL with TERM
+    DB2STAT->>GTT: UPDATE times
+    DB2STAT->>GTT: SELECT for display
+    DB2STAT-->>Caller: RC=0 + Stats Report
+```
 
 ## Dependencies
 
 ### Copybooks
 
 - **SQLCA** - SQL Communication Area with standard status codes
-- **DBPROC** - DB2 standard procedures and error handling
+- **DBPROC** - DB2 standard procedures including error handling routines
 - **ERRHAND** - Standard error handling definitions
 
 ### Called Programs
 
-- **ERRPROC** - Error processing routine for logging
+- **ERRPROC** - Error processing routine for centralized error logging
 
 ### Related Programs
 
-Programs that share the SQLCA and DBPROC copybooks (DB2 infrastructure):
-- HISTLD00 - History load processing
-- DB2CMT - DB2 commit handler
-- DB2CONN - DB2 connection handler
-- DB2ERR - DB2 error handler
+Programs that share DB2-related copybooks:
+
+| Program | Shared Copybooks | Description |
+|---------|-----------------|-------------|
+| DB2CONN | SQLCA, DBPROC, ERRHAND | DB2 connection management |
+| DB2CMT | SQLCA, DBPROC, ERRHAND | DB2 commit processing |
+| DB2ERR | SQLCA, DBPROC, ERRHAND | DB2 error handling |
+| HISTLD00 | SQLCA, DBPROC, ERRHAND | History data loading |
 
 ## Usage Example
 
-To track statistics for a batch program:
-
 ```cobol
+WORKING-STORAGE SECTION.
+01  WS-STAT-REQUEST.
+    05  WS-FUNCTION         PIC X(4).
+    05  WS-PROGRAM-ID       PIC X(8).
+    05  WS-STAT-DATA.
+        10  WS-ROWS-READ    PIC S9(9) COMP.
+        10  WS-ROWS-INSRT   PIC S9(9) COMP.
+        10  WS-ROWS-UPDT    PIC S9(9) COMP.
+        10  WS-ROWS-DELT    PIC S9(9) COMP.
+        10  WS-COMMITS      PIC S9(9) COMP.
+        10  WS-ROLLBACKS    PIC S9(9) COMP.
+    05  WS-RETURN-CODE      PIC S9(4) COMP.
+
+PROCEDURE DIVISION.
 * Initialize statistics at program start
-MOVE 'INIT'     TO LS-FUNCTION
-MOVE 'MYPGM001' TO LS-PROGRAM-ID
-CALL 'DB2STAT' USING LS-STAT-REQUEST
+    MOVE 'INIT' TO WS-FUNCTION
+    MOVE 'MYPROG01' TO WS-PROGRAM-ID
+    CALL 'DB2STAT' USING WS-STAT-REQUEST
 
-* During processing, update counters periodically
-MOVE 'UPDT'     TO LS-FUNCTION
-MOVE WS-READ-COUNT    TO LS-ROWS-READ
-MOVE WS-INSERT-COUNT  TO LS-ROWS-INSRT
-MOVE WS-UPDATE-COUNT  TO LS-ROWS-UPDT
-MOVE WS-DELETE-COUNT  TO LS-ROWS-DELT
-MOVE WS-COMMIT-COUNT  TO LS-COMMITS
-MOVE WS-ROLLBACK-COUNT TO LS-ROLLBACKS
-CALL 'DB2STAT' USING LS-STAT-REQUEST
+* ... perform database operations ...
 
-* At program end, finalize and display
-MOVE 'TERM'     TO LS-FUNCTION
-CALL 'DB2STAT' USING LS-STAT-REQUEST
-```
+* Update statistics periodically
+    MOVE 'UPDT' TO WS-FUNCTION
+    MOVE 1000 TO WS-ROWS-READ
+    MOVE 500 TO WS-ROWS-INSRT
+    MOVE 0 TO WS-ROWS-UPDT
+    MOVE 0 TO WS-ROWS-DELT
+    MOVE 10 TO WS-COMMITS
+    MOVE 0 TO WS-ROLLBACKS
+    CALL 'DB2STAT' USING WS-STAT-REQUEST
 
-To display statistics without terminating:
-
-```cobol
-MOVE 'DISP'     TO LS-FUNCTION
-CALL 'DB2STAT' USING LS-STAT-REQUEST
+* Terminate and display final statistics
+    MOVE 'TERM' TO WS-FUNCTION
+    CALL 'DB2STAT' USING WS-STAT-REQUEST
 ```
 
 ## Technical Notes
 
-- The program uses **EXEC SQL BEGIN/END DECLARE SECTION** to define host variables for DB2, required for variables used in SQL statements
-- **COMP-3** (packed decimal) format is used for time values, providing efficient storage and decimal precision
-- **FUNCTION NUMVAL** converts string timestamp portions to numeric values for time calculations
-- The CPU time estimate (65% of elapsed) is a rough approximation; actual CPU time would require system-level instrumentation
-- **Global Temporary Tables** are ideal for session-scoped data that doesn't need to persist beyond the current connection
-- The `ON COMMIT PRESERVE ROWS` clause ensures statistics survive commit operations during the session
-- **ACCEPT ... FROM TIME STAMP** retrieves the system timestamp in ISO format (YYYY-MM-DD-HH.MM.SS.FFFFFF)
-- Multiple programs can track statistics in the same session by using different PROGRAM_ID values
+1. **Global Temporary Table**: The SESSION.DBSTATS table is session-scoped and automatically dropped when the DB2 connection ends. The `ON COMMIT PRESERVE ROWS` clause ensures statistics survive commit operations.
+
+2. **SQLCODE -601 Handling**: The program tolerates SQLCODE -601 (object already exists) when creating the GTT, allowing reinitialization within the same session.
+
+3. **CPU Time Estimation**: CPU time is estimated as 65% of elapsed time. This is an approximation; actual CPU time would require system-specific instrumentation.
+
+4. **COMP-3 Fields**: CPU and elapsed time use `S9(9)V99 COMP-3` (packed decimal) format, providing 2 decimal places for sub-second precision.
+
+5. **Timestamp Format**: The program uses the COBOL `ACCEPT FROM TIME STAMP` statement to capture timestamps in a 26-character format suitable for DB2 TIMESTAMP columns.
+
+6. **Host Variables**: The WS-STATS-RECORD structure is declared within `EXEC SQL BEGIN/END DECLARE SECTION` to enable use as DB2 host variables.

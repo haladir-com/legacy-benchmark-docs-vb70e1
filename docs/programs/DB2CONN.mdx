@@ -1,276 +1,327 @@
 ---
 title: "DB2CONN"
-description: "DB2 Connection Manager - provides connection, disconnection, and status checking services for DB2 database access"
+description: "DB2 Connection Manager - Manages database connections with retry logic and error handling for batch and online programs"
 ---
 
 ## Overview
 
-DB2CONN is a reusable COBOL subprogram that provides centralized DB2 database connection management services. It acts as a service module that other programs call to establish, terminate, and verify DB2 connections, abstracting the complexity of direct EXEC SQL connection handling.
+DB2CONN is a reusable service program that provides centralized DB2 connection management for the Investment Portfolio Management System. It encapsulates the complexities of establishing, monitoring, and terminating database connections, implementing robust retry logic for transient connection failures.
 
-The program supports three primary functions:
-- **CONN** - Establish a connection to a specified DB2 database with automatic retry logic
-- **DISC** - Gracefully disconnect from DB2 with commit before disconnection
-- **STAT** - Check the current connection status by querying the database
+The program is designed to be called by other COBOL programs that need DB2 database access, providing a consistent interface for:
+- Establishing connections with automatic retry on failure
+- Gracefully disconnecting with proper commit handling
+- Checking connection status to verify database availability
 
-This design pattern promotes code reuse and consistent error handling across all DB2-enabled applications in the system. By centralizing connection logic, changes to connection parameters, retry strategies, or error handling can be made in one place.
+By centralizing connection management, DB2CONN ensures consistent error handling and retry behavior across all programs that access DB2, reducing code duplication and simplifying maintenance.
 
 ## Program Structure
 
 ```mermaid
 graph TD
-    A[0000-MAIN] --> B{Evaluate Function}
-    B -->|CONN| C[1000-CONNECT]
-    B -->|DISC| D[2000-DISCONNECT]
-    B -->|STAT| E[3000-CHECK-STATUS]
-    B -->|OTHER| F[9000-ERROR-ROUTINE]
+    subgraph "0000-MAIN Entry Point"
+        MAIN[0000-MAIN] --> EVAL{Evaluate<br/>LS-FUNCTION}
+        EVAL --> |CONN| CONN[1000-CONNECT]
+        EVAL --> |DISC| DISC[2000-DISCONNECT]
+        EVAL --> |STAT| STAT[3000-CHECK-STATUS]
+        EVAL --> |Other| ERR[9000-ERROR-ROUTINE]
+    end
     
-    C --> C1[1100-HANDLE-CONN-ERROR]
-    C --> C2{Retry Logic}
-    C2 -->|Retry| C3[CALL 'DELAY']
-    C2 -->|Max Retries| C4[Return Error]
+    subgraph "Connection Logic"
+        CONN --> RETRY{Retry Loop}
+        RETRY --> |Try Connect| SQL1[EXEC SQL<br/>CONNECT TO]
+        SQL1 --> |Success| DONE1[Set Connected<br/>RC=0]
+        SQL1 --> |Failure| HERR[1100-HANDLE-CONN-ERROR]
+        HERR --> WAIT[CALL DELAY]
+        WAIT --> RETRY
+        RETRY --> |Max Retries| FAIL[Return Error]
+    end
     
-    D --> D1[EXEC SQL COMMIT]
-    D --> D2[EXEC SQL CONNECT RESET]
+    subgraph "Disconnect Logic"
+        DISC --> CHK{Connected?}
+        CHK --> |Yes| CMT[EXEC SQL<br/>COMMIT WORK]
+        CMT --> RST[EXEC SQL<br/>CONNECT RESET]
+        RST --> DONE2[Set Disconnected]
+        CHK --> |No| SKIP[Skip]
+    end
     
-    E --> E1[EXEC SQL SELECT CURRENT SERVER]
-    
-    F --> F1[CALL 'ERRPROC']
-    
-    A --> G[GOBACK]
+    subgraph "Status Check"
+        STAT --> SQL3[EXEC SQL<br/>SELECT CURRENT SERVER]
+        SQL3 --> |Success| ACTIVE[Connection Active]
+        SQL3 --> |Failure| INACTIVE[Connection Inactive]
+    end
 ```
 
 ## Data Structures
 
-### Working-Storage Section
+### Working Storage
 
-#### SQL Host Variables
-
-The program defines host variables within an SQL DECLARE SECTION for use in embedded SQL statements:
+#### SQL Declare Section
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
 | 01 | WS-DB-NAME | X(8) | Target database name for connection |
-| 01 | WS-PLAN-NAME | X(8) | DB2 plan name (passed but not used in current impl) |
+| 01 | WS-PLAN-NAME | X(8) | DB2 plan name (reserved for future use) |
 
 #### Connection State Management
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | WS-CONNECTION-STATE | X(1) | Current connection status flag |
-| 88 | WS-CONNECTED | VALUE 'Y' | Condition: connected to DB2 |
-| 88 | WS-DISCONNECTED | VALUE 'N' | Condition: not connected |
-
-#### Retry Configuration
-
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
+| 01 | WS-CONNECTION-STATE | X(1) | Current connection state flag |
+| 88 | WS-CONNECTED | VALUE 'Y' | Condition: Connection is active |
+| 88 | WS-DISCONNECTED | VALUE 'N' | Condition: Connection is inactive |
 | 01 | WS-RETRY-COUNT | S9(4) COMP | Current retry attempt counter |
 | 01 | WS-MAX-RETRIES | S9(4) COMP | Maximum retry attempts (default: 3) |
 
-### Linkage Section
+### Linkage Section (API Interface)
 
-The program receives parameters through the linkage section, allowing callers to specify the operation and receive results:
-
-#### Request Structure (LS-DB2-REQUEST)
+The program receives requests through the `LS-DB2-REQUEST` parameter structure:
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | LS-DB2-REQUEST | - | Main parameter block |
-| 05 | LS-FUNCTION | X(4) | Function code to execute |
-| 88 | FUNC-CONN | VALUE 'CONN' | Connect function |
-| 88 | FUNC-DISC | VALUE 'DISC' | Disconnect function |
-| 88 | FUNC-STAT | VALUE 'STAT' | Status check function |
-| 05 | LS-DB-NAME | X(8) | Database name for connection |
+| 01 | LS-DB2-REQUEST | - | Request parameter block |
+| 05 | LS-FUNCTION | X(4) | Function code (see below) |
+| 05 | LS-DB-NAME | X(8) | Database name for CONN function |
 | 05 | LS-PLAN-NAME | X(8) | DB2 plan name |
 | 05 | LS-RETURN-CODE | S9(4) COMP | Return code from operation |
 | 05 | LS-ERROR-INFO | - | Error information group |
-| 10 | LS-SQLCODE | S9(9) COMP | SQL return code |
+| 10 | LS-SQLCODE | S9(9) COMP | SQL return code on error |
 | 10 | LS-ERROR-MSG | X(80) | Descriptive error message |
+
+#### Function Codes
+
+| Code | 88-Level Name | Description |
+|------|---------------|-------------|
+| `'CONN'` | FUNC-CONN | Establish database connection |
+| `'DISC'` | FUNC-DISC | Disconnect from database |
+| `'STAT'` | FUNC-STAT | Check connection status |
 
 ## File I/O
 
-This program does not perform any file I/O operations. All data persistence is handled through DB2 database connections.
+This program does not use any file I/O operations. All database interaction is performed through embedded SQL statements.
 
 ## Control Flow
 
-### Main Entry Point (0000-MAIN)
+### Connection Process (1000-CONNECT)
 
-The program uses an EVALUATE statement to dispatch to the appropriate processing paragraph based on the function code:
+The connection logic implements a retry pattern for handling transient failures:
+
+1. Initialize state to disconnected and reset retry counter
+2. Copy database name and plan name from linkage section
+3. Enter retry loop (maximum 3 attempts):
+   - Execute `CONNECT TO :WS-DB-NAME`
+   - If SQLCODE = 0: Set connected state, return code 0
+   - If SQLCODE ≠ 0: Increment retry counter, call error handler
+   - If more retries available: Call DELAY routine, continue loop
+4. Return final status to caller
 
 ```cobol
-EVALUATE TRUE
-    WHEN FUNC-CONN    PERFORM 1000-CONNECT
-    WHEN FUNC-DISC    PERFORM 2000-DISCONNECT
-    WHEN FUNC-STAT    PERFORM 3000-CHECK-STATUS
-    WHEN OTHER        PERFORM 9000-ERROR-ROUTINE
-END-EVALUATE
+EXEC SQL
+    CONNECT TO :WS-DB-NAME
+END-EXEC
 ```
 
-### Connect Function (1000-CONNECT)
+### Connection Error Handling (1100-HANDLE-CONN-ERROR)
 
-1. **Initialize State**
-   - Set connection state to disconnected
-   - Reset retry counter to zero
-   - Copy database and plan names from linkage to working storage
+Translates SQL codes into meaningful messages:
 
-2. **Connection Loop with Retry**
-   - Execute `CONNECT TO :WS-DB-NAME` SQL statement
-   - If SQLCODE = 0: Set connected flag, return code 0
-   - If SQLCODE ≠ 0: Increment retry counter, call error handler
-   - If retries remain and not connected: Call DELAY routine, then retry
-   - Loop continues until connected or max retries exceeded
+| SQLCODE | Message | Meaning |
+|---------|---------|---------|
+| -30081 | Maximum connections exceeded | DB2 subsystem at connection limit |
+| -99999 | Network error connecting to DB2 | Network/communication failure |
+| Other | General DB2 connection error | Unclassified connection failure |
 
-3. **Connection Error Handling (1100-HANDLE-CONN-ERROR)**
-   - Captures SQLCODE in linkage area
-   - Maps specific SQLCODEs to meaningful messages:
-     - `-30081`: "Maximum connections exceeded"
-     - `-99999`: "Network error connecting to DB2"
-     - Other: "General DB2 connection error"
-   - Sets return code to 12 (severe error)
+### Disconnect Process (2000-DISCONNECT)
 
-### Disconnect Function (2000-DISCONNECT)
+Ensures clean disconnection with data integrity:
 
-1. **Check Connection State**
-   - Only proceeds if currently connected
+1. Check if currently connected
+2. Execute `COMMIT WORK` to save pending changes
+3. Execute `CONNECT RESET` to release connection
+4. Update state and return appropriate code
 
-2. **Graceful Shutdown**
-   - Execute `COMMIT WORK` to save pending changes
-   - Execute `CONNECT RESET` to release connection
+```cobol
+EXEC SQL
+    COMMIT WORK
+END-EXEC
 
-3. **Result Handling**
-   - If SQLCODE = 0: Set disconnected flag, return code 0
-   - If SQLCODE ≠ 0: Capture error, set return code 8
+EXEC SQL
+    CONNECT RESET
+END-EXEC
+```
 
-### Status Check Function (3000-CHECK-STATUS)
+### Status Check (3000-CHECK-STATUS)
 
-1. **Query Current Server**
-   ```sql
-   SELECT CURRENT SERVER
-   INTO :WS-DB-NAME
-   FROM SYSIBM.SYSDUMMY1
-   ```
+Verifies connection is active by executing a simple query:
 
-2. **Interpret Result**
-   - If SQLCODE = 0: Connection is active, return code 0
-   - If SQLCODE ≠ 0: Connection lost, return code 4 with error message
+```cobol
+EXEC SQL
+    SELECT CURRENT SERVER
+    INTO :WS-DB-NAME
+    FROM SYSIBM.SYSDUMMY1
+END-EXEC
+```
 
-### Error Routine (9000-ERROR-ROUTINE)
-
-- Sets program name in error structure
-- Sets return code to 12
-- Calls ERRPROC for centralized error logging
+This query against the DB2 catalog table `SYSIBM.SYSDUMMY1` is a lightweight way to verify the connection is responsive.
 
 ## Dependencies
 
 ### Copybooks
 
-| Copybook | Section | Description |
-|----------|---------|-------------|
-| SQLCA | Working-Storage | SQL Communication Area - standard DB2 structure containing SQLCODE, SQLSTATE, and diagnostic information |
-| DBPROC | Working-Storage | DB2 standard procedures including error handling routines and retry configuration (DB2-RETRY-WAIT) |
-| ERRHAND | Working-Storage | Standard error handling definitions including ERR-MESSAGE structure and ERR-TEXT field |
+| Copybook | Location | Description |
+|----------|----------|-------------|
+| SQLCA | db2/ | SQL Communication Area - contains SQLCODE, SQLSTATE |
+| DBPROC | db2/ | DB2 standard procedures and error handling structures |
+| ERRHAND | common/ | Standard error handling definitions and return codes |
 
 ### Called Programs
 
 | Program | Purpose |
 |---------|---------|
 | DELAY | System delay routine for retry wait periods |
-| ERRPROC | Centralized error processing and logging |
+| ERRPROC | Standard error processing and logging |
 
 ### Related Programs
 
-Programs in the DB2 common utilities suite:
+The DB2CONN program is part of a suite of DB2 infrastructure programs:
 
-- **DB2CMT** - DB2 Commit Manager (uses SQLCA, DBPROC, ERRHAND)
-- **DB2ERR** - DB2 Error Handler (uses SQLCA, DBPROC, ERRHAND)
-- **DB2STAT** - DB2 Statistics Collector (uses SQLCA, DBPROC, ERRHAND)
-- **ERRPROC** - Error Processing utility (called by DB2CONN)
+| Program | Relationship | Description |
+|---------|--------------|-------------|
+| DB2CMT | Sibling | DB2 Commit Controller - manages commits, rollbacks, savepoints |
+| DB2ERR | Sibling | DB2 Error Handler - logs and diagnoses SQL errors |
+| DB2STAT | Sibling | DB2 Statistics Collector - tracks DB2 operation metrics |
+| HISTLD00 | Consumer | History load program - uses DB2CONN for connections |
 
-## Embedded SQL Statements
+## Usage Examples
 
-The program uses the following DB2 SQL statements:
-
-| Statement | Paragraph | Purpose |
-|-----------|-----------|---------|
-| `CONNECT TO :host-var` | 1000-CONNECT | Establish database connection |
-| `COMMIT WORK` | 2000-DISCONNECT | Commit pending transactions |
-| `CONNECT RESET` | 2000-DISCONNECT | Release database connection |
-| `SELECT CURRENT SERVER FROM SYSIBM.SYSDUMMY1` | 3000-CHECK-STATUS | Verify connection is active |
-
-## Return Codes
-
-| Code | Meaning | Returned By |
-|------|---------|-------------|
-| 0 | Successful operation | All functions on success |
-| 4 | Warning - connection not active | 3000-CHECK-STATUS |
-| 8 | Error during disconnect | 2000-DISCONNECT |
-| 12 | Severe error - connection failed or invalid function | 1000-CONNECT, 9000-ERROR-ROUTINE |
-
-## Usage Example
-
-Calling programs should set up the linkage area and invoke DB2CONN:
+### Establishing a Connection
 
 ```cobol
 WORKING-STORAGE SECTION.
 01  WS-DB2-REQUEST.
-    05  WS-FUNCTION         PIC X(4).
-    05  WS-DB-NAME          PIC X(8).
-    05  WS-PLAN-NAME        PIC X(8).
-    05  WS-RETURN-CODE      PIC S9(4) COMP.
+    05  WS-FUNCTION        PIC X(4).
+    05  WS-DB-NAME         PIC X(8).
+    05  WS-PLAN-NAME       PIC X(8).
+    05  WS-RETURN-CODE     PIC S9(4) COMP.
     05  WS-ERROR-INFO.
-        10  WS-SQLCODE      PIC S9(9) COMP.
-        10  WS-ERROR-MSG    PIC X(80).
+        10  WS-SQLCODE     PIC S9(9) COMP.
+        10  WS-ERROR-MSG   PIC X(80).
 
 PROCEDURE DIVISION.
-    * Connect to database
     MOVE 'CONN' TO WS-FUNCTION
-    MOVE 'PRODDB' TO WS-DB-NAME
-    MOVE 'MYPLAN' TO WS-PLAN-NAME
+    MOVE 'POSMVP' TO WS-DB-NAME
+    MOVE 'PLANNAME' TO WS-PLAN-NAME
+    
     CALL 'DB2CONN' USING WS-DB2-REQUEST
     
     IF WS-RETURN-CODE NOT = 0
         DISPLAY 'Connection failed: ' WS-ERROR-MSG
-        STOP RUN
+        PERFORM ERROR-ROUTINE
     END-IF
-    
-    * ... perform database operations ...
-    
-    * Disconnect from database
-    MOVE 'DISC' TO WS-FUNCTION
-    CALL 'DB2CONN' USING WS-DB2-REQUEST
 ```
 
-## Technical Notes
+### Checking Connection Status
 
-### Retry Logic
-The program implements automatic retry for connection failures with configurable parameters:
-- **Maximum Retries**: 3 attempts (WS-MAX-RETRIES)
-- **Retry Delay**: Controlled by DB2-RETRY-WAIT from DBPROC copybook (default 100 ms)
+```cobol
+    MOVE 'STAT' TO WS-FUNCTION
+    
+    CALL 'DB2CONN' USING WS-DB2-REQUEST
+    
+    IF WS-RETURN-CODE = 0
+        DISPLAY 'Connected to: ' WS-DB-NAME
+    ELSE
+        DISPLAY 'Not connected'
+    END-IF
+```
 
-This is particularly useful for handling transient network issues or temporary connection pool exhaustion.
+### Disconnecting
+
+```cobol
+    MOVE 'DISC' TO WS-FUNCTION
+    
+    CALL 'DB2CONN' USING WS-DB2-REQUEST
+    
+    IF WS-RETURN-CODE NOT = 0
+        DISPLAY 'Disconnect warning: ' WS-ERROR-MSG
+    END-IF
+```
+
+## Return Codes
+
+| Code | Meaning | Condition |
+|------|---------|-----------|
+| 0 | Success | Operation completed successfully |
+| 4 | Warning | Connection not active (STAT function) |
+| 8 | Error | Disconnect failed after commit |
+| 12 | Severe Error | Connection failed after all retries, or invalid function |
+
+## COBOL Concepts
+
+### Embedded SQL
+
+DB2CONN uses embedded SQL statements enclosed in `EXEC SQL ... END-EXEC` blocks. These statements are processed by the DB2 precompiler before COBOL compilation, converting them into CALL statements to the DB2 runtime.
+
+### SQLCA (SQL Communication Area)
+
+The SQLCA copybook provides the `SQLCODE` field that indicates the result of each SQL operation:
+- `SQLCODE = 0`: Successful execution
+- `SQLCODE > 0`: Warning (e.g., +100 = not found)
+- `SQLCODE < 0`: Error condition
 
 ### Host Variables
-Variables used in SQL statements must be declared within `EXEC SQL BEGIN DECLARE SECTION` / `END DECLARE SECTION` blocks. The colon prefix (`:WS-DB-NAME`) indicates a host variable to the DB2 precompiler.
 
-### SYSIBM.SYSDUMMY1
-This is a standard DB2 catalog table containing exactly one row, commonly used for executing SQL that doesn't require actual data (similar to Oracle's DUAL table). Querying CURRENT SERVER from this table is an efficient way to verify the connection is active.
+Variables prefixed with `:` in SQL statements (e.g., `:WS-DB-NAME`) are host variables that allow data exchange between COBOL and SQL. They must be declared within the SQL DECLARE SECTION.
 
-### Connection Scope
-DB2 connections in COBOL are typically scoped to the run unit. Once established, the connection remains active until explicitly reset or the program terminates.
+### Condition Names (88-levels)
 
-## Compilation Requirements
-
-This program requires:
-1. DB2 precompilation to convert EXEC SQL statements
-2. COBOL compilation with DB2 precompiler output
-3. Bind of the resulting DBRM to a DB2 plan
-
-```jcl
-//* DB2 Precompile, Compile, and Bind
-//STEP1   EXEC DSNHCOB2,PARM.PC='HOST(COBOL)'
-//PC.SYSIN DD DSN=source.library(DB2CONN),DISP=SHR
-//LKED.SYSLMOD DD DSN=load.library,DISP=SHR
-//LKED.SYSIN DD *
-  NAME DB2CONN(R)
-/*
+The program uses 88-level condition names for readable state management:
+```cobol
+01  WS-CONNECTION-STATE      PIC X(1).
+    88  WS-CONNECTED           VALUE 'Y'.
+    88  WS-DISCONNECTED        VALUE 'N'.
 ```
+
+This allows natural-language conditions like `IF WS-CONNECTED` or `SET WS-DISCONNECTED TO TRUE`.
+
+## Error Handling
+
+### Retry Strategy
+
+The program implements an automatic retry strategy for transient connection failures:
+
+```mermaid
+sequenceDiagram
+    participant Caller
+    participant DB2CONN
+    participant DB2
+    participant DELAY
+    
+    Caller->>DB2CONN: CALL with CONN
+    loop Up to 3 attempts
+        DB2CONN->>DB2: CONNECT TO database
+        alt Success
+            DB2-->>DB2CONN: SQLCODE = 0
+            DB2CONN-->>Caller: Return Code = 0
+        else Failure
+            DB2-->>DB2CONN: SQLCODE < 0
+            DB2CONN->>DB2CONN: Log error, increment retry
+            DB2CONN->>DELAY: Wait before retry
+            DELAY-->>DB2CONN: Continue
+        end
+    end
+    DB2CONN-->>Caller: Return Code = 12 (all retries failed)
+```
+
+### Error Propagation
+
+On failure, DB2CONN populates the linkage section error fields:
+- `LS-SQLCODE`: The actual SQL return code
+- `LS-ERROR-MSG`: A human-readable error description
+- `LS-RETURN-CODE`: Severity level for caller decision-making
+
+## Issues
+
+:::note Design Considerations
+- The `WS-PLAN-NAME` field is accepted but not currently used in the CONNECT statement. Future versions may support plan-specific connections.
+- The DELAY routine is called but not defined in this program; it must be available in the runtime environment.
+- The retry wait time is defined in DBPROC copybook as `DB2-RETRY-WAIT` (100 units).
+:::

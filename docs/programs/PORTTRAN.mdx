@@ -1,128 +1,103 @@
 ---
 title: "PORTTRAN"
-description: "Portfolio Transaction Processing - validates and processes buy, sell, transfer, and fee transactions against portfolio records with audit trail"
+description: "Portfolio Transaction Processing - validates and processes buy, sell, transfer, and fee transactions against portfolio records"
 ---
 
 ## Overview
 
-PORTTRAN is a batch program that processes portfolio transactions from a sequential input file, validating each transaction and updating the corresponding portfolio records in an indexed VSAM file. It supports four transaction types: buy, sell, transfer, and fee operations.
+PORTTRAN is a batch Portfolio Transaction Processing program that reads transaction records from a sequential input file, validates them, and updates portfolio positions accordingly. It supports four transaction types: Buy (BU), Sell (SL), Transfer (TR), and Fee (FE).
 
-The program implements a comprehensive validation pipeline that checks portfolio existence, transaction type validity, and amount constraints before processing. For each successful transaction, it updates portfolio positions and creates an audit trail by calling the audit processor. The program includes a safeguard that halts processing if the error count exceeds 100, preventing runaway error conditions.
+The program implements a robust validation framework that checks for valid portfolio IDs, valid transaction types, and positive amounts before processing. Each transaction is validated against the portfolio master file to ensure the referenced portfolio exists. For sell transactions, the program also validates that sufficient units are available.
 
-This utility is a core component of the portfolio management system, handling the daily transaction processing that maintains portfolio positions and provides a complete audit trail for regulatory and operational requirements.
+PORTTRAN maintains a complete audit trail by calling the AUDPROC program after each position update, capturing before images, transaction details, and success/failure status. The program includes an error threshold that terminates processing if more than 100 errors are encountered, preventing runaway error conditions.
 
 ## Program Structure
 
 ```mermaid
 graph TD
     A[0000-MAIN] --> B[1000-INITIALIZE]
-    B --> C{Files OK?}
-    C -->|Yes| D{End of File OR<br/>Errors > 100?}
-    C -->|No| I[3000-TERMINATE]
-    D -->|No| E[2000-PROCESS-TRANSACTIONS]
-    E --> F[READ Transaction]
-    F --> G{EOF?}
-    G -->|No| H[2100-VALIDATE-TRANSACTION]
-    H --> D
-    G -->|Yes| I
-    D -->|Yes| I
-    I --> J[GOBACK]
+    B --> C{Files OK & Errors ≤ 100?}
+    C -->|Yes| D[2000-PROCESS-TRANSACTIONS]
+    D --> E{END-OF-FILE?}
+    E -->|No| D
+    E -->|Yes| F[3000-TERMINATE]
+    C -->|No| F
+    F --> G[GOBACK]
     
-    H --> H1[2110-CHECK-PORTFOLIO]
-    H1 --> H2{Valid?}
-    H2 -->|Yes| H3[2120-CHECK-TRANSACTION-TYPE]
-    H3 --> H4{Valid?}
-    H4 -->|Yes| H5[2130-CHECK-AMOUNTS]
-    H5 --> H6{Valid?}
-    H6 -->|Yes| H7[Increment Process Count]
-    H2 -->|No| H8[9000-ERROR-ROUTINE]
-    H4 -->|No| H8
-    H6 -->|No| H8
-```
-
-## Transaction Processing Flow
-
-```mermaid
-graph TD
-    A[2200-UPDATE-POSITIONS] --> B{Transaction Type?}
-    B -->|BU| C[2210-PROCESS-BUY]
-    B -->|SL| D[2220-PROCESS-SELL]
-    B -->|TR| E[2230-PROCESS-TRANSFER]
-    B -->|FE| F[2240-PROCESS-FEE]
+    D --> D1[READ TRANSACTION-FILE]
+    D1 --> D2{AT END?}
+    D2 -->|Yes| D3[Set END-OF-FILE]
+    D2 -->|No| D4[Increment read count]
+    D4 --> D5[2100-VALIDATE-TRANSACTION]
     
-    C --> G[Add units and cost]
-    D --> H{Sufficient units?}
-    H -->|Yes| I[Subtract units and cost]
-    H -->|No| J[Error: Insufficient units]
-    E --> K[Not implemented]
-    F --> L[Subtract fee amount]
-    
-    G --> M[REWRITE Portfolio]
-    I --> M
-    L --> M
-    M --> N[2300-UPDATE-AUDIT-TRAIL]
-    N --> O[2310-WRITE-AUDIT-RECORD]
-    O --> P[CALL AUDPROC]
+    D5 --> V1[2110-CHECK-PORTFOLIO]
+    V1 --> V2{ERR-TEXT = SPACES?}
+    V2 -->|Yes| V3[2120-CHECK-TRANSACTION-TYPE]
+    V3 --> V4{ERR-TEXT = SPACES?}
+    V4 -->|Yes| V5[2130-CHECK-AMOUNTS]
+    V5 --> V6{ERR-TEXT = SPACES?}
+    V6 -->|Yes| V7[Increment process count]
+    V2 -->|No| V8[9000-ERROR-ROUTINE]
+    V4 -->|No| V8
+    V6 -->|No| V8
 ```
 
 ## Data Structures
 
-### Transaction Record (TRNREC Copybook)
+### Transaction Record (from TRNREC copybook)
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | TRANSACTION-RECORD | - | Transaction input record |
-| 05 | TRN-KEY | - | Composite key |
+| 01 | TRANSACTION-RECORD | | Transaction input record |
+| 05 | TRN-KEY | | Composite transaction key |
 | 10 | TRN-DATE | X(8) | Transaction date (YYYYMMDD) |
 | 10 | TRN-TIME | X(6) | Transaction time (HHMMSS) |
 | 10 | TRN-PORTFOLIO-ID | X(8) | Portfolio identifier |
-| 10 | TRN-SEQUENCE-NO | X(6) | Sequence for multiple trans |
-| 05 | TRN-DATA | - | Transaction data |
-| 10 | TRN-INVESTMENT-ID | X(10) | Investment/security ID |
+| 10 | TRN-SEQUENCE-NO | X(6) | Sequence number for ordering |
+| 05 | TRN-DATA | | Transaction details |
+| 10 | TRN-INVESTMENT-ID | X(10) | Investment/security identifier |
 | 10 | TRN-TYPE | X(2) | Transaction type code |
 | 10 | TRN-QUANTITY | S9(11)V9(4) COMP-3 | Number of units |
 | 10 | TRN-PRICE | S9(11)V9(4) COMP-3 | Price per unit |
 | 10 | TRN-AMOUNT | S9(13)V9(2) COMP-3 | Total transaction amount |
 | 10 | TRN-CURRENCY | X(3) | Currency code |
 | 10 | TRN-STATUS | X(1) | Transaction status |
-| 05 | TRN-AUDIT | - | Audit information |
+| 05 | TRN-AUDIT | | Audit information |
 | 10 | TRN-PROCESS-DATE | X(26) | Processing timestamp |
 | 10 | TRN-PROCESS-USER | X(8) | Processing user ID |
-| 05 | TRN-FILLER | X(50) | Reserved space |
+| 05 | TRN-FILLER | X(50) | Reserved |
 
-### Transaction Types
+### Transaction Type Values
 
-| Code | 88-Level Condition | Description |
-|------|-------------------|-------------|
-| `BU` | TRN-TYPE-BUY | Buy - adds units and cost to portfolio |
-| `SL` | TRN-TYPE-SELL | Sell - subtracts units and cost from portfolio |
-| `TR` | TRN-TYPE-TRANS | Transfer - moves between portfolios (not implemented) |
-| `FE` | TRN-TYPE-FEE | Fee - subtracts amount from portfolio cost |
+| Code | Condition Name | Description |
+|------|----------------|-------------|
+| `BU` | TRN-TYPE-BUY | Buy - add units to portfolio |
+| `SL` | TRN-TYPE-SELL | Sell - remove units from portfolio |
+| `TR` | TRN-TYPE-TRANS | Transfer between portfolios |
+| `FE` | TRN-TYPE-FEE | Fee - deduct amount from portfolio |
 
 ### Transaction Status Values
 
-| Code | 88-Level Condition | Description |
-|------|-------------------|-------------|
+| Code | Condition Name | Description |
+|------|----------------|-------------|
 | `P` | TRN-STATUS-PEND | Pending processing |
 | `D` | TRN-STATUS-DONE | Successfully processed |
 | `F` | TRN-STATUS-FAIL | Processing failed |
 | `R` | TRN-STATUS-REV | Reversed |
 
-### Audit Record (AUDITLOG Copybook)
+### Audit Record (from AUDITLOG copybook)
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | AUDIT-RECORD | - | Audit trail record |
-| 05 | AUD-HEADER | - | Header information |
-| 10 | AUD-TIMESTAMP | X(26) | Audit timestamp |
+| 01 | AUDIT-RECORD | | Audit trail record |
+| 10 | AUD-TIMESTAMP | X(26) | Audit record timestamp |
 | 10 | AUD-SYSTEM-ID | X(8) | System identifier |
 | 10 | AUD-USER-ID | X(8) | User who performed action |
 | 10 | AUD-PROGRAM | X(8) | Program name |
 | 10 | AUD-TERMINAL | X(8) | Terminal ID |
-| 05 | AUD-TYPE | X(4) | Audit type (TRAN/USER/SYST) |
-| 05 | AUD-ACTION | X(8) | Action performed |
-| 05 | AUD-STATUS | X(4) | Result status (SUCC/FAIL/WARN) |
-| 05 | AUD-KEY-INFO | - | Key identification |
+| 05 | AUD-TYPE | X(4) | Audit type: `TRAN`, `USER`, `SYST` |
+| 05 | AUD-ACTION | X(8) | Action: `CREATE`, `UPDATE`, `DELETE` |
+| 05 | AUD-STATUS | X(4) | Status: `SUCC`, `FAIL`, `WARN` |
 | 10 | AUD-PORTFOLIO-ID | X(8) | Portfolio identifier |
 | 10 | AUD-ACCOUNT-NO | X(10) | Account number |
 | 05 | AUD-BEFORE-IMAGE | X(100) | Record state before change |
@@ -135,242 +110,272 @@ graph TD
 |-------|------|---------|-------------|
 | 05 | WS-TRAN-STATUS | X(2) | Transaction file status |
 | 05 | WS-PORT-STATUS | X(2) | Portfolio file status |
-| 05 | WS-READ-COUNT | 9(8) COMP | Records read |
-| 05 | WS-PROCESS-COUNT | 9(8) COMP | Records successfully processed |
-| 05 | WS-ERROR-COUNT | 9(8) COMP | Records with errors |
-| 01 | WS-EOF-FLAG | X(1) | End of file indicator |
+| 05 | WS-READ-COUNT | 9(8) COMP | Records read counter |
+| 05 | WS-PROCESS-COUNT | 9(8) COMP | Records processed counter |
+| 05 | WS-ERROR-COUNT | 9(8) COMP | Error counter |
+| 01 | WS-EOF-FLAG | X(1) | End-of-file flag (`Y`/`N`) |
 
 ## File I/O
 
 ### TRANSACTION-FILE
 
-The sequential input file containing transactions to process.
-
-| Property | Value |
-|----------|-------|
-| Logical Name | TRANSACTION-FILE |
+| Attribute | Value |
+|-----------|-------|
 | DD Name | TRANFILE |
-| Organization | SEQUENTIAL |
-| Access Mode | SEQUENTIAL |
+| Organization | Sequential |
+| Access Mode | Sequential |
+| Recording Mode | Fixed (F) |
 | Open Mode | INPUT |
-| Recording Mode | F (Fixed) |
-| File Status | WS-TRAN-STATUS |
+| Record Layout | TRNREC copybook |
 
-**Operations:**
-- READ (sequential with AT END)
+Operations:
+- **READ** - Read transaction records sequentially
 
 ### PORTFOLIO-FILE
 
-The indexed VSAM master file containing portfolio records.
-
-| Property | Value |
-|----------|-------|
-| Logical Name | PORTFOLIO-FILE |
+| Attribute | Value |
+|-----------|-------|
 | DD Name | PORTFILE |
-| Organization | INDEXED |
-| Access Mode | RANDOM |
-| Open Mode | I-O |
-| Recording Mode | F (Fixed) |
+| Organization | Indexed (VSAM KSDS) |
+| Access Mode | Random |
+| Recording Mode | Fixed (F) |
 | Record Key | PORT-ID |
-| File Status | WS-PORT-STATUS |
+| Open Mode | I-O |
+| Record Layout | PORTREC copybook |
 
-**Operations:**
-- READ (random by key with INVALID KEY)
-- REWRITE (update with INVALID KEY)
+Operations:
+- **READ** - Retrieve portfolio record by key
+- **REWRITE** - Update portfolio after transaction
 
 ## Control Flow
 
-### Main Processing (0000-MAIN)
+### 0000-MAIN
 
-Controls the overall program flow with an error threshold:
-1. Calls 1000-INITIALIZE
-2. If transaction file opened successfully:
-   - Processes transactions until END-OF-FILE
-   - OR until WS-ERROR-COUNT exceeds 100
-3. Calls 3000-TERMINATE
-4. Returns via GOBACK
+1. Performs 1000-INITIALIZE
+2. If transaction file opened successfully, loops through 2000-PROCESS-TRANSACTIONS until:
+   - END-OF-FILE is reached, OR
+   - WS-ERROR-COUNT exceeds 100
+3. Performs 3000-TERMINATE
 
-### Initialize (1000-INITIALIZE)
+### 1000-INITIALIZE
 
-Prepares the processing environment:
-1. Initializes file status and counters
-2. Sets MORE-RECORDS flag to true
+1. Initializes file status and counter fields
+2. Sets MORE-RECORDS flag to TRUE
 3. Opens TRANSACTION-FILE for INPUT
 4. Opens PORTFOLIO-FILE for I-O
-5. Reports errors if file opens fail
+5. On file open errors, calls 9000-ERROR-ROUTINE
 
-### Process Transactions (2000-PROCESS-TRANSACTIONS)
+### 2000-PROCESS-TRANSACTIONS
 
-Main processing loop:
-1. Reads next transaction record
-2. On AT END, sets END-OF-FILE flag
+1. Reads next record from TRANSACTION-FILE
+2. On AT END: Sets END-OF-FILE flag
 3. On NOT AT END:
-   - Increments read count
-   - Calls 2100-VALIDATE-TRANSACTION
+   - Increments WS-READ-COUNT
+   - Performs 2100-VALIDATE-TRANSACTION
 
-### Validate Transaction (2100-VALIDATE-TRANSACTION)
+### 2100-VALIDATE-TRANSACTION
 
-Multi-step validation pipeline:
-1. Clears error text
-2. Calls 2110-CHECK-PORTFOLIO (validates portfolio exists)
-3. If valid, calls 2120-CHECK-TRANSACTION-TYPE
-4. If valid, calls 2130-CHECK-AMOUNTS
-5. If all validations pass, increments process count
-6. Otherwise, calls error routine
+Orchestrates validation by calling three check paragraphs in sequence. Processing stops at the first error:
 
-### Validation Paragraphs
+1. **2110-CHECK-PORTFOLIO** - Validates portfolio exists
+2. **2120-CHECK-TRANSACTION-TYPE** - Validates transaction type
+3. **2130-CHECK-AMOUNTS** - Validates quantities and amounts
 
-#### 2110-CHECK-PORTFOLIO
-- Verifies TRN-PORTFOLIO-ID is not spaces
-- Reads portfolio file to verify portfolio exists
-- Uses EXIT PARAGRAPH for early exit on validation failure
+If all validations pass (ERR-TEXT = SPACES), increments WS-PROCESS-COUNT.
+If any validation fails, calls 9000-ERROR-ROUTINE.
 
-#### 2120-CHECK-TRANSACTION-TYPE
-- Validates TRN-TYPE is one of: BU, SL, TR, FE
-- Uses EVALUATE to check valid values
+### 2110-CHECK-PORTFOLIO
 
-#### 2130-CHECK-AMOUNTS
-- Validates TRN-QUANTITY > 0
-- Validates TRN-PRICE > 0 (except for transfers)
-- Validates TRN-AMOUNT > 0 (except for transfers)
+1. If TRN-PORTFOLIO-ID is spaces: Error "Portfolio ID is required"
+2. Moves TRN-PORTFOLIO-ID to PORT-ID
+3. Reads PORTFOLIO-FILE
+4. On INVALID KEY: Error "Invalid Portfolio ID: `{id}`"
 
-### Update Positions (2200-UPDATE-POSITIONS)
+### 2120-CHECK-TRANSACTION-TYPE
 
-Routes to appropriate processing based on transaction type:
+Validates TRN-TYPE against allowed values:
 
-| Type | Paragraph | Processing |
-|------|-----------|------------|
-| BU | 2210-PROCESS-BUY | ADD to units and cost |
-| SL | 2220-PROCESS-SELL | SUBTRACT from units and cost |
-| TR | 2230-PROCESS-TRANSFER | Not implemented |
-| FE | 2240-PROCESS-FEE | SUBTRACT from cost |
+| Valid | Description |
+|-------|-------------|
+| `BU` | Buy |
+| `SL` | Sell |
+| `TR` | Transfer |
+| `FE` | Fee |
 
-#### Buy Processing (2210-PROCESS-BUY)
+Other values: Error "Invalid Transaction Type: `{type}`"
+
+### 2130-CHECK-AMOUNTS
+
+1. If TRN-QUANTITY ≤ 0: Error "Quantity must be greater than zero"
+2. If TRN-PRICE ≤ 0 AND TRN-TYPE ≠ 'TR': Error "Price must be greater than zero"
+3. If TRN-AMOUNT ≤ 0 AND TRN-TYPE ≠ 'TR': Error "Amount must be greater than zero"
+
+**Note:** Transfer transactions are exempt from price and amount checks.
+
+## Transaction Processing
+
+### 2200-UPDATE-POSITIONS
+
+Routes to appropriate processing paragraph based on transaction type:
+
+```mermaid
+flowchart TD
+    A[2200-UPDATE-POSITIONS] --> B{TRN-TYPE?}
+    B -->|BU| C[2210-PROCESS-BUY]
+    B -->|SL| D[2220-PROCESS-SELL]
+    B -->|TR| E[2230-PROCESS-TRANSFER]
+    B -->|FE| F[2240-PROCESS-FEE]
+    C --> G[2300-UPDATE-AUDIT-TRAIL]
+    D --> G
+    E --> G
+    F --> G
+```
+
+### 2210-PROCESS-BUY
+
 1. Reads portfolio record
 2. Adds TRN-QUANTITY to PORT-TOTAL-UNITS
 3. Adds TRN-AMOUNT to PORT-TOTAL-COST
 4. Rewrites portfolio record
 
-#### Sell Processing (2220-PROCESS-SELL)
+### 2220-PROCESS-SELL
+
 1. Reads portfolio record
-2. Validates PORT-TOTAL-UNITS >= TRN-QUANTITY
+2. Validates PORT-TOTAL-UNITS ≥ TRN-QUANTITY (prevents overselling)
 3. Subtracts TRN-QUANTITY from PORT-TOTAL-UNITS
 4. Subtracts TRN-AMOUNT from PORT-TOTAL-COST
 5. Rewrites portfolio record
 
-#### Fee Processing (2240-PROCESS-FEE)
+### 2230-PROCESS-TRANSFER
+
+Currently not implemented - logs error "Transfer processing not implemented"
+
+### 2240-PROCESS-FEE
+
 1. Reads portfolio record
 2. Subtracts TRN-AMOUNT from PORT-TOTAL-COST
 3. Rewrites portfolio record
 
-### Update Audit Trail (2300-UPDATE-AUDIT-TRAIL)
+### 2300-UPDATE-AUDIT-TRAIL
 
-Creates audit record for each transaction:
+Creates an audit record for each transaction:
+
 1. Initializes AUDIT-RECORD
-2. Sets timestamp via FUNCTION CURRENT-DATE
-3. Sets user ID via FUNCTION USER-ID
-4. Sets program name to 'PORTTRAN'
-5. Maps transaction type to audit action:
+2. Sets timestamp using `FUNCTION CURRENT-DATE`
+3. Sets AUD-PROGRAM to 'PORTTRAN'
+4. Sets AUD-USER-ID using `FUNCTION USER-ID`
+5. Sets AUD-TYPE to 'TRAN'
+6. Maps TRN-TYPE to AUD-ACTION:
    - BU → CREATE
    - SL → DELETE
-   - TR/FE → UPDATE
-6. Sets status based on WS-PORT-STATUS
-7. Stores before-image of portfolio
-8. Builds audit message with transaction details
-9. Calls AUDPROC to write audit record
+   - TR → UPDATE
+   - FE → UPDATE
+7. Sets AUD-STATUS based on WS-PORT-STATUS ('SUCC' or 'FAIL')
+8. Stores PORT-RECORD as AUD-BEFORE-IMAGE
+9. Builds AUD-MESSAGE with transaction details
+10. Calls AUDPROC to write audit record
 
-### Terminate (3000-TERMINATE)
+### 3000-TERMINATE
 
-Finalizes processing:
 1. Closes both files
-2. Displays processing statistics
+2. Displays processing statistics:
+   ```
+   Transactions Read:    nnnnnnnn
+   Transactions Process: nnnnnnnn
+   Errors Encountered:   nnnnnnnn
+   ```
 
-## Validation Rules
+### 9000-ERROR-ROUTINE
 
-| Field | Rule | Error Message |
-|-------|------|---------------|
-| TRN-PORTFOLIO-ID | Not spaces | "Portfolio ID is required" |
-| TRN-PORTFOLIO-ID | Must exist in file | "Invalid Portfolio ID: `{id}`" |
-| TRN-TYPE | Must be BU/SL/TR/FE | "Invalid Transaction Type: `{type}`" |
-| TRN-QUANTITY | Must be > 0 | "Quantity must be greater than zero" |
-| TRN-PRICE | Must be > 0 (except TR) | "Price must be greater than zero" |
-| TRN-AMOUNT | Must be > 0 (except TR) | "Amount must be greater than zero" |
-| PORT-TOTAL-UNITS | Must be >= TRN-QUANTITY (for sells) | "Insufficient units for sale" |
+1. Increments WS-ERROR-COUNT
+2. Sets ERR-CATEGORY to ERR-CAT-PROC
+3. Sets ERR-PROGRAM to 'PORTTRAN'
+4. Calls ERRPROC for error logging
 
-## Processing Controls
+## Validation Flow
 
-| Control | Threshold | Action |
-|---------|-----------|--------|
-| Error Count | > 100 | Stop processing |
-| EOF | Reached | Normal termination |
-
-## Return Codes
-
-| Code | Description |
-|------|-------------|
-| 0 | Processing completed (check error count) |
+```mermaid
+flowchart TD
+    A[Transaction Record] --> B{Portfolio ID present?}
+    B -->|No| ERR1[Error: Portfolio ID required]
+    B -->|Yes| C[READ Portfolio]
+    C --> D{Record found?}
+    D -->|No| ERR2[Error: Invalid Portfolio ID]
+    D -->|Yes| E{Valid TRN-TYPE?}
+    E -->|No| ERR3[Error: Invalid Transaction Type]
+    E -->|Yes| F{Quantity > 0?}
+    F -->|No| ERR4[Error: Invalid Quantity]
+    F -->|Yes| G{Transfer?}
+    G -->|Yes| OK[Valid - Process]
+    G -->|No| H{Price > 0?}
+    H -->|No| ERR5[Error: Invalid Price]
+    H -->|Yes| I{Amount > 0?}
+    I -->|No| ERR6[Error: Invalid Amount]
+    I -->|Yes| OK
+```
 
 ## Dependencies
 
 ### Copybooks
 
-- **TRNREC** - Transaction record structure
-- **PORTREC** - Portfolio record structure
-- **ERRHAND** - Error handling definitions
+- **TRNREC** - Transaction record layout with key, data, and audit fields
+- **PORTREC** - Portfolio record layout for file operations
+- **ERRHAND** - Standard error handling definitions
 - **AUDITLOG** - Audit trail record structure
 
 ### Called Programs
 
-- **ERRPROC** - Error processing routine
-- **AUDPROC** - Audit record processor
+- **ERRPROC** - Error processing routine for centralized error logging
+- **AUDPROC** - Audit processing routine for writing audit records
 
 ### Related Programs
 
-Programs that share the TRNREC copybook:
-- RPTPOS00 - Position reporting
-- TSTGEN00 - Test data generation
-- UTLVAL00 - Utility validation
+Programs that share copybooks with PORTTRAN:
 
-Programs that share the AUDITLOG copybook:
-- RPTAUD00 - Audit reporting
-- AUDPROC - Audit processor
+| Program | Shared Copybooks | Relationship |
+|---------|-----------------|--------------|
+| RPTPOS00 | TRNREC, ERRHAND | Position reporting |
+| TSTGEN00 | TRNREC, ERRHAND | Test data generation |
+| UTLVAL00 | TRNREC, ERRHAND | Utility validation |
+| RPTAUD00 | AUDITLOG, ERRHAND | Audit reporting |
+| AUDPROC | AUDITLOG | Audit processing |
 
 ## JCL Example
 
 ```jcl
 //PORTTRAN EXEC PGM=PORTTRAN
-//STEPLIB  DD  DSN=your.loadlib,DISP=SHR
-//TRANFILE DD  DSN=your.transaction.file,DISP=SHR
-//PORTFILE DD  DSN=your.portfolio.master,DISP=SHR
-//SYSOUT   DD  SYSOUT=*
+//STEPLIB  DD   DSN=your.loadlib,DISP=SHR
+//TRANFILE DD   DSN=your.transaction.input,DISP=SHR
+//PORTFILE DD   DSN=your.portfolio.master,DISP=SHR
+//SYSOUT   DD   SYSOUT=*
 ```
 
-## Sample Output
+## Processing Statistics
+
+The program produces a summary report at termination:
 
 ```
-Transactions Read:    00125000
-Transactions Process: 00124985
+Transactions Read:    00001000
+Transactions Process: 00000985
 Errors Encountered:   00000015
 ```
 
-## Audit Trail Mapping
-
-| Transaction Type | Audit Action | Description |
-|-----------------|--------------|-------------|
-| BU (Buy) | CREATE | New position or addition |
-| SL (Sell) | DELETE | Position reduction |
-| TR (Transfer) | UPDATE | Position movement |
-| FE (Fee) | UPDATE | Cost adjustment |
+- **Transactions Read**: Total records read from input file
+- **Transactions Process**: Records that passed validation
+- **Errors Encountered**: Records that failed validation or processing
 
 ## Technical Notes
 
-- The program uses **PERFORM UNTIL** with compound conditions (`OR WS-ERROR-COUNT > 100`) to implement error threshold processing
-- **EXIT PARAGRAPH** is used extensively for early exit from validation paragraphs when errors are detected
-- **STRING ... DELIMITED BY SIZE** builds dynamic error messages with variable content
-- **FUNCTION CURRENT-DATE** and **FUNCTION USER-ID** are intrinsic functions that retrieve system information
-- The **RECORDING MODE IS F** clause specifies fixed-length records for both files
-- **BLOCK CONTAINS 0 RECORDS** lets the system determine optimal blocking
-- **COMP-3** (packed decimal) is used for financial amounts to maintain precision
-- Transfer processing (TR) is defined but returns an error as "not implemented"
-- The audit before-image captures the portfolio state before updates for change tracking
-- Sell transactions include balance validation to prevent negative positions
+1. **Error Threshold**: Processing stops when WS-ERROR-COUNT exceeds 100. This prevents runaway error situations and allows batch operations to fail fast.
+
+2. **COMP-3 Precision**: Financial fields (TRN-QUANTITY, TRN-PRICE, TRN-AMOUNT) use packed decimal format with 4 decimal places for quantity/price and 2 for amount, supporting high-precision calculations.
+
+3. **Transfer Not Implemented**: The transfer transaction type (TR) is defined but not fully implemented. It logs an error message and continues.
+
+4. **Oversell Prevention**: The sell processing includes a check to prevent selling more units than the portfolio holds.
+
+5. **Audit Trail**: Every transaction generates an audit record regardless of success or failure, providing complete traceability.
+
+6. **STRING for Messages**: Error messages use STRING with DELIMITED BY SIZE to concatenate dynamic values, which is more efficient than reference modification for building messages.
+
+7. **EXIT PARAGRAPH**: Validation paragraphs use EXIT PARAGRAPH to short-circuit on first error, following a fail-fast validation pattern.

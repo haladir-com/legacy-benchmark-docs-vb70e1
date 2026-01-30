@@ -1,180 +1,189 @@
 ---
-title: "Portfolio Management System Documentation"
-description: "Comprehensive documentation for the COBOL Portfolio Management System"
+title: "Investment Portfolio Management System"
+description: "Technical documentation for the COBOL-based Investment Portfolio Management System"
 slug: /
 ---
 
-# Portfolio Management System
+# Investment Portfolio Management System
 
-Welcome to the documentation for the **Portfolio Management System**, a comprehensive COBOL-based application for managing investment portfolios, processing transactions, and generating reports.
+Welcome to the technical documentation for the **Investment Portfolio Management System** (IPMS). This documentation covers all COBOL programs and copybooks that make up the system.
 
 ## System Overview
 
-This system consists of **42 COBOL programs** and **21 copybooks** organized into the following functional areas:
-
-### Batch Processing
-
-The batch subsystem handles scheduled processing, including:
-
-- **Job Control**: [BCHCTL00](/docs/programs/BCHCTL00) - Batch control processor for job lifecycle management
-- **Checkpoint/Restart**: [CKPRST](/docs/programs/CKPRST) - Checkpoint/restart services for recovery
-- **Process Sequencing**: [PRCSEQ00](/docs/programs/PRCSEQ00) - Process sequence manager for job orchestration
-- **Recovery**: [RCVPRC00](/docs/programs/RCVPRC00) - Process recovery handler for failed jobs
-- **History Loading**: [HISTLD00](/docs/programs/HISTLD00) - Position history DB2 loader
-- **Reporting**: [RPTAUD00](/docs/programs/RPTAUD00), [RPTPOS00](/docs/programs/RPTPOS00), [RPTSTA00](/docs/programs/RPTSTA00) - Audit, position, and statistics reports
-- **Return Code Management**: [RTNANA00](/docs/programs/RTNANA00), [RTNCDE00](/docs/programs/RTNCDE00) - Return code analysis and handling
-
-### CICS Online Programs
-
-The online subsystem provides real-time transaction processing:
-
-- **Inquiry**: [INQONLN](/docs/programs/INQONLN), [INQPORT](/docs/programs/INQPORT), [INQHIST](/docs/programs/INQHIST) - Online inquiry handlers
-- **DB2 Services**: [DB2ONLN](/docs/programs/DB2ONLN), [DB2RECV](/docs/programs/DB2RECV), [CURSMGR](/docs/programs/CURSMGR) - DB2 connection and cursor management
-- **Security**: [SECMGR](/docs/programs/SECMGR) - Security manager for authentication and authorization
-- **Error Handling**: [ERRHNDL](/docs/programs/ERRHNDL) - Centralized CICS error handler
-
-### Portfolio Management
-
-Core portfolio operations are handled by:
-
-- **CRUD Operations**: [PORTADD](/docs/programs/PORTADD), [PORTREAD](/docs/programs/PORTREAD), [PORTUPDT](/docs/programs/PORTUPDT), [PORTDEL](/docs/programs/PORTDEL) - Portfolio record management
-- **Master Service**: [PORTMSTR](/docs/programs/PORTMSTR) - Portfolio master CRUD subprogram
-- **Transactions**: [PORTTRAN](/docs/programs/PORTTRAN) - Transaction processor for buy/sell/transfer
-- **Validation**: [PORTVALD](/docs/programs/PORTVALD) - Portfolio data validation
-- **Testing**: [PORTTEST](/docs/programs/PORTTEST) - Test data generator
-
-### Common Services
-
-Reusable service components include:
-
-- **Audit**: [AUDPROC](/docs/programs/AUDPROC) - Audit trail logging service
-- **DB2 Services**: [DB2CMT](/docs/programs/DB2CMT), [DB2CONN](/docs/programs/DB2CONN), [DB2ERR](/docs/programs/DB2ERR), [DB2STAT](/docs/programs/DB2STAT) - DB2 commit, connection, error, and statistics handling
-- **Error Processing**: [ERRPROC](/docs/programs/ERRPROC) - Centralized error processor
-
-### Utilities
-
-System utilities for maintenance and monitoring:
-
-- **Maintenance**: [UTLMNT00](/docs/programs/UTLMNT00) - File maintenance utility
-- **Monitoring**: [UTLMON00](/docs/programs/UTLMON00) - System monitoring utility
-- **Validation**: [UTLVAL00](/docs/programs/UTLVAL00) - Data validation utility
-
-### Testing Programs
-
-Quality assurance support:
-
-- **Test Generation**: [TSTGEN00](/docs/programs/TSTGEN00) - Test data generator
-- **Test Validation**: [TSTVAL00](/docs/programs/TSTVAL00) - Test validation suite
-
-### Templates
-
-Development templates for new programs:
-
-- **DB2 Handling**: [DB2-HANDLING](/docs/programs/DB2-HANDLING) - DB2 operations template
-- **Error Handling**: [ERRHANDL](/docs/programs/ERRHANDL) - Error handling template
-- **File Handling**: [FILE-HANDLING](/docs/programs/FILE-HANDLING) - File I/O template
-- **Program Structure**: [PROGNAME](/docs/programs/PROGNAME) - Standard program template
-
-## Copybook Library
-
-The system uses shared copybooks organized by function:
-
-### Batch Copybooks
-- [BCHCTL](/docs/copybooks/BCHCTL) - Batch control record
-- [BCHCON](/docs/copybooks/BCHCON) - Batch constants
-- [CKPRST](/docs/copybooks/CKPRST) - Checkpoint/restart control
-- [PRCSEQ](/docs/copybooks/PRCSEQ) - Process sequence record
-
-### Common Copybooks
-- [AUDITLOG](/docs/copybooks/AUDITLOG) - Audit trail record
-- [COMMON](/docs/copybooks/COMMON) - Common definitions
-- [ERRHAND](/docs/copybooks/ERRHAND) - Error handling (batch)
-- [HISTREC](/docs/copybooks/HISTREC) - History record
-- [PORTFLIO](/docs/copybooks/PORTFLIO) - Portfolio master record
-- [PORTVAL](/docs/copybooks/PORTVAL) - Portfolio validation
-- [POSREC](/docs/copybooks/POSREC) - Position record
-- [RETHND](/docs/copybooks/RETHND) - Return handling
-- [RTNCODE](/docs/copybooks/RTNCODE) - Return code management
-- [TRNREC](/docs/copybooks/TRNREC) - Transaction record
-
-### DB2 Copybooks
-- [DBPROC](/docs/copybooks/DBPROC) - DB2 procedures
-- [DBTBLS](/docs/copybooks/DBTBLS) - DB2 table definitions
-- [SQLCA](/docs/copybooks/SQLCA) - SQL communication area
-
-### Online Copybooks
-- [DB2REQ](/docs/copybooks/DB2REQ) - DB2 request structure
-- [ERRHND](/docs/copybooks/ERRHND) - Error handling (online)
-- [INQCOM](/docs/copybooks/INQCOM) - Inquiry communication area
-
-## Architecture
+The Investment Portfolio Management System is an enterprise mainframe application built with COBOL, CICS, and DB2. It provides comprehensive portfolio tracking, transaction processing, and reporting capabilities for financial institutions.
 
 ```mermaid
 graph TB
     subgraph "Online (CICS)"
-        INQONLN[INQONLN<br/>Menu Handler]
-        INQPORT[INQPORT<br/>Portfolio Inquiry]
-        INQHIST[INQHIST<br/>History Inquiry]
-        SECMGR[SECMGR<br/>Security]
-        DB2ONLN[DB2ONLN<br/>DB2 Pool]
+        INQONLN[INQONLN<br/>Main Menu] --> INQPORT[INQPORT<br/>Portfolio Inquiry]
+        INQONLN --> INQHIST[INQHIST<br/>History Inquiry]
+        INQONLN --> SECMGR[SECMGR<br/>Security]
+        DB2ONLN[DB2ONLN<br/>Connection Pool] --> CURSMGR[CURSMGR<br/>Cursor Manager]
     end
-
+    
     subgraph "Batch Processing"
-        BCHCTL00[BCHCTL00<br/>Job Control]
-        PRCSEQ00[PRCSEQ00<br/>Sequencer]
-        HISTLD00[HISTLD00<br/>History Loader]
-        RPTAUD00[RPTAUD00<br/>Audit Report]
+        BCHCTL00[BCHCTL00<br/>Batch Control] --> PRCSEQ00[PRCSEQ00<br/>Sequencing]
+        PRCSEQ00 --> HISTLD00[HISTLD00<br/>History Loader]
+        RCVPRC00[RCVPRC00<br/>Recovery] --> BCHCTL00
     end
-
-    subgraph "Portfolio Services"
-        PORTMSTR[PORTMSTR<br/>Master CRUD]
-        PORTTRAN[PORTTRAN<br/>Transactions]
-        PORTVALD[PORTVALD<br/>Validation]
-    end
-
-    subgraph "Common Services"
-        ERRPROC[ERRPROC<br/>Error Handler]
-        AUDPROC[AUDPROC<br/>Audit Logger]
-        DB2CMT[DB2CMT<br/>Commit Controller]
-    end
-
-    subgraph "Data Stores"
-        VSAM[(VSAM Files)]
-        DB2[(DB2 Database)]
-    end
-
-    INQONLN --> INQPORT
-    INQONLN --> INQHIST
-    INQONLN --> SECMGR
-    INQPORT --> DB2ONLN
     
-    BCHCTL00 --> PRCSEQ00
-    PRCSEQ00 --> HISTLD00
-    HISTLD00 --> DB2CMT
+    subgraph "Portfolio Operations"
+        PORTMSTR[PORTMSTR<br/>Master] --> PORTADD[PORTADD]
+        PORTMSTR --> PORTUPDT[PORTUPDT]
+        PORTMSTR --> PORTDEL[PORTDEL]
+        PORTTRAN[PORTTRAN<br/>Transactions] --> PORTMSTR
+    end
     
-    PORTMSTR --> ERRPROC
-    PORTMSTR --> AUDPROC
-    PORTTRAN --> PORTVALD
-
-    PORTMSTR --> VSAM
-    HISTLD00 --> DB2
-    DB2ONLN --> DB2
+    subgraph "Reporting"
+        RPTPOS00[Position Report]
+        RPTAUD00[Audit Report]
+        RPTSTA00[Statistics Report]
+    end
+    
+    subgraph "DB2 Services"
+        DB2CONN[DB2CONN<br/>Connection]
+        DB2CMT[DB2CMT<br/>Commit]
+        DB2ERR[DB2ERR<br/>Errors]
+        DB2STAT[DB2STAT<br/>Statistics]
+    end
 ```
 
-## Getting Started
+## Program Categories
 
-1. **Browse Programs**: Use the sidebar to navigate to individual program documentation
-2. **Understand Data Structures**: Review the [copybook documentation](/docs/copybooks/PORTFLIO) to understand data layouts
-3. **Follow Dependencies**: Each program document lists its dependencies and related programs
-4. **Use Templates**: Start new development using the [template programs](/docs/programs/PROGNAME)
+### Batch Processing (5 programs)
+Programs that manage batch job execution, sequencing, and checkpoint/restart capabilities:
+- [BCHCTL00](/docs/programs/BCHCTL00) - Batch Control Processor
+- [CKPRST](/docs/programs/CKPRST) - Checkpoint/Restart Utility
+- [HISTLD00](/docs/programs/HISTLD00) - History Data Loader
+- [PRCSEQ00](/docs/programs/PRCSEQ00) - Process Sequence Manager
+- [RCVPRC00](/docs/programs/RCVPRC00) - Process Recovery Handler
+
+### CICS Online (8 programs)
+Online transaction programs running under CICS:
+- [CURSMGR](/docs/programs/CURSMGR) - DB2 Cursor Manager
+- [DB2ONLN](/docs/programs/DB2ONLN) - Online DB2 Connection Pool
+- [DB2RECV](/docs/programs/DB2RECV) - Online DB2 Recovery
+- [ERRHNDL](/docs/programs/ERRHNDL) - Online Error Handler
+- [INQHIST](/docs/programs/INQHIST) - History Inquiry
+- [INQONLN](/docs/programs/INQONLN) - Main Online Menu
+- [INQPORT](/docs/programs/INQPORT) - Portfolio Inquiry
+- [SECMGR](/docs/programs/SECMGR) - Security Manager
+
+### DB2 Database (4 programs)
+Reusable DB2 service programs:
+- [DB2CMT](/docs/programs/DB2CMT) - Commit Controller
+- [DB2CONN](/docs/programs/DB2CONN) - Connection Manager
+- [DB2ERR](/docs/programs/DB2ERR) - Error Handler
+- [DB2STAT](/docs/programs/DB2STAT) - Statistics Collector
+
+### Portfolio Management (9 programs)
+Core business logic for portfolio operations:
+- [PORTADD](/docs/programs/PORTADD) - Add Portfolio Records
+- [PORTDEL](/docs/programs/PORTDEL) - Delete Portfolio Records
+- [PORTMSTR](/docs/programs/PORTMSTR) - Portfolio Master Maintenance
+- [PORTREAD](/docs/programs/PORTREAD) - Read Portfolio Records
+- [PORTTEST](/docs/programs/PORTTEST) - Generate Test Data
+- [PORTTRAN](/docs/programs/PORTTRAN) - Transaction Processing
+- [PORTUPDT](/docs/programs/PORTUPDT) - Update Portfolio Records
+- [PORTVALD](/docs/programs/PORTVALD) - Portfolio Validation
+- [POSUPDT](/docs/programs/POSUPDT) - Position Update (stub)
+
+### Reporting (5 programs)
+Report generation programs:
+- [RPTAUD00](/docs/programs/RPTAUD00) - Audit Report Generator
+- [RPTPOS00](/docs/programs/RPTPOS00) - Position Report Generator
+- [RPTSTA00](/docs/programs/RPTSTA00) - Statistics Report Generator
+- [RTNANA00](/docs/programs/RTNANA00) - Return Code Analyzer
+- [RTNCDE00](/docs/programs/RTNCDE00) - Return Code Handler
+
+### Error Handling (2 programs)
+Centralized error processing:
+- [AUDPROC](/docs/programs/AUDPROC) - Audit Processor
+- [ERRPROC](/docs/programs/ERRPROC) - Error Processor
+
+### Testing & Utilities (5 programs)
+Test and maintenance utilities:
+- [TSTGEN00](/docs/programs/TSTGEN00) - Test Data Generator
+- [TSTVAL00](/docs/programs/TSTVAL00) - Test Validation Suite
+- [UTLMNT00](/docs/programs/UTLMNT00) - File Maintenance Utility
+- [UTLMON00](/docs/programs/UTLMON00) - System Monitor
+- [UTLVAL00](/docs/programs/UTLVAL00) - Data Validation Utility
+
+### Templates (4 programs)
+Reference implementations and starting points:
+- [DB2-HANDLING](/docs/programs/DB2-HANDLING) - DB2 Operations Template
+- [ERRHANDL](/docs/programs/ERRHANDL) - Error Handling Template
+- [FILE-HANDLING](/docs/programs/FILE-HANDLING) - File I/O Template
+- [PROGNAME](/docs/programs/PROGNAME) - Standard Program Template
+
+## Copybooks
+
+The system uses 21 shared copybooks organized by function:
+
+### Batch Copybooks
+- [BCHCTL](/docs/copybooks/BCHCTL) - Batch Control Record
+- [BCHCON](/docs/copybooks/BCHCON) - Batch Constants
+- [CKPRST](/docs/copybooks/CKPRST) - Checkpoint/Restart Structure
+- [PRCSEQ](/docs/copybooks/PRCSEQ) - Process Sequence Record
+
+### Common Copybooks
+- [AUDITLOG](/docs/copybooks/AUDITLOG) - Audit Trail Record
+- [ERRHAND](/docs/copybooks/ERRHAND) - Error Handling (Batch)
+- [HISTREC](/docs/copybooks/HISTREC) - History Record
+- [PORTFLIO](/docs/copybooks/PORTFLIO) - Portfolio Master Record
+- [PORTVAL](/docs/copybooks/PORTVAL) - Portfolio Validation Rules
+- [POSREC](/docs/copybooks/POSREC) - Position Record
+- [RETHND](/docs/copybooks/RETHND) - Return Handling
+- [RTNCODE](/docs/copybooks/RTNCODE) - Return Code Management
+- [TRNREC](/docs/copybooks/TRNREC) - Transaction Record
+
+### DB2 Copybooks
+- [DBPROC](/docs/copybooks/DBPROC) - DB2 Standard Procedures
+- [DBTBLS](/docs/copybooks/DBTBLS) - DB2 Table Definitions
+- [SQLCA](/docs/copybooks/SQLCA) - SQL Communication Area
+
+### Online Copybooks
+- [DB2REQ](/docs/copybooks/DB2REQ) - DB2 Request Area
+- [DB2STAT](/docs/copybooks/DB2STAT) - DB2 Statistics Record
+- [ERRHND](/docs/copybooks/ERRHND) - Error Handling (Online)
+- [INQCOM](/docs/copybooks/INQCOM) - Inquiry Communication Area
+- [PORTREC](/docs/copybooks/PORTREC) - Portfolio Position Record
 
 ## Technology Stack
 
 | Component | Technology |
 |-----------|------------|
 | Language | COBOL (IBM Enterprise COBOL) |
-| Database | IBM DB2 |
-| Online | IBM CICS |
-| Files | VSAM (KSDS, ESDS) |
-| JCL | IBM z/OS JCL |
-| Platform | IBM z/OS Mainframe |
+| Transaction Monitor | CICS |
+| Database | DB2 |
+| File System | VSAM (KSDS, ESDS) |
+| Job Scheduling | JCL with JES2 |
+| Operating System | z/OS |
+
+## Getting Started
+
+1. **For Developers**: Start with the [Templates](#templates-4-programs) section to understand the standard patterns used throughout the system.
+
+2. **For Analysts**: Review the [Portfolio Management](#portfolio-management-9-programs) programs to understand the core business logic.
+
+3. **For Operations**: Check the [Batch Processing](#batch-processing-5-programs) programs for job sequencing and recovery procedures.
+
+## Key Concepts
+
+### VSAM File Organization
+Most data files use VSAM KSDS (Key-Sequenced Data Set) organization with composite keys for efficient access patterns.
+
+### Checkpoint/Restart
+Long-running batch programs implement checkpoint/restart using [CKPRST](/docs/programs/CKPRST) for recovery after failures.
+
+### Centralized Error Handling
+All programs use standardized error handling via [ERRPROC](/docs/programs/ERRPROC) (batch) or [ERRHNDL](/docs/programs/ERRHNDL) (online).
+
+### Return Code Standards
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 4 | Warning |
+| 8 | Error |
+| 12 | Severe Error |
+| 16 | Critical Error |

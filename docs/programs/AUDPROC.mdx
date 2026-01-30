@@ -1,18 +1,15 @@
 ---
 title: "AUDPROC"
-description: "Audit Trail Processing Subroutine - callable service for writing audit log entries"
+description: "Reusable audit trail processing subroutine for logging system events, user actions, and transactions"
 ---
 
 ## Overview
 
-AUDPROC is a reusable subroutine that provides centralized audit trail logging services. It accepts audit information from calling programs through the linkage section and writes formatted audit records to a sequential audit log file.
+AUDPROC is a common subroutine that provides centralized audit trail logging services for the application system. It accepts audit information from calling programs via a standardized linkage section interface and writes formatted audit records to a sequential audit log file.
 
-The program serves as a standardized audit service that can be called by any application program needing to log:
-- User actions (login, logout, data access)
-- Transaction events (create, update, delete operations)
-- System events (startup, shutdown, processing milestones)
+The program is designed to be called by any program that needs to record auditable events, ensuring consistent audit trail formatting across the entire system. It captures comprehensive information including timestamps, system identification, user details, action types, before/after images of data changes, and descriptive messages.
 
-By centralizing audit logging in a single subroutine, the system ensures consistent audit record formatting, timestamp handling, and file management across all applications.
+By centralizing audit logging in a single subroutine, AUDPROC promotes code reuse, ensures audit consistency, and simplifies maintenance of audit trail functionality. The audit records it produces can be read by reporting programs like RPTAUD00 to generate compliance and security reports.
 
 ## Program Structure
 
@@ -24,25 +21,26 @@ graph TD
     B --> E[3000-TERMINATE]
     B --> F[GOBACK]
     
-    C --> C1[ACCEPT TIME STAMP]
-    C --> C2[OPEN EXTEND AUDIT-FILE]
-    C -->|File Error| C3[Set Return Code 8]
-    C3 --> E
-    C3 --> F
+    C -->|Get timestamp| G[ACCEPT TIME STAMP]
+    C -->|Open file| H[OPEN EXTEND AUDIT-FILE]
+    C -->|Error?| I{File Status OK?}
+    I -->|No| J[Set RC=8, GOBACK]
+    I -->|Yes| D
     
-    D --> D1[INITIALIZE AUDIT-RECORD]
-    D --> D2[Move linkage data to record]
-    D --> D3[WRITE AUDIT-RECORD]
-    D -->|Success| D4[Return Code = 0]
-    D -->|Error| D5[Return Code = 8]
+    D --> K[INITIALIZE AUDIT-RECORD]
+    D --> L[MOVE data to record]
+    D --> M[WRITE AUDIT-RECORD]
+    D --> N{Write OK?}
+    N -->|No| O[Set RC=8]
+    N -->|Yes| P[Set RC=0]
     
-    E --> E1[CLOSE AUDIT-FILE]
+    E --> Q[CLOSE AUDIT-FILE]
     
-    subgraph "AUDIT-FILE (Sequential)"
-        G[AUDIT-RECORD]
+    subgraph "Audit Log"
+        R[(AUDIT-FILE)]
     end
     
-    D3 -->|Write| G
+    M -.-> R
 ```
 
 ## Data Structures
@@ -51,83 +49,93 @@ graph TD
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | WS-FILE-STATUS | X(2) | File status code for AUDIT-FILE |
-| 01 | WS-FORMATTED-TIME | X(26) | Formatted timestamp from system |
+| 01 | WS-FILE-STATUS | X(2) | File status code for AUDIT-FILE operations |
+| 01 | WS-FORMATTED-TIME | X(26) | Timestamp obtained from system via ACCEPT TIME STAMP |
 
-### Linkage Section
+### Linkage Section - LS-AUDIT-REQUEST
 
-The `LS-AUDIT-REQUEST` structure is passed by calling programs:
+The input parameter structure passed by calling programs:
 
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 01 | LS-AUDIT-REQUEST | - | Audit request input structure |
-| 05 | LS-SYSTEM-INFO | - | System context information |
-| 10 | LS-SYSTEM-ID | X(8) | System identifier |
-| 10 | LS-USER-ID | X(8) | User identifier |
-| 10 | LS-PROGRAM | X(8) | Calling program name |
-| 10 | LS-TERMINAL | X(8) | Terminal/session ID |
-| 05 | LS-TYPE | X(4) | Audit type code |
-| 05 | LS-ACTION | X(8) | Action being audited |
-| 05 | LS-STATUS | X(4) | Status of the action |
-| 05 | LS-KEY-INFO | - | Business key information |
-| 10 | LS-PORT-ID | X(8) | Portfolio ID |
-| 10 | LS-ACCT-NO | X(10) | Account number |
-| 05 | LS-BEFORE-IMAGE | X(100) | Data before change |
-| 05 | LS-AFTER-IMAGE | X(100) | Data after change |
-| 05 | LS-MESSAGE | X(100) | Additional message text |
-| 05 | LS-RETURN-CODE | S9(4) COMP | Return code (output) |
-
-### File Section (AUDITLOG Copybook)
-
-The `AUDIT-RECORD` structure defines the audit log record format:
+#### System Information (LS-SYSTEM-INFO)
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | AUDIT-RECORD | - | Audit log record |
-| 05 | AUD-HEADER | - | Record header |
-| 10 | AUD-TIMESTAMP | X(26) | Event timestamp |
+| 10 | LS-SYSTEM-ID | X(8) | System identifier (e.g., production, test) |
+| 10 | LS-USER-ID | X(8) | User ID performing the action |
+| 10 | LS-PROGRAM | X(8) | Name of calling program |
+| 10 | LS-TERMINAL | X(8) | Terminal ID (for online transactions) |
+
+#### Event Classification
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | LS-TYPE | X(4) | Event type code |
+| 05 | LS-ACTION | X(8) | Action being performed |
+| 05 | LS-STATUS | X(4) | Result status of the action |
+
+#### Entity Identification (LS-KEY-INFO)
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 10 | LS-PORT-ID | X(8) | Portfolio ID (if applicable) |
+| 10 | LS-ACCT-NO | X(10) | Account number (if applicable) |
+
+#### Audit Data
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | LS-BEFORE-IMAGE | X(100) | Data values before the change |
+| 05 | LS-AFTER-IMAGE | X(100) | Data values after the change |
+| 05 | LS-MESSAGE | X(100) | Descriptive message about the event |
+
+#### Return Information
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | LS-RETURN-CODE | S9(4) COMP | Return code (0=success, 8=error) |
+
+### File Section - AUDIT-RECORD (from AUDITLOG copybook)
+
+The audit record structure written to the file:
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 01 | AUDIT-RECORD | | Complete audit trail record |
+| 05 | AUD-HEADER | | Header group containing identification |
+| 10 | AUD-TIMESTAMP | X(26) | Event timestamp (from system) |
 | 10 | AUD-SYSTEM-ID | X(8) | System identifier |
-| 10 | AUD-USER-ID | X(8) | User identifier |
+| 10 | AUD-USER-ID | X(8) | User who performed the action |
 | 10 | AUD-PROGRAM | X(8) | Program name |
-| 10 | AUD-TERMINAL | X(8) | Terminal ID |
-| 05 | AUD-TYPE | X(4) | Audit type |
-| 05 | AUD-ACTION | X(8) | Action code |
-| 05 | AUD-STATUS | X(4) | Status code |
-| 05 | AUD-KEY-INFO | - | Key information |
+| 10 | AUD-TERMINAL | X(8) | Terminal identifier |
+| 05 | AUD-TYPE | X(4) | Event type |
+| 05 | AUD-ACTION | X(8) | Action performed |
+| 05 | AUD-STATUS | X(4) | Result status |
+| 05 | AUD-KEY-INFO | | Entity key information |
 | 10 | AUD-PORTFOLIO-ID | X(8) | Portfolio ID |
 | 10 | AUD-ACCOUNT-NO | X(10) | Account number |
-| 05 | AUD-BEFORE-IMAGE | X(100) | Before image |
-| 05 | AUD-AFTER-IMAGE | X(100) | After image |
-| 05 | AUD-MESSAGE | X(100) | Message text |
+| 05 | AUD-BEFORE-IMAGE | X(100) | Data before change |
+| 05 | AUD-AFTER-IMAGE | X(100) | Data after change |
+| 05 | AUD-MESSAGE | X(100) | Descriptive message |
 
-#### Audit Type Values (AUD-TYPE)
+**AUD-TYPE Values (88-level conditions):**
+- `TRAN` - Transaction event (AUD-TRANSACTION)
+- `USER` - User action (AUD-USER-ACTION)
+- `SYST` - System event (AUD-SYSTEM-EVENT)
 
-| Value | 88-Level Name | Meaning |
-|-------|---------------|---------|
-| `'TRAN'` | AUD-TRANSACTION | Transaction event |
-| `'USER'` | AUD-USER-ACTION | User-initiated action |
-| `'SYST'` | AUD-SYSTEM-EVENT | System event |
+**AUD-ACTION Values (88-level conditions):**
+- `CREATE` - Record created (AUD-CREATE)
+- `UPDATE` - Record updated (AUD-UPDATE)
+- `DELETE` - Record deleted (AUD-DELETE)
+- `INQUIRE` - Record inquiry (AUD-INQUIRE)
+- `LOGIN` - User login (AUD-LOGIN)
+- `LOGOUT` - User logout (AUD-LOGOUT)
+- `STARTUP` - System startup (AUD-STARTUP)
+- `SHUTDOWN` - System shutdown (AUD-SHUTDOWN)
 
-#### Audit Action Values (AUD-ACTION)
-
-| Value | 88-Level Name | Meaning |
-|-------|---------------|---------|
-| `'CREATE'` | AUD-CREATE | Record created |
-| `'UPDATE'` | AUD-UPDATE | Record updated |
-| `'DELETE'` | AUD-DELETE | Record deleted |
-| `'INQUIRE'` | AUD-INQUIRE | Record viewed |
-| `'LOGIN'` | AUD-LOGIN | User login |
-| `'LOGOUT'` | AUD-LOGOUT | User logout |
-| `'STARTUP'` | AUD-STARTUP | System startup |
-| `'SHUTDOWN'` | AUD-SHUTDOWN | System shutdown |
-
-#### Audit Status Values (AUD-STATUS)
-
-| Value | 88-Level Name | Meaning |
-|-------|---------------|---------|
-| `'SUCC'` | AUD-SUCCESS | Successful operation |
-| `'FAIL'` | AUD-FAILURE | Failed operation |
-| `'WARN'` | AUD-WARNING | Warning issued |
+**AUD-STATUS Values (88-level conditions):**
+- `SUCC` - Success (AUD-SUCCESS)
+- `FAIL` - Failure (AUD-FAILURE)
+- `WARN` - Warning (AUD-WARNING)
 
 ## File I/O
 
@@ -135,61 +143,72 @@ The `AUDIT-RECORD` structure defines the audit log record format:
 
 | Property | Value |
 |----------|-------|
-| DD Name | AUDFILE |
-| Organization | SEQUENTIAL |
-| Recording Mode | F (Fixed) |
-| Access Mode | EXTEND (append) |
+| Logical Name | AUDIT-FILE |
+| Physical Assignment | AUDFILE |
+| Organization | Sequential |
+| Recording Mode | Fixed (F) |
+| Access Mode | Extend (append) |
 | File Status | WS-FILE-STATUS |
 
-The audit file is opened in EXTEND mode, which positions the file pointer at the end of the file so new records are appended rather than overwriting existing records. This preserves the complete audit trail.
-
-### File Operations
-
-| Paragraph | Operation | Description |
-|-----------|-----------|-------------|
-| 1000-INITIALIZE | OPEN EXTEND | Opens file for appending |
-| 2000-PROCESS-AUDIT | WRITE | Writes the audit record |
-| 3000-TERMINATE | CLOSE | Closes the audit file |
+The file is opened in EXTEND mode, meaning new audit records are appended to the end of the existing file. This preserves all previous audit entries and allows the audit trail to grow over time.
 
 ## Control Flow
 
-### 0000-MAIN
+### Main Processing (0000-MAIN)
 
-The main entry point that orchestrates the three processing phases sequentially:
-1. Initialize - Set up timestamp and open file
-2. Process - Build and write the audit record
-3. Terminate - Close the file
-4. Return to caller via GOBACK
+The program executes three sequential paragraphs then returns to the caller:
 
-### 1000-INITIALIZE
+1. **1000-INITIALIZE** - Set up for processing
+2. **2000-PROCESS-AUDIT** - Write the audit record
+3. **3000-TERMINATE** - Clean up resources
+4. **GOBACK** - Return to calling program
 
-Performs startup activities:
-1. **ACCEPT WS-FORMATTED-TIME FROM TIME STAMP**: Retrieves the current system timestamp in ISO format (26 characters: `YYYY-MM-DD-HH.MM.SS.FFFFFF`)
-2. **OPEN EXTEND AUDIT-FILE**: Opens the audit file in extend mode for appending
-3. **Error Handling**: If the file fails to open:
-   - Displays an error message with the file status code
+### Initialization (1000-INITIALIZE)
+
+1. **Get Timestamp**: Uses `ACCEPT WS-FORMATTED-TIME FROM TIME STAMP` to capture the current system timestamp in a 26-character format
+2. **Open File**: Opens AUDIT-FILE in EXTEND mode to append records
+3. **Error Check**: If the file fails to open:
+   - Displays error message with file status code
    - Sets LS-RETURN-CODE to 8
-   - Performs 3000-TERMINATE to close resources
-   - Returns to caller immediately via GOBACK
+   - Performs 3000-TERMINATE to close any open resources
+   - Returns immediately to caller via GOBACK
 
-### 2000-PROCESS-AUDIT
+### Process Audit (2000-PROCESS-AUDIT)
 
-Builds and writes the audit record:
-1. **INITIALIZE AUDIT-RECORD**: Clears the record area to spaces/zeros
-2. **Move data from linkage to record**:
-   - Timestamp from working storage
-   - System info, type, action, status from linkage
-   - Key info, before/after images, message from linkage
-3. **WRITE AUDIT-RECORD**: Writes the record to the file
-4. **Set return code**: 0 for success, 8 for write error
+1. **Initialize Record**: Clears AUDIT-RECORD to spaces/zeros
+2. **Populate Record**: Moves data from linkage section to audit record:
+   - System timestamp from working storage
+   - System info (maps to AUD-HEADER: system-id, user-id, program, terminal)
+   - Event type, action, and status
+   - Key information (portfolio ID, account number)
+   - Before and after images
+   - Descriptive message
+3. **Write Record**: Writes AUDIT-RECORD to the file
+4. **Set Return Code**: 
+   - If write successful: LS-RETURN-CODE = 0
+   - If write failed: LS-RETURN-CODE = 8, displays error message
 
-### 3000-TERMINATE
+### Terminate (3000-TERMINATE)
 
-Closes the audit file. This paragraph is called both at normal completion and during error recovery.
+Closes the AUDIT-FILE to release system resources.
+
+## Dependencies
+
+### Copybooks
+- AUDITLOG - Audit trail record structure definitions
+
+### Called Programs
+None - AUDPROC is a leaf subroutine that does not call other programs.
+
+### Related Programs
+
+**Programs that use the same AUDITLOG copybook:**
+- RPTAUD00 - Audit report generator (reads audit records)
+- PORTTRAN - Portfolio transaction processing (likely calls AUDPROC)
 
 ## Usage Example
 
-Calling programs should use AUDPROC as follows:
+Calling programs should prepare the LS-AUDIT-REQUEST structure and call AUDPROC:
 
 ```cobol
 WORKING-STORAGE SECTION.
@@ -212,19 +231,18 @@ WORKING-STORAGE SECTION.
 
 PROCEDURE DIVISION.
     ...
-    * Log a successful portfolio update
-    MOVE 'PMSYSTEM' TO WS-SYSTEM-ID
-    MOVE 'JSMITH'   TO WS-USER-ID
-    MOVE 'PORTMSTR' TO WS-PROGRAM
-    MOVE 'TRM001'   TO WS-TERMINAL
+    MOVE 'PRODSYS'  TO WS-SYSTEM-ID
+    MOVE 'USER001'  TO WS-USER-ID
+    MOVE 'PORTUPDT' TO WS-PROGRAM
+    MOVE 'TERM01'   TO WS-TERMINAL
     MOVE 'TRAN'     TO WS-TYPE
     MOVE 'UPDATE'   TO WS-ACTION
     MOVE 'SUCC'     TO WS-STATUS
     MOVE 'PORT001'  TO WS-PORT-ID
     MOVE '1234567890' TO WS-ACCT-NO
-    MOVE OLD-PORTFOLIO-DATA TO WS-BEFORE-IMAGE
-    MOVE NEW-PORTFOLIO-DATA TO WS-AFTER-IMAGE
-    MOVE 'Portfolio balance updated' TO WS-MESSAGE
+    MOVE OLD-DATA   TO WS-BEFORE-IMAGE
+    MOVE NEW-DATA   TO WS-AFTER-IMAGE
+    MOVE 'Portfolio value updated' TO WS-MESSAGE
     
     CALL 'AUDPROC' USING WS-AUDIT-REQUEST
     
@@ -234,65 +252,33 @@ PROCEDURE DIVISION.
     ...
 ```
 
-## Dependencies
+## JCL Requirements
 
-### Copybooks
+The calling program's JCL must include the AUDFILE DD statement:
 
-- **AUDITLOG** - Audit trail record structure with type codes, action codes, and status values
+```jcl
+//AUDFILE  DD DSN=your.audit.file,DISP=MOD
+```
 
-### Called Programs
-
-None - AUDPROC is a leaf-level service module.
-
-### Related Programs
-
-- **RPTAUD00** - Reads the audit file generated by AUDPROC to produce audit reports
-
-Any program that needs to log audit events will call AUDPROC. Programs using the AUDITLOG copybook format are potential callers.
+Note: Use `DISP=MOD` to allow appending to the existing audit file, which matches the program's OPEN EXTEND behavior.
 
 ## Return Codes
 
 | Code | Meaning |
 |------|---------|
 | 0 | Successful - audit record written |
-| 8 | Error - file open or write failed |
+| 8 | Error - file open or write failure |
 
 ## Technical Notes
 
-### COBOL Constructs Used
+### ACCEPT TIME STAMP
 
-- **ACCEPT FROM TIME STAMP**: An IBM extension that retrieves the current system timestamp in a 26-character ISO format (`YYYY-MM-DD-HH.MM.SS.FFFFFF`). This provides microsecond precision for audit timestamps.
+The program uses `ACCEPT WS-FORMATTED-TIME FROM TIME STAMP` to obtain a 26-character timestamp. This is an IBM COBOL extension that returns the current date and time in ISO format (YYYY-MM-DD-HH.MM.SS.ffffff).
 
-- **OPEN EXTEND**: Opens a sequential file for output, positioning at the end of existing data. New records are appended rather than overwriting. This is essential for audit logs where historical records must be preserved.
+### OPEN EXTEND
 
-- **INITIALIZE**: Sets all elementary items in a group to their default values (spaces for alphanumeric, zeros for numeric). This ensures no residual data from previous operations appears in the audit record.
-
-- **PROCEDURE DIVISION USING**: Defines the linkage section parameter(s) that the program receives when called. The calling program passes LS-AUDIT-REQUEST by reference.
-
-- **GOBACK**: Returns control to the calling program. Unlike STOP RUN, GOBACK preserves the run unit, allowing the calling program to continue execution.
-
-### Configuration Section
-
-The program specifies IBM z/OS as both source and object computer:
-```cobol
-SOURCE-COMPUTER. IBM-ZOS.
-OBJECT-COMPUTER. IBM-ZOS.
-```
-
-This indicates the program is designed for mainframe execution.
+Opening the file in EXTEND mode positions the file pointer at the end, so all WRITE operations append records. This is essential for audit trail integrity—existing records are never overwritten.
 
 ### Record Layout Mapping
 
-The linkage section fields map directly to the AUDIT-RECORD fields:
-
-| Linkage Field | Audit Record Field |
-|---------------|-------------------|
-| (system timestamp) | AUD-TIMESTAMP |
-| LS-SYSTEM-INFO | AUD-HEADER (partial) |
-| LS-TYPE | AUD-TYPE |
-| LS-ACTION | AUD-ACTION |
-| LS-STATUS | AUD-STATUS |
-| LS-KEY-INFO | AUD-KEY-INFO |
-| LS-BEFORE-IMAGE | AUD-BEFORE-IMAGE |
-| LS-AFTER-IMAGE | AUD-AFTER-IMAGE |
-| LS-MESSAGE | AUD-MESSAGE |
+The linkage section structure (LS-AUDIT-REQUEST) is designed to map directly to portions of the AUDIT-RECORD structure, simplifying the data movement in 2000-PROCESS-AUDIT. The LS-SYSTEM-INFO group moves directly to AUD-HEADER (excluding the timestamp which is populated separately).

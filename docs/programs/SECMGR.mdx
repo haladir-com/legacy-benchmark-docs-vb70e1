@@ -1,53 +1,54 @@
 ---
 title: "SECMGR"
-description: "Security Manager for Online Programs - Handles user validation, authorization, and audit logging in CICS"
+description: "Security Manager for Online Programs - validates user credentials, manages authorization, and maintains security audit trails"
 ---
 
 ## Overview
 
-SECMGR is a CICS online program that provides centralized security services for the application suite. It implements three core security functions: user validation, authorization checking, and audit logging. The program serves as a security gateway that other online programs call to verify credentials and permissions before granting access to protected resources.
+SECMGR is a CICS-based security management program that provides centralized authentication, authorization, and auditing services for online applications. It serves as a security gateway that other CICS programs call to verify user identity, check access permissions, and log security-relevant events.
 
-The program integrates with both CICS security services (for user identification) and DB2 (for authorization rules and audit trail storage). By centralizing security logic, SECMGR ensures consistent enforcement of access controls across all online transactions.
+The program implements three core security functions: user validation against CICS credentials, authorization checking against a DB2 permission table, and audit logging of access attempts. This separation of security logic into a dedicated program promotes consistent security enforcement across all online applications and simplifies compliance with security policies.
 
-Key capabilities include:
-- **User Validation**: Verifies CICS user credentials match the requested user
-- **Authorization**: Checks DB2-based access control lists for resource permissions
-- **Audit Logging**: Records all access attempts to the AUDITLOG table for compliance and forensics
+SECMGR integrates with both CICS security (for user authentication) and DB2 (for authorization data and audit storage), providing a comprehensive security solution for the online transaction processing environment.
 
 ## Program Structure
 
 ```mermaid
 graph TD
-    A[PROCEDURE DIVISION] --> B{EVALUATE Request Type}
+    A[PROCEDURE DIVISION] --> B{Request Type?}
     B -->|V - Validate| C[P100-VALIDATE-USER]
     B -->|A - Authorize| D[P200-CHECK-AUTH]
-    B -->|L - Audit| E[P300-LOG-ACCESS]
+    B -->|L - Audit Log| E[P300-LOG-ACCESS]
     
     C --> C1[EXEC CICS ASSIGN USERID]
-    C1 -->|NORMAL| C2{User ID Match?}
-    C2 -->|Yes| C3[Response Code 0]
-    C2 -->|No| C4[Response Code 8]
-    C1 -->|Error| C5[Response Code 12]
+    C1 --> C2{RESP = NORMAL?}
+    C2 -->|Yes| C3{User ID Match?}
+    C3 -->|Yes| C4[Response = 0]
+    C3 -->|No| C5[Response = 8<br/>Validation failed]
+    C2 -->|No| C6[Response = 12<br/>Cannot get credentials]
     
     D --> D1[SELECT COUNT FROM AUTHFILE]
-    D1 -->|SQLCODE=0| D2{Count > 0?}
-    D2 -->|Yes| D3[Response Code 0]
-    D2 -->|No| D4[Response Code 8 - Access Denied]
-    D1 -->|Error| D5[Response Code 12]
+    D1 --> D2{SQLCODE?}
+    D2 -->|0| D3{Count > 0?}
+    D3 -->|Yes| D4[Response = 0]
+    D3 -->|No| D5[Response = 8<br/>Access denied]
+    D2 -->|Other| D6[Response = 12<br/>Auth check failed]
     
-    E --> E1[EXEC CICS ASSIGN]
-    E1 --> E2[INSERT INTO AUDITLOG]
-    E2 -->|SQLCODE=0| E3[Response Code 0]
-    E2 -->|Error| E4[Response Code 12]
+    E --> E1[Get Current Timestamp]
+    E1 --> E2[EXEC CICS ASSIGN]
+    E2 --> E3[INSERT INTO AUDITLOG]
+    E3 --> E4{SQLCODE = 0?}
+    E4 -->|Yes| E5[Response = 0]
+    E4 -->|No| E6[Response = 12<br/>Audit logging failed]
     
-    C3 --> Z[EXEC CICS RETURN]
-    C4 --> Z
-    C5 --> Z
-    D3 --> Z
-    D4 --> Z
-    D5 --> Z
-    E3 --> Z
-    E4 --> Z
+    C4 --> F[EXEC CICS RETURN]
+    C5 --> F
+    C6 --> F
+    D4 --> F
+    D5 --> F
+    D6 --> F
+    E5 --> F
+    E6 --> F
 ```
 
 ## Data Structures
@@ -56,52 +57,66 @@ graph TD
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 05 | SEC-REQUEST-TYPE | X | Request type: `V`=Validate, `A`=Authorize, `L`=Audit |
-| 05 | SEC-USER-ID | X(8) | User ID to validate or check |
-| 05 | SEC-RESOURCE-NAME | X(8) | Resource (program/transaction) to access |
-| 05 | SEC-ACCESS-TYPE | X(8) | Access type (READ, UPDATE, DELETE, etc.) |
-| 05 | SEC-RESPONSE-CODE | S9(8) COMP | Return code from operation |
-| 05 | SEC-ERROR-INFO | X(80) | Error message if operation failed |
+| 01 | SECURITY-REQUEST-AREA | - | Main communication area |
+| 05 | SEC-REQUEST-TYPE | X | Request type: 'V', 'A', or 'L' |
+| 05 | SEC-USER-ID | X(8) | User identifier to validate/authorize |
+| 05 | SEC-RESOURCE-NAME | X(8) | Resource (program/transaction) name |
+| 05 | SEC-ACCESS-TYPE | X(8) | Type of access requested |
+| 05 | SEC-RESPONSE-CODE | S9(8) COMP | Response code (0=success) |
+| 05 | SEC-ERROR-INFO | X(80) | Error message when request fails |
+
+### Request Type Values
+
+| Value | Condition Name | Description |
+|-------|---------------|-------------|
+| 'V' | SEC-VALIDATE | Validate user credentials |
+| 'A' | SEC-AUTHORIZE | Check user authorization |
+| 'L' | SEC-AUDIT | Log access to audit trail |
 
 ### Working Storage - Security Area
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
+| 01 | WS-SECURITY-AREA | - | Security working fields |
 | 05 | WS-USER-ID | X(8) | User ID from CICS |
-| 05 | WS-TERMINAL-ID | X(4) | Terminal ID from CICS |
-| 05 | WS-TRANSACTION-ID | X(4) | Transaction ID from CICS |
-| 05 | WS-PROGRAM-NAME | X(8) | Program/resource being accessed |
-| 05 | WS-ACCESS-TYPE | X(8) | Type of access being performed |
-| 05 | WS-TIMESTAMP | X(26) | Current timestamp for audit records |
+| 05 | WS-TERMINAL-ID | X(4) | Terminal identifier |
+| 05 | WS-TRANSACTION-ID | X(4) | Transaction code |
+| 05 | WS-PROGRAM-NAME | X(8) | Program being accessed |
+| 05 | WS-ACCESS-TYPE | X(8) | Access type being logged |
+| 05 | WS-TIMESTAMP | X(26) | Current timestamp for audit |
+
+### Working Storage - DB2 Area
+
+| Level | Name | Description |
+|-------|------|-------------|
+| 01 | WS-DB2-AREA | DB2 communication area |
+| - | SQLCA | SQL Communication Area (included) |
 
 ### Error Handling Area (from ERRHND copybook)
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
+| 01 | ERROR-HANDLING | - | Error handling structure |
 | 05 | ERR-PROGRAM | X(8) | Program name |
 | 05 | ERR-PARAGRAPH | X(30) | Paragraph name |
 | 05 | ERR-SQLCODE | S9(9) COMP | SQL return code |
-| 05 | ERR-CICS-RESP | S9(8) COMP | CICS RESP value |
-| 05 | ERR-CICS-RESP2 | S9(8) COMP | CICS RESP2 value |
-| 05 | ERR-SEVERITY | X | F=Fatal, W=Warning, I=Info |
+| 05 | ERR-CICS-RESP | S9(8) COMP | CICS EIBRESP |
+| 05 | ERR-CICS-RESP2 | S9(8) COMP | CICS EIBRESP2 |
+| 05 | ERR-SEVERITY | X | 'F'=Fatal, 'W'=Warning, 'I'=Info |
 | 05 | ERR-MESSAGE | X(80) | Error message |
-| 05 | ERR-ACTION | X | R=Return, C=Continue, A=Abend |
+| 05 | ERR-ACTION | X | 'R'=Return, 'C'=Continue, 'A'=Abend |
 
 ## Database Access
 
-### AUTHFILE Table
+### Tables Used
 
-The authorization table stores access control entries defining which users can access which resources.
+| Table Name | Operation | Purpose |
+|------------|-----------|---------|
+| AUTHFILE | SELECT | Check user authorization permissions |
+| AUDITLOG | INSERT | Record security audit events |
 
-**Inferred Table Structure:**
+### Authorization Check Query (P200-CHECK-AUTH)
 
-| Column | Type | Description |
-|--------|------|-------------|
-| USER_ID | CHAR(8) | User identifier |
-| RESOURCE | CHAR(8) | Resource name (program, transaction, etc.) |
-| ACCESS_TYPE | CHAR(8) | Type of access permitted |
-
-**SQL Query (P200-CHECK-AUTH):**
 ```sql
 SELECT COUNT(*)
 INTO :WS-DB2-AREA
@@ -111,22 +126,10 @@ WHERE USER_ID = :SEC-USER-ID
   AND ACCESS_TYPE = :SEC-ACCESS-TYPE
 ```
 
-### AUDITLOG Table
+Checks if the specified user has the requested access type to the named resource. A count greater than zero indicates authorization is granted.
 
-The audit log table records all access attempts for security compliance and forensic analysis.
+### Audit Log Insert (P300-LOG-ACCESS)
 
-**Inferred Table Structure:**
-
-| Column | Type | Description |
-|--------|------|-------------|
-| TIMESTAMP | CHAR(26) | When the access occurred |
-| USER_ID | CHAR(8) | User who performed the action |
-| TERMINAL_ID | CHAR(4) | CICS terminal identifier |
-| TRANS_ID | CHAR(4) | CICS transaction identifier |
-| PROGRAM | CHAR(8) | Program/resource accessed |
-| ACCESS_TYPE | CHAR(8) | Type of access performed |
-
-**SQL Insert (P300-LOG-ACCESS):**
 ```sql
 INSERT INTO AUDITLOG
 (TIMESTAMP, USER_ID, TERMINAL_ID, 
@@ -137,174 +140,211 @@ VALUES
  :WS-ACCESS-TYPE)
 ```
 
+Records a complete audit trail entry including when, who, where, and what was accessed.
+
+### AUTHFILE Table Structure (implied)
+
+| Column | Type | Description |
+|--------|------|-------------|
+| USER_ID | CHAR(8) | User identifier |
+| RESOURCE | CHAR(8) | Resource name (program/transaction) |
+| ACCESS_TYPE | CHAR(8) | Type of access permitted |
+
+### AUDITLOG Table Structure (implied)
+
+| Column | Type | Description |
+|--------|------|-------------|
+| TIMESTAMP | CHAR(26) | When access occurred |
+| USER_ID | CHAR(8) | Who accessed |
+| TERMINAL_ID | CHAR(4) | From which terminal |
+| TRANS_ID | CHAR(4) | Transaction code |
+| PROGRAM | CHAR(8) | Program accessed |
+| ACCESS_TYPE | CHAR(8) | Type of access |
+
 ## Control Flow
 
-### P100-VALIDATE-USER (Request Type: V)
+### User Validation (SEC-REQUEST-TYPE = 'V')
 
-Validates that the CICS user matches the requested user ID:
+The validation function verifies the user's identity against CICS credentials:
 
-1. **Get CICS User**: Issues `EXEC CICS ASSIGN USERID` to retrieve the current CICS user
-2. **Check Response**: If CICS returns DFHRESP(NORMAL):
-   - Compares SEC-USER-ID with WS-USER-ID
-   - If match: Sets response code to 0 (success)
-   - If no match: Sets error info to "User validation failed", response code 8
-3. **Handle CICS Error**: If ASSIGN fails:
-   - Sets error info to "Unable to obtain user credentials"
-   - Sets response code to 12
+1. **P100-VALIDATE-USER**: User credential validation
+   - Executes `EXEC CICS ASSIGN USERID` to get the current CICS user ID
+   - Checks the CICS response code:
+     - If DFHRESP(NORMAL):
+       - Compares SEC-USER-ID (from request) with WS-USER-ID (from CICS)
+       - If match: Sets response code to 0 (success)
+       - If no match: Sets error info to "User validation failed", response code to 8
+     - If not NORMAL:
+       - Sets error info to "Unable to obtain user credentials"
+       - Sets response code to 12
 
-**Use Case**: Prevents impersonation by ensuring the user ID passed matches the actual signed-on CICS user.
+### Authorization Check (SEC-REQUEST-TYPE = 'A')
 
-### P200-CHECK-AUTH (Request Type: A)
+The authorization function checks if the user has permission to access a resource:
 
-Checks if the user is authorized to access the specified resource:
+1. **P200-CHECK-AUTH**: Permission verification
+   - Executes SELECT COUNT(*) against AUTHFILE table
+   - Searches for a matching record with user ID, resource name, and access type
+   - Evaluates SQLCODE:
+     - SQLCODE = 0:
+       - If count > 0: Authorization granted, response code = 0
+       - If count = 0: Sets error info to "Access denied", response code = 8
+     - SQLCODE = other:
+       - Sets error info to "Authorization check failed"
+       - Sets response code to 12
 
-1. **Query Authorization**: Executes SELECT COUNT(*) against AUTHFILE
-2. **Evaluate SQLCODE**:
-   - If SQLCODE = 0 and count > 0: Access granted, response code 0
-   - If SQLCODE = 0 and count = 0: "Access denied", response code 8
-   - If SQLCODE ≠ 0: "Authorization check failed", response code 12
+### Audit Logging (SEC-REQUEST-TYPE = 'L')
 
-**Use Case**: Role-based access control where permissions are stored in DB2.
+The audit function records access events for security compliance:
 
-### P300-LOG-ACCESS (Request Type: L)
-
-Records an audit trail entry for compliance:
-
-1. **Get Timestamp**: Uses FUNCTION CURRENT-DATE to capture current time
-2. **Get CICS Context**: Issues `EXEC CICS ASSIGN` to retrieve:
-   - USERID - Current user
-   - TERMID - Terminal identifier
-   - TRANSID - Transaction identifier
-3. **Prepare Audit Data**: Moves resource name and access type to working storage
-4. **Insert Audit Record**: Executes INSERT INTO AUDITLOG
-5. **Check Result**:
-   - If SQLCODE = 0: Response code 0
-   - Otherwise: "Audit logging failed", response code 12
-
-**Use Case**: Regulatory compliance requiring detailed access logs (SOX, PCI-DSS, etc.).
+1. **P300-LOG-ACCESS**: Audit trail creation
+   - Gets current timestamp using `FUNCTION CURRENT-DATE`
+   - Executes `EXEC CICS ASSIGN` to capture:
+     - WS-USER-ID (current user)
+     - WS-TERMINAL-ID (terminal identifier)
+     - WS-TRANSACTION-ID (transaction code)
+   - Copies SEC-RESOURCE-NAME to WS-PROGRAM-NAME
+   - Copies SEC-ACCESS-TYPE to WS-ACCESS-TYPE
+   - Executes INSERT into AUDITLOG table
+   - If SQLCODE = 0: Sets response code to 0
+   - Otherwise: Sets error info to "Audit logging failed", response code = 12
 
 ## CICS Commands Used
 
-| Command | Purpose |
-|---------|---------|
-| `EXEC CICS ASSIGN USERID` | Retrieves current signed-on user ID |
-| `EXEC CICS ASSIGN TERMID` | Retrieves terminal identifier |
-| `EXEC CICS ASSIGN TRANSID` | Retrieves transaction identifier |
-| `EXEC CICS RETURN` | Returns control to calling program |
-
-## Return Codes
-
-| SEC-RESPONSE-CODE | Meaning |
-|-------------------|---------|
-| 0 | Operation successful |
-| 8 | Validation/authorization failed (user mismatch or access denied) |
-| 12 | System error (CICS error, DB2 error, audit log failure) |
-
-## Error Messages
-
-| Message | Condition |
-|---------|-----------|
-| "User validation failed" | SEC-USER-ID does not match CICS user |
-| "Unable to obtain user credentials" | CICS ASSIGN failed |
-| "Access denied" | No matching entry in AUTHFILE |
-| "Authorization check failed" | DB2 error during authorization check |
-| "Audit logging failed" | DB2 error during audit INSERT |
+| Command | Paragraph | Purpose |
+|---------|-----------|---------|
+| EXEC CICS ASSIGN USERID | P100-VALIDATE-USER | Get current CICS user ID |
+| EXEC CICS ASSIGN | P300-LOG-ACCESS | Get user, terminal, and transaction IDs |
+| EXEC CICS RETURN | Main procedure | Return to calling program |
 
 ## Dependencies
 
 ### Copybooks
 
-- **SQLCA** - SQL Communication Area (included via EXEC SQL INCLUDE)
-- **ERRHND** - Online error handling structure
+- **ERRHND** - Online error handling structure with severity levels and action codes
 
 ### Called Programs
 
-None - SECMGR is called by other programs, not a caller itself.
-
-### Database Objects
-
-- **AUTHFILE** - Authorization control table (DB2)
-- **AUDITLOG** - Security audit trail table (DB2)
+This program does not call other programs. It is designed to be called by other online programs.
 
 ### Related Programs
 
-Programs that may call SECMGR for security services:
-- DB2ONLN - DB2 online connection manager (uses ERRHND)
-- DB2RECV - DB2 recovery manager (uses ERRHND)
-- ERRHNDL - Error handler (uses ERRHND)
-- INQONLN - Online inquiry program (uses ERRHND)
+Programs that share copybooks and may call SECMGR:
 
-## Usage Example
-
-```cobol
-*---------------------------------------------------------*
-* Validate user before processing
-*---------------------------------------------------------*
-    MOVE 'V' TO SEC-REQUEST-TYPE
-    MOVE WS-INPUT-USER TO SEC-USER-ID
-    
-    EXEC CICS LINK PROGRAM('SECMGR')
-              COMMAREA(SECURITY-REQUEST-AREA)
-              LENGTH(LENGTH OF SECURITY-REQUEST-AREA)
-    END-EXEC
-    
-    IF SEC-RESPONSE-CODE NOT = 0
-        MOVE SEC-ERROR-INFO TO WS-ERROR-MESSAGE
-        PERFORM HANDLE-SECURITY-ERROR
-    END-IF
-
-*---------------------------------------------------------*
-* Check authorization for account update
-*---------------------------------------------------------*
-    MOVE 'A' TO SEC-REQUEST-TYPE
-    MOVE WS-CURRENT-USER TO SEC-USER-ID
-    MOVE 'ACCTUPD' TO SEC-RESOURCE-NAME
-    MOVE 'UPDATE' TO SEC-ACCESS-TYPE
-    
-    EXEC CICS LINK PROGRAM('SECMGR')
-              COMMAREA(SECURITY-REQUEST-AREA)
-              LENGTH(LENGTH OF SECURITY-REQUEST-AREA)
-    END-EXEC
-    
-    IF SEC-RESPONSE-CODE = 8
-        MOVE 'You are not authorized for this function'
-          TO WS-USER-MESSAGE
-        PERFORM DISPLAY-ERROR-SCREEN
-    END-IF
-
-*---------------------------------------------------------*
-* Log successful access for audit trail
-*---------------------------------------------------------*
-    MOVE 'L' TO SEC-REQUEST-TYPE
-    MOVE WS-CURRENT-USER TO SEC-USER-ID
-    MOVE 'ACCTUPD' TO SEC-RESOURCE-NAME
-    MOVE 'UPDATE' TO SEC-ACCESS-TYPE
-    
-    EXEC CICS LINK PROGRAM('SECMGR')
-              COMMAREA(SECURITY-REQUEST-AREA)
-              LENGTH(LENGTH OF SECURITY-REQUEST-AREA)
-    END-EXEC
-```
-
-## Security Best Practices
-
-1. **Always validate before authorize**: Call with `V` first, then `A`, then `L` for a complete security check
-2. **Log all access attempts**: Call with `L` for both successful and failed attempts
-3. **Fail securely**: If SECMGR returns an error, deny access by default
-4. **Don't expose error details**: Map SEC-ERROR-INFO to generic user messages
+- **DB2ONLN** - DB2 online connection manager (uses ERRHND)
+- **DB2RECV** - DB2 recovery manager (uses ERRHND)
+- **ERRHNDL** - Error handler (uses ERRHND)
+- **INQONLN** - Online inquiry program (uses ERRHND)
 
 ## Technical Notes
 
-1. **DFHRESP(NORMAL)**: CICS symbolic response code for successful completion; requires CICS translator to resolve
+### Response Codes
 
-2. **FUNCTION CURRENT-DATE**: COBOL intrinsic function returning 21-character timestamp (YYYYMMDDHHMMSSFF±HHMM), stored in 26-character field for DB2 TIMESTAMP compatibility
+| Code | Meaning | When Set |
+|------|---------|----------|
+| 0 | Success | Operation completed successfully |
+| 8 | Authorization failure | User validation failed or access denied |
+| 12 | System error | Unable to get credentials or DB2 error |
 
-3. **88-Level Conditions**: Uses condition names for request types (`SEC-VALIDATE`, `SEC-AUTHORIZE`, `SEC-AUDIT`) enabling readable EVALUATE statements
+### Security Flow Pattern
 
-4. **Host Variables**: SQL statements use COBOL variables prefixed with colon (`:`) as host variables for data exchange
+A typical calling program should invoke SECMGR in this sequence:
 
-5. **COUNT(*) Pattern**: Authorization uses COUNT(*) to check existence rather than SELECT with NOT FOUND handling, simplifying the logic
+```mermaid
+sequenceDiagram
+    participant App as Application
+    participant SEC as SECMGR
+    participant CICS as CICS Security
+    participant DB2 as DB2 Tables
+    
+    App->>SEC: Validate (V)
+    SEC->>CICS: ASSIGN USERID
+    CICS-->>SEC: User ID
+    SEC-->>App: Validation result
+    
+    App->>SEC: Authorize (A)
+    SEC->>DB2: SELECT AUTHFILE
+    DB2-->>SEC: Permission record
+    SEC-->>App: Authorization result
+    
+    App->>SEC: Audit (L)
+    SEC->>CICS: ASSIGN (user, term, trans)
+    SEC->>DB2: INSERT AUDITLOG
+    SEC-->>App: Audit result
+```
 
-6. **COMMAREA Communication**: Follows standard CICS pattern of passing data via Communication Area (COMMAREA) for inter-program communication
+### Usage Example
 
-7. **Separation of Concerns**: Each security function (validate, authorize, audit) is independent, allowing callers to use only the functions they need
+```cobol
+* Step 1: Validate user identity
+MOVE 'V' TO SEC-REQUEST-TYPE
+MOVE EIBUSERID TO SEC-USER-ID
+
+EXEC CICS LINK PROGRAM('SECMGR')
+              COMMAREA(SECURITY-REQUEST-AREA)
+              LENGTH(LENGTH OF SECURITY-REQUEST-AREA)
+END-EXEC
+
+IF SEC-RESPONSE-CODE NOT = 0
+    PERFORM SECURITY-ERROR
+END-IF
+
+* Step 2: Check authorization
+MOVE 'A' TO SEC-REQUEST-TYPE
+MOVE 'INQPORT' TO SEC-RESOURCE-NAME
+MOVE 'READ' TO SEC-ACCESS-TYPE
+
+EXEC CICS LINK PROGRAM('SECMGR')
+              COMMAREA(SECURITY-REQUEST-AREA)
+              LENGTH(LENGTH OF SECURITY-REQUEST-AREA)
+END-EXEC
+
+IF SEC-RESPONSE-CODE NOT = 0
+    PERFORM ACCESS-DENIED
+END-IF
+
+* Step 3: Log the access
+MOVE 'L' TO SEC-REQUEST-TYPE
+
+EXEC CICS LINK PROGRAM('SECMGR')
+              COMMAREA(SECURITY-REQUEST-AREA)
+              LENGTH(LENGTH OF SECURITY-REQUEST-AREA)
+END-EXEC
+```
+
+### Access Type Values
+
+Common access types that might be stored in AUTHFILE:
+
+| Access Type | Description |
+|-------------|-------------|
+| READ | View/inquiry access |
+| UPDATE | Modify existing data |
+| CREATE | Add new records |
+| DELETE | Remove records |
+| EXECUTE | Run program/transaction |
+| ADMIN | Administrative functions |
+
+### DFHRESP Macro
+
+The program uses `DFHRESP(NORMAL)` to check for successful CICS command completion. This is a CICS-provided macro that translates to the numeric response code for normal completion, making the code more readable and maintainable.
+
+### Audit Trail Considerations
+
+The audit log captures:
+- **When**: Timestamp from FUNCTION CURRENT-DATE
+- **Who**: User ID from CICS ASSIGN
+- **Where**: Terminal ID and Transaction ID from CICS ASSIGN  
+- **What**: Resource name and access type from the request
+
+This provides a complete audit trail for security compliance and forensic analysis.
+
+### COBOL Features Used
+
+- **EXEC SQL INCLUDE SQLCA**: Includes the SQL Communication Area for DB2 access
+- **FUNCTION CURRENT-DATE**: Intrinsic function returning system date/time in YYYYMMDDHHMMSSFF format
+- **88-level condition names**: Used for request type values (SEC-VALIDATE, SEC-AUTHORIZE, SEC-AUDIT)
+- **EXEC CICS ASSIGN**: Retrieves CICS system values like user ID, terminal ID, transaction ID
+- **EXEC CICS RETURN**: Returns control to calling program
+- **DFHRESP**: CICS macro for readable response code checking
+- **EVALUATE TRUE**: Multi-way branch based on condition names

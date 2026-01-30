@@ -1,269 +1,274 @@
 ---
 title: "BCHCTL"
-description: "Batch Control File Record Definition - job-level control and process sequencing"
+description: "Batch Control File Record Definition - defines the structure for job-level control, process sequencing, and dependency management"
 ---
 
 ## Overview
 
-BCHCTL is a copybook that defines the batch control file record structure used for job-level control and process sequencing. It provides the data layout for managing batch job execution, including job status tracking, prerequisite dependencies, and execution statistics.
+BCHCTL is a copybook that defines the Batch Control File Record structure used for job-level control and process sequencing in the batch processing framework. It provides the data layout for tracking job status, managing prerequisites, and recording execution statistics.
 
-This copybook works in conjunction with CKPRST (checkpoint/restart) to provide a complete batch job management solution:
-- **BCHCTL**: Handles job-level sequencing and inter-job dependencies
-- **CKPRST**: Handles program-level checkpointing within individual jobs
+The copybook is designed to work in conjunction with CKPRST (checkpoint/restart) for program-level checkpointing. While BCHCTL handles job-level sequencing and dependencies, CKPRST manages the checkpointing within individual program execution.
+
+This record structure is typically used with a VSAM KSDS file where the composite key (job name + process date + sequence number) uniquely identifies each batch control record.
 
 ## Record Layout
 
-### BATCH-CONTROL-RECORD
-
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                    BATCH-CONTROL-RECORD                          │
-├─────────────────────────────────────────────────────────────────┤
-│ BCT-KEY (20 bytes)                                              │
-│ ├── BCT-JOB-NAME (8)                                            │
-│ ├── BCT-PROCESS-DATE (8)                                        │
-│ └── BCT-SEQUENCE-NO (4)                                         │
-├─────────────────────────────────────────────────────────────────┤
-│ BCT-DATA                                                        │
-│ ├── BCT-STATUS (1)                                              │
-│ ├── BCT-PROCESS-CONTROL (32)                                    │
-│ ├── BCT-DEPENDENCIES (122)                                      │
-│ └── BCT-RETURN-INFO (84)                                        │
-├─────────────────────────────────────────────────────────────────┤
-│ BCT-STATISTICS (56)                                             │
-├─────────────────────────────────────────────────────────────────┤
-│ BCT-FILLER (50)                                                 │
-└─────────────────────────────────────────────────────────────────┘
++------------------+--------------------------------------------------+
+| BCT-KEY (20)     | BCT-DATA                                         |
++------------------+--------------------------------------------------+
+| Job  | Date |Seq | Status | Process Control | Dependencies | Return |
+| (8)  | (8)  |(4) |  (1)   |      (32)       |    (140)     |  (84)  |
++------------------+--------------------------------------------------+
+| BCT-STATISTICS (54)        | BCT-FILLER (50)                        |
++------------------+--------------------------------------------------+
 ```
 
-## Data Structures
+## Data Structure
 
-### Record Key (BCT-KEY)
+### BATCH-CONTROL-RECORD (01 Level)
 
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 05 | BCT-KEY | - | Composite primary key |
-| 10 | BCT-JOB-NAME | X(8) | Job name identifier |
-| 10 | BCT-PROCESS-DATE | X(8) | Processing date (YYYYMMDD) |
-| 10 | BCT-SEQUENCE-NO | 9(4) | Sequence number within job |
+| Level | Name | Picture | Bytes | Description |
+|-------|------|---------|-------|-------------|
+| 01 | BATCH-CONTROL-RECORD | | ~380 | Complete batch control record |
 
-The key uniquely identifies a job step execution for a specific processing date.
+### BCT-KEY (Composite Record Key)
 
-### Data Section (BCT-DATA)
+| Level | Name | Picture | Bytes | Description |
+|-------|------|---------|-------|-------------|
+| 05 | BCT-KEY | | 20 | Composite primary key |
+| 10 | BCT-JOB-NAME | X(8) | 8 | Job name identifier |
+| 10 | BCT-PROCESS-DATE | X(8) | 8 | Processing date (YYYYMMDD) |
+| 10 | BCT-SEQUENCE-NO | 9(4) | 4 | Sequence number for ordering |
 
-#### Status Field
+### BCT-DATA (Main Data Area)
 
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 10 | BCT-STATUS | X(1) | Current job status |
+| Level | Name | Picture | Bytes | Description |
+|-------|------|---------|-------|-------------|
+| 05 | BCT-DATA | | ~257 | Main data area |
 
-##### Status Values
+#### BCT-STATUS
 
-| Value | 88-Level Name | Meaning |
-|-------|---------------|---------|
-| `'R'` | BCT-STATUS-READY | Ready to execute |
-| `'A'` | BCT-STATUS-ACTIVE | Currently executing |
-| `'W'` | BCT-STATUS-WAITING | Waiting for prerequisites |
-| `'D'` | BCT-STATUS-DONE | Completed successfully |
-| `'E'` | BCT-STATUS-ERROR | Completed with error |
+| Level | Name | Picture | Bytes | Description |
+|-------|------|---------|-------|-------------|
+| 10 | BCT-STATUS | X(1) | 1 | Current job status |
 
-#### Process Control
+**Status Values (88-level conditions):**
 
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 10 | BCT-PROCESS-CONTROL | - | Process control information |
-| 15 | BCT-STEP-NAME | X(8) | JCL step name |
-| 15 | BCT-PROGRAM-NAME | X(8) | Program being executed |
-| 15 | BCT-START-TIME | X(8) | Execution start time (HHMMSSCC) |
-| 15 | BCT-END-TIME | X(8) | Execution end time (HHMMSSCC) |
+| Value | Condition Name | Description |
+|-------|----------------|-------------|
+| `R` | BCT-STATUS-READY | Job is ready to run |
+| `A` | BCT-STATUS-ACTIVE | Job is currently executing |
+| `W` | BCT-STATUS-WAITING | Job is waiting for prerequisites |
+| `D` | BCT-STATUS-DONE | Job completed successfully |
+| `E` | BCT-STATUS-ERROR | Job ended in error |
 
-#### Dependencies
+#### BCT-PROCESS-CONTROL
 
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 10 | BCT-DEPENDENCIES | - | Prerequisite job information |
-| 15 | BCT-PREREQ-COUNT | 9(2) COMP | Number of prerequisites (0-10) |
-| 15 | BCT-PREREQ-JOBS | OCCURS 10 | Array of prerequisite jobs |
-| 20 | BCT-PREREQ-NAME | X(8) | Prerequisite job name |
-| 20 | BCT-PREREQ-SEQ | 9(4) | Prerequisite sequence number |
-| 20 | BCT-PREREQ-RC | S9(4) COMP | Required return code threshold |
+| Level | Name | Picture | Bytes | Description |
+|-------|------|---------|-------|-------------|
+| 10 | BCT-PROCESS-CONTROL | | 32 | Process control information |
+| 15 | BCT-STEP-NAME | X(8) | 8 | Current JCL step name |
+| 15 | BCT-PROGRAM-NAME | X(8) | 8 | Executing program name |
+| 15 | BCT-START-TIME | X(8) | 8 | Execution start time (HHMMSSTH) |
+| 15 | BCT-END-TIME | X(8) | 8 | Execution end time (HHMMSSTH) |
 
-The dependency array allows up to 10 prerequisite jobs to be defined. A job step will wait (BCT-STATUS-WAITING) until all prerequisites have completed with return codes at or below their specified thresholds.
+#### BCT-DEPENDENCIES
 
-#### Return Information
+| Level | Name | Picture | Bytes | Description |
+|-------|------|---------|-------|-------------|
+| 10 | BCT-DEPENDENCIES | | 140 | Prerequisite job information |
+| 15 | BCT-PREREQ-COUNT | 9(2) COMP | 2 | Number of prerequisites (0-10) |
+| 15 | BCT-PREREQ-JOBS | OCCURS 10 | 138 | Array of prerequisite jobs |
 
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 10 | BCT-RETURN-INFO | - | Completion information |
-| 15 | BCT-RETURN-CODE | S9(4) COMP | Job step return code |
-| 15 | BCT-ERROR-DESC | X(80) | Error description (if any) |
+**BCT-PREREQ-JOBS Array Element:**
 
-### Statistics Section (BCT-STATISTICS)
+| Level | Name | Picture | Bytes | Description |
+|-------|------|---------|-------|-------------|
+| 20 | BCT-PREREQ-NAME | X(8) | 8 | Prerequisite job name |
+| 20 | BCT-PREREQ-SEQ | 9(4) | 4 | Prerequisite sequence number |
+| 20 | BCT-PREREQ-RC | S9(4) COMP | 2 | Required return code threshold |
 
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 05 | BCT-STATISTICS | - | Execution statistics |
-| 10 | BCT-RESTART-COUNT | 9(2) COMP | Number of restart attempts |
-| 10 | BCT-ATTEMPT-TS | X(26) | Last attempt timestamp |
-| 10 | BCT-COMPLETE-TS | X(26) | Completion timestamp |
+#### BCT-RETURN-INFO
 
-### Filler
+| Level | Name | Picture | Bytes | Description |
+|-------|------|---------|-------|-------------|
+| 10 | BCT-RETURN-INFO | | 84 | Return code and error information |
+| 15 | BCT-RETURN-CODE | S9(4) COMP | 2 | Final return code |
+| 15 | BCT-ERROR-DESC | X(80) | 80 | Error description text |
 
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 05 | BCT-FILLER | X(50) | Reserved for future use |
+### BCT-STATISTICS
 
-## Status Flow
+| Level | Name | Picture | Bytes | Description |
+|-------|------|---------|-------|-------------|
+| 05 | BCT-STATISTICS | | 54 | Execution statistics |
+| 10 | BCT-RESTART-COUNT | 9(2) COMP | 2 | Number of restart attempts |
+| 10 | BCT-ATTEMPT-TS | X(26) | 26 | Last attempt timestamp |
+| 10 | BCT-COMPLETE-TS | X(26) | 26 | Completion timestamp |
+
+### BCT-FILLER
+
+| Level | Name | Picture | Bytes | Description |
+|-------|------|---------|-------|-------------|
+| 05 | BCT-FILLER | X(50) | 50 | Reserved for future use |
+
+## Status Flow Diagram
 
 ```mermaid
 stateDiagram-v2
-    [*] --> READY: Job scheduled
-    READY --> WAITING: Prerequisites not met
-    READY --> ACTIVE: All prerequisites met
-    WAITING --> READY: Check prerequisites
-    ACTIVE --> DONE: Successful completion
-    ACTIVE --> ERROR: Execution failed
-    ERROR --> READY: Restart requested
+    [*] --> READY: Job Scheduled
+    READY --> WAITING: Prerequisites Not Met
+    READY --> ACTIVE: Start Execution
+    WAITING --> READY: Prerequisites Satisfied
+    ACTIVE --> DONE: Successful Completion
+    ACTIVE --> ERROR: Execution Failed
+    ERROR --> READY: Recovery/Restart
     DONE --> [*]
 ```
 
-## Usage Pattern
+## Dependency Management
 
-### Typical Processing Flow
+The BCT-DEPENDENCIES structure allows each job to define up to 10 prerequisite jobs that must complete before the current job can run.
 
-1. **Job Scheduling**: Scheduler creates BCT record with READY status
-2. **Prerequisite Check**: Job step checks BCT-PREREQ-JOBS array
-3. **Execution**: Program runs, using CKPRST for internal checkpointing
-4. **Completion**: Job updates BCT status and return information
+```mermaid
+flowchart TD
+    A[Job A<br/>Seq: 0001] --> D[Job D<br/>Seq: 0004]
+    B[Job B<br/>Seq: 0002] --> D
+    C[Job C<br/>Seq: 0003] --> D
+    D --> E[Job E<br/>Seq: 0005]
+    
+    style A fill:#90EE90
+    style B fill:#90EE90
+    style C fill:#90EE90
+    style D fill:#FFD700
+    style E fill:#ADD8E6
+```
 
-### Example Code
+### Prerequisite Checking Logic
 
 ```cobol
-WORKING-STORAGE SECTION.
-    COPY BCHCTL.
+* Check if all prerequisites are satisfied
+PERFORM VARYING WS-IDX FROM 1 BY 1
+    UNTIL WS-IDX > BCT-PREREQ-COUNT
     
-01  WS-PREREQ-INDEX    PIC 9(2) COMP.
-01  WS-PREREQS-MET     PIC X VALUE 'Y'.
-    88 ALL-PREREQS-MET         VALUE 'Y'.
-    88 PREREQS-NOT-MET         VALUE 'N'.
-
-PROCEDURE DIVISION.
-    ...
-    * Check all prerequisites
-    MOVE 'Y' TO WS-PREREQS-MET
-    PERFORM VARYING WS-PREREQ-INDEX FROM 1 BY 1
-            UNTIL WS-PREREQ-INDEX > BCT-PREREQ-COUNT
-               OR PREREQS-NOT-MET
-        PERFORM CHECK-SINGLE-PREREQ
-    END-PERFORM
+    MOVE BCT-PREREQ-NAME(WS-IDX) TO BCT-JOB-NAME
+    READ BATCH-CONTROL-FILE
     
-    IF ALL-PREREQS-MET
-        SET BCT-STATUS-ACTIVE TO TRUE
-        PERFORM EXECUTE-JOB-STEP
-    ELSE
-        SET BCT-STATUS-WAITING TO TRUE
-    END-IF
-    ...
-    
-CHECK-SINGLE-PREREQ.
-    * Look up prerequisite job status
-    MOVE BCT-PREREQ-NAME(WS-PREREQ-INDEX) TO lookup-key
-    READ BATCH-CONTROL-FILE INTO WS-PREREQ-RECORD
-    
-    IF NOT BCT-STATUS-DONE OF WS-PREREQ-RECORD
+    IF NOT BCT-STATUS-DONE
+        OR BCT-RETURN-CODE > BCT-PREREQ-RC(WS-IDX)
         SET PREREQS-NOT-MET TO TRUE
-    ELSE
-        IF BCT-RETURN-CODE OF WS-PREREQ-RECORD >
-           BCT-PREREQ-RC(WS-PREREQ-INDEX)
-            SET PREREQS-NOT-MET TO TRUE
-        END-IF
-    END-IF.
+    END-IF
+END-PERFORM
 ```
 
-### Updating Job Status
+## Usage Patterns
+
+### Creating a Control Record
 
 ```cobol
-* Mark job as active
+INITIALIZE BATCH-CONTROL-RECORD
+
+MOVE 'MYJOB001' TO BCT-JOB-NAME
+MOVE '20240115' TO BCT-PROCESS-DATE
+MOVE 1          TO BCT-SEQUENCE-NO
+SET BCT-STATUS-READY TO TRUE
+
+MOVE 'STEP01'   TO BCT-STEP-NAME
+MOVE 'PROGNAME' TO BCT-PROGRAM-NAME
+MOVE ZEROS      TO BCT-PREREQ-COUNT
+MOVE ZEROS      TO BCT-RESTART-COUNT
+
+WRITE BATCH-CONTROL-RECORD
+```
+
+### Updating Status to Active
+
+```cobol
 SET BCT-STATUS-ACTIVE TO TRUE
-ACCEPT BCT-START-TIME FROM TIME
-REWRITE BATCH-CONTROL-RECORD
+ACCEPT WS-TIME FROM TIME
+MOVE WS-TIME TO BCT-START-TIME
+ADD 1 TO BCT-RESTART-COUNT
+MOVE FUNCTION CURRENT-DATE TO BCT-ATTEMPT-TS
 
-* ... execute job logic ...
-
-* Mark job as complete
-SET BCT-STATUS-DONE TO TRUE
-ACCEPT BCT-END-TIME FROM TIME
-ACCEPT BCT-COMPLETE-TS FROM TIME STAMP
-MOVE WS-RETURN-CODE TO BCT-RETURN-CODE
 REWRITE BATCH-CONTROL-RECORD
 ```
 
-## Relationship with CKPRST
+### Recording Completion
 
-| Aspect | BCHCTL | CKPRST |
-|--------|--------|--------|
-| **Scope** | Job/step level | Program level |
-| **Purpose** | Job sequencing & dependencies | Checkpoint/restart within program |
-| **Status Tracking** | Job execution status | Processing position & counters |
-| **Dependencies** | Inter-job prerequisites | N/A |
-| **Restart** | Job-level restart count | Record-level restart position |
+```cobol
+SET BCT-STATUS-DONE TO TRUE
+ACCEPT WS-TIME FROM TIME
+MOVE WS-TIME TO BCT-END-TIME
+MOVE FUNCTION CURRENT-DATE TO BCT-COMPLETE-TS
+MOVE WS-RETURN-CODE TO BCT-RETURN-CODE
 
-Programs typically use both copybooks:
-- BCHCTL for job-level coordination
-- CKPRST for program-level recovery
+REWRITE BATCH-CONTROL-RECORD
+```
+
+### Adding Prerequisites
+
+```cobol
+MOVE 2 TO BCT-PREREQ-COUNT
+
+MOVE 'PREJOB01' TO BCT-PREREQ-NAME(1)
+MOVE 1          TO BCT-PREREQ-SEQ(1)
+MOVE 4          TO BCT-PREREQ-RC(1)
+
+MOVE 'PREJOB02' TO BCT-PREREQ-NAME(2)
+MOVE 2          TO BCT-PREREQ-SEQ(2)
+MOVE 0          TO BCT-PREREQ-RC(2)
+```
+
+## File Definition Example
+
+```cobol
+INPUT-OUTPUT SECTION.
+FILE-CONTROL.
+    SELECT BATCH-CONTROL-FILE
+        ASSIGN TO BCHCTL
+        ORGANIZATION IS INDEXED
+        ACCESS MODE IS DYNAMIC
+        RECORD KEY IS BCT-KEY
+        FILE STATUS IS WS-BCT-STATUS.
+
+DATA DIVISION.
+FILE SECTION.
+FD  BATCH-CONTROL-FILE.
+    COPY BCHCTL.
+```
 
 ## Programs Using This Copybook
 
-| Program | Purpose |
-|---------|---------|
-| BCHCTL00 | Batch control management |
-| HISTLD00 | History loading with batch control |
-| PRCSEQ00 | Process sequencing |
-| RCVPRC00 | Recovery processing |
-| RPTSTA00 | Status reporting |
+| Program | Description | Usage |
+|---------|-------------|-------|
+| BCHCTL00 | Batch Control Processor | Primary handler for batch control operations |
+| HISTLD00 | History Data Loader | Uses batch control for job coordination |
+| PRCSEQ00 | Process Sequencing | Manages process execution order |
+| RCVPRC00 | Recovery Processing | Handles recovery and restart operations |
+| RPTSTA00 | Status Reporting | Reports on batch job status |
 
-## File Organization
+## Related Copybooks
 
-The batch control file is typically organized as:
-
-| Property | Recommended Value |
-|----------|-------------------|
-| Organization | INDEXED (VSAM KSDS) |
-| Record Key | BCT-KEY |
-| Access Mode | DYNAMIC |
-| Record Length | ~365 bytes |
+| Copybook | Relationship |
+|----------|-------------|
+| BCHCON | Batch control constants (status values, return codes) |
+| CKPRST | Program-level checkpoint/restart (complements BCHCTL) |
+| PRCSEQ | Process sequence definitions |
 
 ## Technical Notes
 
-### COBOL Constructs Used
+1. **Composite Key**: The 20-byte key (BCT-JOB-NAME + BCT-PROCESS-DATE + BCT-SEQUENCE-NO) allows multiple runs of the same job on different dates and supports multiple sequences within a single date.
 
-- **OCCURS Clause**: BCT-PREREQ-JOBS OCCURS 10 TIMES creates an array for storing up to 10 prerequisite job definitions.
+2. **COMP Fields**: BCT-PREREQ-COUNT, BCT-PREREQ-RC, BCT-RETURN-CODE, and BCT-RESTART-COUNT use binary (COMP) format for efficient numeric processing.
 
-- **COMP Fields**: BCT-PREREQ-COUNT, BCT-PREREQ-RC, BCT-RETURN-CODE, and BCT-RESTART-COUNT use COMP (binary) format for efficient numeric storage.
+3. **OCCURS 10 TIMES**: The BCT-PREREQ-JOBS array supports up to 10 prerequisites. For jobs requiring more dependencies, consider using a separate dependency table.
 
-- **88-Level Conditions**: Status values use 88-level condition names for readable status testing (e.g., `IF BCT-STATUS-READY`).
+4. **Timestamp Format**: BCT-ATTEMPT-TS and BCT-COMPLETE-TS use 26-character timestamps compatible with COBOL `FUNCTION CURRENT-DATE` output (YYYYMMDDHHMMSSNNNNNN format).
 
-### Timestamp Formats
+5. **Time Format**: BCT-START-TIME and BCT-END-TIME use 8-character time format (HHMMSSTH) where TH represents hundredths of seconds.
 
-| Field | Format | Example |
-|-------|--------|---------|
-| BCT-PROCESS-DATE | YYYYMMDD | 20240320 |
-| BCT-START-TIME | HHMMSSCC | 14352500 |
-| BCT-END-TIME | HHMMSSCC | 14383042 |
-| BCT-ATTEMPT-TS | ISO timestamp | 2024-03-20-14.35.25.000000 |
-| BCT-COMPLETE-TS | ISO timestamp | 2024-03-20-14.38.30.420000 |
+6. **BCT-FILLER**: The 50-byte filler allows for future field additions without changing the record length or requiring file conversion.
 
-### Record Size Calculation
+7. **Status Transitions**: Status changes should follow the state diagram. Direct transitions from READY to DONE or ERROR to DONE should be avoided to maintain audit integrity.
 
-| Section | Size (bytes) |
-|---------|--------------|
-| BCT-KEY | 20 |
-| BCT-STATUS | 1 |
-| BCT-PROCESS-CONTROL | 32 |
-| BCT-DEPENDENCIES | ~122 |
-| BCT-RETURN-INFO | ~84 |
-| BCT-STATISTICS | ~56 |
-| BCT-FILLER | 50 |
-| **Total** | ~365 |
-
-Note: Exact size depends on COMP field sizes which vary by platform.
+8. **Restart Count**: BCT-RESTART-COUNT tracks how many times a job has been attempted. This can be used with BCT-MAX-RESTARTS (from BCHCON) to prevent infinite restart loops.

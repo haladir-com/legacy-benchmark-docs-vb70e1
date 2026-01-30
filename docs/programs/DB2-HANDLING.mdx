@@ -1,288 +1,312 @@
 ---
-title: "DB2-HANDLING"
-description: "DB2 Database Interaction Template - demonstrates standard patterns for INSERT, SELECT, UPDATE, DELETE, and cursor operations with proper error handling"
+title: "DB2-HANDLING (DB2HNDL)"
+description: "DB2 Database Handling Template - Reference implementation demonstrating DB2 operations including INSERT, SELECT, UPDATE, DELETE, and cursor processing"
 ---
+
+import Admonition from '@theme/Admonition';
+
+<Admonition type="info" title="Template Program">
+This is a template/reference program located in `/src/templates/database/`. It demonstrates DB2 database interaction patterns and is intended to be used as a coding reference rather than executed directly in production.
+</Admonition>
 
 ## Overview
 
-DB2-HANDLING (program ID: DB2HNDL) is a template program that demonstrates standard patterns for DB2 database interactions in COBOL. It serves as a reference implementation and starting point for developers building DB2-enabled applications.
+DB2HNDL (DB2-HANDLING) is a template program that provides comprehensive examples of DB2 database operations in COBOL. It serves as a reference implementation for developers working with DB2 in the Investment Portfolio Management System, demonstrating best practices for:
 
-The template covers all fundamental DB2 operations:
-- **Connection Management** - Connecting to and disconnecting from DB2
-- **INSERT** - Adding new rows to a table
-- **SELECT** - Retrieving single rows with INTO clause
-- **Cursor Processing** - Iterating through multiple rows
-- **UPDATE** - Modifying existing rows
-- **DELETE** - Removing rows from a table
-- **Error Handling** - Checking SQLCODE and handling errors
-- **Transaction Control** - COMMIT and ROLLBACK operations
+- Connecting to and disconnecting from DB2
+- INSERT operations with host variables and null indicators
+- SELECT operations with single-row retrieval
+- Cursor-based processing for multi-row result sets
+- UPDATE operations with timestamp tracking
+- DELETE operations
+- SQL error checking and handling
+- Transaction management with COMMIT and ROLLBACK
 
-This template is located in the `/src/templates/database/` directory, indicating its purpose as a reusable code pattern rather than a production program.
+This template uses a PORTFOLIO table as an example, but the patterns shown are applicable to any DB2 table interaction.
 
 ## Program Structure
 
 ```mermaid
 graph TD
-    A[0000-MAIN] --> B[1000-INITIALIZE]
-    A --> C[2000-PROCESS]
-    A --> D[3000-TERMINATE]
+    subgraph "0000-MAIN"
+        MAIN[0000-MAIN] --> INIT[1000-INITIALIZE]
+        INIT --> PROC[2000-PROCESS]
+        PROC --> TERM[3000-TERMINATE]
+        TERM --> GOBACK[GOBACK]
+    end
     
-    B --> B1[Initialize Host Variables]
-    B --> B2[EXEC SQL CONNECT]
-    B --> B3[9000-CHECK-SQL-STATUS]
+    subgraph "1000-INITIALIZE"
+        INIT --> INITWS[Initialize Host Variables]
+        INITWS --> CONN[EXEC SQL CONNECT]
+        CONN --> CHK1[9000-CHECK-SQL-STATUS]
+    end
     
-    C --> C1[2100-INSERT-EXAMPLE]
-    C --> C2[2200-SELECT-EXAMPLE]
-    C --> C3[2300-CURSOR-EXAMPLE]
-    C --> C4[2400-UPDATE-EXAMPLE]
-    C --> C5[2500-DELETE-EXAMPLE]
+    subgraph "2000-PROCESS - DB2 Operations"
+        PROC --> INS[2100-INSERT-EXAMPLE]
+        INS --> SEL[2200-SELECT-EXAMPLE]
+        SEL --> CUR[2300-CURSOR-EXAMPLE]
+        CUR --> UPD[2400-UPDATE-EXAMPLE]
+        UPD --> DEL[2500-DELETE-EXAMPLE]
+    end
     
-    C1 --> B3
-    C2 --> B3
-    C4 --> B3
-    C5 --> B3
+    subgraph "2300-CURSOR-EXAMPLE"
+        CUR --> DECL[DECLARE CURSOR]
+        DECL --> OPEN[OPEN CURSOR]
+        OPEN --> FETCH{FETCH Loop<br/>UNTIL SQLCODE=100}
+        FETCH --> PROCROW[2310-PROCESS-CURSOR-ROW]
+        PROCROW --> FETCH
+        FETCH --> |EOF| CLOSE[CLOSE CURSOR]
+    end
     
-    C3 --> C3A[DECLARE CURSOR]
-    C3A --> C3B[OPEN CURSOR]
-    C3B --> C3C[FETCH Loop]
-    C3C --> C3D[2310-PROCESS-CURSOR-ROW]
-    C3C --> C3E[CLOSE CURSOR]
+    subgraph "Error Handling"
+        CHK1 --> |SQLCODE < 0| ROLL[9100-ROLLBACK]
+        ROLL --> TERM
+    end
     
-    D --> D1[EXEC SQL COMMIT]
-    D --> D2[EXEC SQL CONNECT RESET]
-    
-    B3 --> E{SQLCODE < 0?}
-    E -->|Yes| F[9100-ROLLBACK]
-    F --> D
-    E -->|No| G[Continue]
+    subgraph "3000-TERMINATE"
+        TERM --> COMMIT[EXEC SQL COMMIT]
+        COMMIT --> RESET[EXEC SQL CONNECT RESET]
+    end
 ```
 
 ## Data Structures
 
 ### SQL Communication Area (SQLCA)
 
-The SQLCA is included via `EXEC SQL INCLUDE SQLCA` and contains:
+The SQLCA is included via `EXEC SQL INCLUDE SQLCA` and provides:
 
 | Field | Description |
 |-------|-------------|
 | SQLCODE | Return code from SQL operations |
-| SQLERRMC | Error message tokens |
-| SQLERRD | Diagnostic information array |
-| SQLWARN | Warning flags |
-| SQLSTATE | SQL state code (5 characters) |
-
-### Table Declaration
-
-The template declares a PORTFOLIO table structure:
-
-```sql
-DECLARE PORTFOLIO TABLE
-( PORTFOLIO_ID        CHAR(10)      NOT NULL,
-  PORTFOLIO_NAME      VARCHAR(50)   NOT NULL,
-  CREATION_DATE       DATE          NOT NULL,
-  LAST_UPDATE_TS      TIMESTAMP     NOT NULL,
-  TOTAL_VALUE         DECIMAL(15,2) NOT NULL,
-  STATUS              CHAR(1)       NOT NULL
-)
-```
+| SQLERRMC | Error message text |
+| SQLSTATE | 5-character SQL state code |
+| SQLERRD | Array of diagnostic information |
 
 ### Host Variables (HV-PORTFOLIO)
 
-Host variables are COBOL fields used in SQL statements, prefixed with colons:
+Host variables are COBOL data items used to exchange data with DB2:
 
 | Level | Name | Picture | DB2 Column | Description |
 |-------|------|---------|------------|-------------|
 | 01 | HV-PORTFOLIO | - | - | Host variable group |
 | 05 | HV-PORTFOLIO-ID | X(10) | PORTFOLIO_ID | Portfolio identifier |
 | 05 | HV-PORTFOLIO-NAME | X(50) | PORTFOLIO_NAME | Portfolio name |
-| 05 | HV-CREATION-DATE | X(10) | CREATION_DATE | Creation date (YYYY-MM-DD) |
-| 05 | HV-LAST-UPDATE-TS | X(26) | LAST_UPDATE_TS | Timestamp (YYYY-MM-DD-HH.MM.SS.FFFFFF) |
-| 05 | HV-TOTAL-VALUE | S9(13)V99 COMP-3 | TOTAL_VALUE | Total value (packed decimal) |
-| 05 | HV-STATUS | X(1) | STATUS | Status code |
+| 05 | HV-CREATION-DATE | X(10) | CREATION_DATE | Creation date |
+| 05 | HV-LAST-UPDATE-TS | X(26) | LAST_UPDATE_TS | Last update timestamp |
+| 05 | HV-TOTAL-VALUE | S9(13)V99 COMP-3 | TOTAL_VALUE | Total portfolio value |
+| 05 | HV-STATUS | X(01) | STATUS | Portfolio status |
 
 ### Null Indicators (HV-NULL-INDS)
 
-Null indicators track whether corresponding host variables contain NULL values:
+Null indicators track whether DB2 columns contain NULL values:
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
 | 01 | HV-NULL-INDS | - | Null indicator group |
-| 05 | NI-PORTFOLIO-ID | S9(4) COMP | -1 if NULL, 0 otherwise |
-| 05 | NI-PORTFOLIO-NAME | S9(4) COMP | -1 if NULL, 0 otherwise |
-| 05 | NI-CREATION-DATE | S9(4) COMP | -1 if NULL, 0 otherwise |
-| 05 | NI-LAST-UPDATE-TS | S9(4) COMP | -1 if NULL, 0 otherwise |
-| 05 | NI-TOTAL-VALUE | S9(4) COMP | -1 if NULL, 0 otherwise |
-| 05 | NI-STATUS | S9(4) COMP | -1 if NULL, 0 otherwise |
+| 05 | NI-PORTFOLIO-ID | S9(4) COMP | Null indicator for ID |
+| 05 | NI-PORTFOLIO-NAME | S9(4) COMP | Null indicator for name |
+| 05 | NI-CREATION-DATE | S9(4) COMP | Null indicator for creation date |
+| 05 | NI-LAST-UPDATE-TS | S9(4) COMP | Null indicator for timestamp |
+| 05 | NI-TOTAL-VALUE | S9(4) COMP | Null indicator for value |
+| 05 | NI-STATUS | S9(4) COMP | Null indicator for status |
 
-### Error Message Structure (WS-DB2-ERROR-MSG)
+**Null Indicator Values:**
+- `< 0`: Column value is NULL
+- `= 0`: Column value is NOT NULL
+- `> 0`: Column was truncated (for character data)
 
-| Level | Name | Picture | Value | Description |
-|-------|------|---------|-------|-------------|
-| 01 | WS-DB2-ERROR-MSG | - | - | Formatted error message |
-| 05 | FILLER | X(20) | 'DB2 ERROR - SQLCODE: ' | Label |
-| 05 | WS-SQLCODE-DISP | -999 | - | Edited SQLCODE |
-| 05 | FILLER | X(20) | ', SQLERRM: ' | Label |
-| 05 | WS-SQLERRM | X(70) | - | Error message text |
+### Error Message Area (WS-DB2-ERROR-MSG)
 
-## File I/O
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 01 | WS-DB2-ERROR-MSG | - | Error message group |
+| 05 | FILLER | X(20) | 'DB2 ERROR - SQLCODE: ' |
+| 05 | WS-SQLCODE-DISP | -999 | Formatted SQLCODE |
+| 05 | FILLER | X(20) | ', SQLERRM: ' |
+| 05 | WS-SQLERRM | X(70) | Error message text |
 
-This program does not use file I/O. All data access is through DB2 SQL statements.
+## Table Declaration
 
-## Control Flow
+The template declares the PORTFOLIO table structure for documentation purposes:
 
-### Initialization (1000-INITIALIZE)
+```sql
+EXEC SQL DECLARE PORTFOLIO TABLE
+( PORTFOLIO_ID        CHAR(10)      NOT NULL,
+  PORTFOLIO_NAME      VARCHAR(50)   NOT NULL,
+  CREATION_DATE       DATE          NOT NULL,
+  LAST_UPDATE_TS      TIMESTAMP     NOT NULL,
+  TOTAL_VALUE         DECIMAL(15,2) NOT NULL,
+  STATUS              CHAR(1)       NOT NULL
+) END-EXEC
+```
 
-1. **Initialize Variables**
-   ```cobol
-   INITIALIZE HV-PORTFOLIO
-              HV-NULL-INDS
-   ```
-   Clears host variables and null indicators.
+## DB2 Operations
 
-2. **Connect to DB2**
-   ```sql
-   EXEC SQL
-       CONNECT TO sample
-   END-EXEC
-   ```
-   Establishes connection to the 'sample' database.
+### Connection Management
 
-3. **Check Status**
-   Calls 9000-CHECK-SQL-STATUS to verify connection succeeded.
+#### Connect to DB2 (1000-INITIALIZE)
+
+```cobol
+EXEC SQL
+    CONNECT TO sample
+END-EXEC
+```
+
+#### Disconnect from DB2 (3000-TERMINATE)
+
+```cobol
+EXEC SQL
+    COMMIT WORK
+END-EXEC
+
+EXEC SQL
+    CONNECT RESET
+END-EXEC
+```
 
 ### INSERT Operation (2100-INSERT-EXAMPLE)
 
-Demonstrates inserting a new row:
+Demonstrates inserting a new row with host variables:
 
-```sql
-INSERT INTO PORTFOLIO
-(PORTFOLIO_ID, PORTFOLIO_NAME, 
- CREATION_DATE, LAST_UPDATE_TS,
- TOTAL_VALUE, STATUS)
-VALUES
-(:HV-PORTFOLIO-ID   :NI-PORTFOLIO-ID,
- :HV-PORTFOLIO-NAME :NI-PORTFOLIO-NAME,
- CURRENT DATE,
- CURRENT TIMESTAMP,
- 0,
- 'A')
+```cobol
+EXEC SQL
+    INSERT INTO PORTFOLIO
+    (PORTFOLIO_ID, PORTFOLIO_NAME, 
+     CREATION_DATE, LAST_UPDATE_TS,
+     TOTAL_VALUE, STATUS)
+    VALUES
+    (:HV-PORTFOLIO-ID   :NI-PORTFOLIO-ID,
+     :HV-PORTFOLIO-NAME :NI-PORTFOLIO-NAME,
+     CURRENT DATE,
+     CURRENT TIMESTAMP,
+     0,
+     'A')
+END-EXEC
 ```
 
-**Key patterns:**
-- Host variables prefixed with colon (`:HV-PORTFOLIO-ID`)
-- Null indicator follows host variable (`:NI-PORTFOLIO-ID`)
-- DB2 special registers (`CURRENT DATE`, `CURRENT TIMESTAMP`)
-- Literal values for defaults
+**Key Points:**
+- Host variables prefixed with `:` in SQL
+- Null indicators follow host variables (`:HV-VAR :NI-VAR`)
+- DB2 functions like `CURRENT DATE` and `CURRENT TIMESTAMP` used for system values
 
 ### SELECT Operation (2200-SELECT-EXAMPLE)
 
-Demonstrates retrieving a single row:
+Demonstrates single-row retrieval:
 
-```sql
-SELECT PORTFOLIO_ID,
-       PORTFOLIO_NAME,
-       CREATION_DATE,
-       LAST_UPDATE_TS,
-       TOTAL_VALUE,
-       STATUS
-INTO  :HV-PORTFOLIO-ID   :NI-PORTFOLIO-ID,
-      :HV-PORTFOLIO-NAME :NI-PORTFOLIO-NAME,
-      :HV-CREATION-DATE  :NI-CREATION-DATE,
-      :HV-LAST-UPDATE-TS :NI-LAST-UPDATE-TS,
-      :HV-TOTAL-VALUE    :NI-TOTAL-VALUE,
-      :HV-STATUS         :NI-STATUS
-FROM  PORTFOLIO
-WHERE PORTFOLIO_ID = :HV-PORTFOLIO-ID
+```cobol
+EXEC SQL
+    SELECT PORTFOLIO_ID,
+           PORTFOLIO_NAME,
+           CREATION_DATE,
+           LAST_UPDATE_TS,
+           TOTAL_VALUE,
+           STATUS
+    INTO  :HV-PORTFOLIO-ID   :NI-PORTFOLIO-ID,
+          :HV-PORTFOLIO-NAME :NI-PORTFOLIO-NAME,
+          :HV-CREATION-DATE  :NI-CREATION-DATE,
+          :HV-LAST-UPDATE-TS :NI-LAST-UPDATE-TS,
+          :HV-TOTAL-VALUE    :NI-TOTAL-VALUE,
+          :HV-STATUS         :NI-STATUS
+    FROM  PORTFOLIO
+    WHERE PORTFOLIO_ID = :HV-PORTFOLIO-ID
+END-EXEC
 ```
 
-**Key patterns:**
-- INTO clause maps columns to host variables
-- Each host variable paired with null indicator
+**Key Points:**
+- `INTO` clause maps columns to host variables
+- Null indicators receive NULL status for each column
 - WHERE clause uses host variable for key lookup
 
 ### Cursor Processing (2300-CURSOR-EXAMPLE)
 
-Demonstrates iterating through multiple rows:
+Demonstrates multi-row processing with cursors:
 
-1. **Declare Cursor**
-   ```sql
-   DECLARE PORTFOLIO_CURSOR CURSOR FOR
-   SELECT PORTFOLIO_ID,
-          PORTFOLIO_NAME,
-          STATUS
-   FROM   PORTFOLIO
-   WHERE  STATUS = 'A'
-   FOR    FETCH ONLY
-   ```
-   - `FOR FETCH ONLY` optimizes for read-only access
+#### 1. Declare Cursor
 
-2. **Open Cursor**
-   ```sql
-   OPEN PORTFOLIO_CURSOR
-   ```
+```cobol
+EXEC SQL
+    DECLARE PORTFOLIO_CURSOR CURSOR FOR
+    SELECT PORTFOLIO_ID,
+           PORTFOLIO_NAME,
+           STATUS
+    FROM   PORTFOLIO
+    WHERE  STATUS = 'A'
+    FOR    FETCH ONLY
+END-EXEC
+```
 
-3. **Fetch Loop**
-   ```cobol
-   PERFORM UNTIL SQLCODE = +100
-       EXEC SQL
-           FETCH PORTFOLIO_CURSOR
-           INTO :HV-PORTFOLIO-ID   :NI-PORTFOLIO-ID,
-                :HV-PORTFOLIO-NAME :NI-PORTFOLIO-NAME,
-                :HV-STATUS         :NI-STATUS
-       END-EXEC
-       
-       IF SQLCODE = +0
-           PERFORM 2310-PROCESS-CURSOR-ROW
-       END-IF
-   END-PERFORM
-   ```
-   - SQLCODE +100 indicates end of data
-   - SQLCODE 0 indicates successful fetch
+#### 2. Open Cursor
 
-4. **Close Cursor**
-   ```sql
-   CLOSE PORTFOLIO_CURSOR
-   ```
+```cobol
+EXEC SQL
+    OPEN PORTFOLIO_CURSOR
+END-EXEC
+```
+
+#### 3. Fetch Loop
+
+```cobol
+PERFORM UNTIL SQLCODE = +100
+    EXEC SQL
+        FETCH PORTFOLIO_CURSOR
+        INTO :HV-PORTFOLIO-ID   :NI-PORTFOLIO-ID,
+             :HV-PORTFOLIO-NAME :NI-PORTFOLIO-NAME,
+             :HV-STATUS         :NI-STATUS
+    END-EXEC
+    
+    IF SQLCODE = +0
+        PERFORM 2310-PROCESS-CURSOR-ROW
+    END-IF
+END-PERFORM
+```
+
+#### 4. Close Cursor
+
+```cobol
+EXEC SQL
+    CLOSE PORTFOLIO_CURSOR
+END-EXEC
+```
+
+**Key Points:**
+- `FOR FETCH ONLY` optimizes read-only cursors
+- SQLCODE +100 indicates end of result set
+- Always close cursors to release resources
 
 ### UPDATE Operation (2400-UPDATE-EXAMPLE)
 
-Demonstrates modifying existing rows:
+Demonstrates updating existing rows:
 
-```sql
-UPDATE PORTFOLIO
-SET    STATUS = 'I',
-       LAST_UPDATE_TS = CURRENT TIMESTAMP
-WHERE  PORTFOLIO_ID = :HV-PORTFOLIO-ID
+```cobol
+EXEC SQL
+    UPDATE PORTFOLIO
+    SET    STATUS = 'I',
+           LAST_UPDATE_TS = CURRENT TIMESTAMP
+    WHERE  PORTFOLIO_ID = :HV-PORTFOLIO-ID
+END-EXEC
 ```
 
-**Key patterns:**
-- SET clause with literal and special register
-- WHERE clause identifies target row
+**Key Points:**
+- SET clause specifies columns to update
+- `CURRENT TIMESTAMP` maintains audit trail
+- WHERE clause identifies target row(s)
 
 ### DELETE Operation (2500-DELETE-EXAMPLE)
 
-Demonstrates removing rows:
+Demonstrates deleting rows:
 
-```sql
-DELETE FROM PORTFOLIO
-WHERE  PORTFOLIO_ID = :HV-PORTFOLIO-ID
+```cobol
+EXEC SQL
+    DELETE FROM PORTFOLIO
+    WHERE  PORTFOLIO_ID = :HV-PORTFOLIO-ID
+END-EXEC
 ```
 
-### Termination (3000-TERMINATE)
+## Error Handling
 
-1. **Commit Changes**
-   ```sql
-   COMMIT WORK
-   ```
-   Makes all changes permanent.
+### SQL Status Check (9000-CHECK-SQL-STATUS)
 
-2. **Disconnect**
-   ```sql
-   CONNECT RESET
-   ```
-   Releases the database connection.
-
-### Error Handling (9000-CHECK-SQL-STATUS)
+Centralized error checking after each SQL operation:
 
 ```cobol
 IF SQLCODE NOT = 0
@@ -299,134 +323,174 @@ END-IF
 ```
 
 **Logic:**
-- Non-zero SQLCODE indicates warning or error
-- Display formatted error message
-- Negative SQLCODE indicates error (vs. positive warning)
-- On error: rollback, set RC=8, terminate
+- SQLCODE = 0: Success
+- SQLCODE > 0: Warning (e.g., +100 = not found)
+- SQLCODE < 0: Error - triggers rollback and termination
 
 ### Rollback (9100-ROLLBACK)
 
-```sql
-ROLLBACK WORK
+Undoes all changes since last commit:
+
+```cobol
+EXEC SQL
+    ROLLBACK WORK
+END-EXEC
 ```
 
-Reverses all uncommitted changes since last COMMIT.
+## SQLCODE Reference
+
+| SQLCODE | Meaning | Action |
+|---------|---------|--------|
+| 0 | Successful execution | Continue |
+| +100 | No rows found / End of cursor | Handle condition |
+| -803 | Duplicate key violation | Rollback |
+| -811 | Multiple rows returned (SELECT INTO) | Rollback |
+| -911 | Deadlock or timeout | Retry or rollback |
+| -913 | Unsuccessful execution due to deadlock | Retry or rollback |
+
+## Control Flow
+
+### Main Processing (0000-MAIN)
+
+```cobol
+PERFORM 1000-INITIALIZE
+PERFORM 2000-PROCESS
+PERFORM 3000-TERMINATE
+GOBACK
+```
+
+### Transaction Flow
+
+```mermaid
+sequenceDiagram
+    participant Pgm as COBOL Program
+    participant DB2 as DB2 Subsystem
+    
+    Pgm->>DB2: CONNECT TO sample
+    DB2-->>Pgm: Connection established
+    
+    loop For each operation
+        Pgm->>DB2: SQL Statement
+        DB2-->>Pgm: SQLCODE
+        alt SQLCODE < 0
+            Pgm->>DB2: ROLLBACK WORK
+            Pgm->>DB2: CONNECT RESET
+            Pgm-->>Pgm: GOBACK with RC=8
+        end
+    end
+    
+    Pgm->>DB2: COMMIT WORK
+    DB2-->>Pgm: Changes committed
+    Pgm->>DB2: CONNECT RESET
+    DB2-->>Pgm: Connection closed
+```
 
 ## Dependencies
 
-### Copybooks
+### DB2 Requirements
 
-This template does not use external copybooks. The SQLCA is included via:
-```cobol
-EXEC SQL INCLUDE SQLCA END-EXEC
-```
+| Resource | Description |
+|----------|-------------|
+| DB2 Subsystem | Target DB2 subsystem (e.g., 'sample') |
+| PORTFOLIO Table | Example table (or actual application table) |
+| DB2 Plan | Bound plan for the program |
+| DBRM | Database Request Module from precompile |
 
-### Called Programs
+### Related Components
 
-This program does not call external programs.
+| Component | Relationship | Description |
+|-----------|--------------|-------------|
+| DB2CONN | Related | Production connection manager |
+| DB2CMT | Related | Production commit controller |
+| DB2ERR | Related | Production error handler |
+| HISTLD00 | Consumer | Uses similar DB2 patterns for history loading |
+| SQLCA | Copybook | SQL Communication Area |
 
-### Related Programs
+## COBOL/DB2 Concepts
 
-Other DB2-related programs in the system:
-- **DB2CONN** - DB2 Connection Manager
-- **DB2CMT** - DB2 Commit Handler
-- **DB2ERR** - DB2 Error Handler
-- **DB2STAT** - DB2 Statistics Collector
+### Host Variables
 
-## SQL Statements Reference
+Host variables are COBOL data items that exchange data with DB2. They must be:
+- Declared in WORKING-STORAGE or LINKAGE SECTION
+- Compatible with DB2 data types
+- Prefixed with `:` when used in SQL statements
 
-| Statement | Paragraph | Purpose |
-|-----------|-----------|---------|
-| `INCLUDE SQLCA` | Working-Storage | Include SQL Communication Area |
-| `DECLARE TABLE` | Working-Storage | Document table structure |
-| `CONNECT TO` | 1000-INITIALIZE | Establish database connection |
-| `INSERT INTO` | 2100-INSERT-EXAMPLE | Add new row |
-| `SELECT INTO` | 2200-SELECT-EXAMPLE | Retrieve single row |
-| `DECLARE CURSOR` | 2300-CURSOR-EXAMPLE | Define cursor for multi-row access |
-| `OPEN CURSOR` | 2300-CURSOR-EXAMPLE | Activate cursor |
-| `FETCH` | 2300-CURSOR-EXAMPLE | Retrieve next row |
-| `CLOSE CURSOR` | 2300-CURSOR-EXAMPLE | Deactivate cursor |
-| `UPDATE` | 2400-UPDATE-EXAMPLE | Modify existing rows |
-| `DELETE FROM` | 2500-DELETE-EXAMPLE | Remove rows |
-| `COMMIT WORK` | 3000-TERMINATE | Make changes permanent |
-| `CONNECT RESET` | 3000-TERMINATE | Release connection |
-| `ROLLBACK WORK` | 9100-ROLLBACK | Reverse uncommitted changes |
+### Null Indicators
 
-## SQLCODE Values
+DB2 columns can contain NULL values. Null indicators:
+- Are S9(4) COMP (halfword binary)
+- Follow the host variable in SQL statements
+- Negative value means column is NULL
+- Zero means column has a value
 
-| Code | Meaning | Action |
-|------|---------|--------|
-| 0 | Success | Continue processing |
-| +100 | No data found / End of cursor | Normal for cursor loops |
-| -803 | Duplicate key | Handle as business error |
-| -811 | Multiple rows returned | SELECT INTO expects one row |
-| -904 | Resource unavailable | Retry or terminate |
-| -911 | Deadlock or timeout | Rollback and retry |
-| < 0 | Error | Rollback and terminate |
+### COMP-3 for DECIMAL
+
+DB2 DECIMAL columns map to COMP-3 (packed decimal) in COBOL:
+- DECIMAL(15,2) → PIC S9(13)V99 COMP-3
+- Preserves decimal precision
+- Efficient for arithmetic
+
+### Cursor Processing
+
+Cursors enable multi-row processing:
+1. **DECLARE**: Define the SELECT statement
+2. **OPEN**: Execute the query, position before first row
+3. **FETCH**: Retrieve one row at a time
+4. **CLOSE**: Release cursor resources
+
+### Transaction Control
+
+- **COMMIT**: Makes all changes permanent
+- **ROLLBACK**: Undoes all changes since last commit
+- DB2 uses implicit transaction boundaries
 
 ## Return Codes
 
-| Code | Meaning |
-|------|---------|
-| 0 | Successful completion |
-| 8 | DB2 error occurred |
-
-## Technical Notes
-
-### Host Variable Naming Convention
-Host variables are prefixed with `HV-` to distinguish them from regular COBOL variables. This is a common convention that helps identify DB2-related fields during code review.
-
-### Null Indicator Convention
-Null indicators are prefixed with `NI-` and correspond one-to-one with host variables. In SQL statements, they immediately follow the host variable:
-```sql
-:HV-PORTFOLIO-ID :NI-PORTFOLIO-ID
-```
-
-### COMP-3 for Decimal Values
-The `HV-TOTAL-VALUE` field uses `COMP-3` (packed decimal) which maps efficiently to DB2's `DECIMAL` type:
-- `S9(13)V99 COMP-3` ↔ `DECIMAL(15,2)`
-
-### Date/Time Formats
-- **DATE**: `YYYY-MM-DD` (10 characters)
-- **TIMESTAMP**: `YYYY-MM-DD-HH.MM.SS.FFFFFF` (26 characters)
-
-### FOR FETCH ONLY
-The cursor declaration includes `FOR FETCH ONLY` which:
-- Optimizes performance by indicating read-only intent
-- Prevents updates through the cursor
-- Allows DB2 to use more efficient locking
-
-### Cursor Lifecycle
-Always follow the cursor lifecycle:
-1. DECLARE (once, at compile time)
-2. OPEN (before fetching)
-3. FETCH (in a loop)
-4. CLOSE (when done)
-
-Failure to close cursors can cause resource leaks.
-
-## Compilation Requirements
-
-This program requires DB2 precompilation:
-
-```jcl
-//* DB2 Precompile and Bind
-//STEP1   EXEC DSNHCOB2,MEM=DB2HNDL
-//PC.DBRMLIB DD DSN=your.dbrm.library,DISP=SHR
-//PC.SYSLIB DD DSN=your.copylib,DISP=SHR
-//PC.SYSIN DD DSN=your.source(DB2HNDL),DISP=SHR
-```
-
-The resulting DBRM must be bound to a DB2 plan or package before execution.
+| Code | Meaning | Condition |
+|------|---------|-----------|
+| 0 | Success | All operations completed successfully |
+| 8 | Error | SQL error occurred (SQLCODE < 0) |
 
 ## Usage as Template
 
-To use this template for a new program:
+To use this template for a new DB2 program:
 
-1. Copy the file to your source directory
-2. Rename the PROGRAM-ID
-3. Replace the DECLARE TABLE with your table(s)
-4. Modify host variables to match your columns
-5. Update null indicators accordingly
-6. Implement your specific business logic in the 2xxx paragraphs
-7. Keep the error handling structure (9000, 9100 paragraphs)
+1. **Copy the template** to your program location
+2. **Modify the table declaration** to match your table
+3. **Update host variables** to match your columns
+4. **Add null indicators** for nullable columns
+5. **Implement business logic** in place of example operations
+6. **Customize error handling** for your requirements
+
+### Example Customization
+
+```cobol
+*----------------------------------------------------------------*
+* Replace example table with your table
+*----------------------------------------------------------------*
+EXEC SQL DECLARE YOUR_TABLE TABLE
+( KEY_FIELD    CHAR(10)   NOT NULL,
+  DATA_FIELD   VARCHAR(100),
+  ...
+) END-EXEC
+
+*----------------------------------------------------------------*
+* Add your host variables
+*----------------------------------------------------------------*
+01  HV-YOUR-TABLE.
+    05  HV-KEY-FIELD    PIC X(10).
+    05  HV-DATA-FIELD   PIC X(100).
+    ...
+```
+
+## Issues
+
+<Admonition type="note" title="Template Limitations">
+
+- The `2310-PROCESS-CURSOR-ROW` paragraph is referenced but not implemented - add your row processing logic
+- The database name 'sample' is a placeholder - replace with actual subsystem name
+- The PORTFOLIO table may not exist - create it or substitute your table
+- No connection pooling shown - see DB2CONN for production patterns
+- Minimal error recovery - enhance for production use
+
+</Admonition>

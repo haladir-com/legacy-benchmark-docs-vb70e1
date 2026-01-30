@@ -1,39 +1,47 @@
 ---
 title: "PORTTEST"
-description: "Portfolio Test Data Generator - Creates sample portfolio records for testing and development environments"
+description: "Portfolio Test Data Generator - creates synthetic portfolio records for testing and development purposes"
 ---
 
 ## Overview
 
-PORTTEST is a utility program that generates synthetic test data for the portfolio management system. It creates randomized portfolio records with realistic data patterns, writing them to a sequential file for use in testing, development, and quality assurance activities.
+PORTTEST is a utility program that generates synthetic portfolio test data for development, testing, and quality assurance purposes. It creates a configurable number of portfolio records with realistic-looking data, writing them to a sequential output file.
 
-The program generates up to 100 portfolio records by default, each containing:
-- Unique portfolio identifiers and account numbers
-- Client information with varied client types
-- Portfolio metadata including status and dates
-- Financial data with random values for total value and cash balance
+The program generates 100 test records by default, each containing a unique portfolio ID, account number, client information, portfolio status, and financial values. The generated data uses randomization to create variety in client types, portfolio statuses, and financial amounts, making it suitable for testing various scenarios in the portfolio management system.
 
-This test data generator is essential for populating development and test environments without using production data, supporting both functional testing and performance benchmarking.
+This test data generator is essential for creating repeatable test scenarios without requiring access to production data, supporting both unit testing of individual programs and integration testing of the complete portfolio processing system.
 
 ## Program Structure
 
 ```mermaid
 graph TD
     A[0000-MAIN] --> B[1000-INITIALIZE]
-    B --> C{File Open OK?}
-    C -->|No| D[Display Error]
-    D --> E[3000-TERMINATE]
-    E --> F[GOBACK]
-    C -->|Yes| G[2000-GENERATE-RECORDS]
-    G --> H{Count >= Max?}
-    H -->|No| G
-    H -->|Yes| E
+    A --> C[2000-GENERATE-RECORDS]
+    A --> D[3000-TERMINATE]
     
-    G --> G1[2100-GENERATE-KEY]
-    G --> G2[2200-GENERATE-CLIENT-INFO]
-    G --> G3[2300-GENERATE-PORTFOLIO-INFO]
-    G --> G4[2400-GENERATE-FINANCIAL-INFO]
-    G --> G5[WRITE PORT-RECORD]
+    B --> B1[Accept Current Date]
+    B --> B2[Open Output File]
+    B2 --> B3{Status OK?}
+    B3 -->|No| B4[Display Error]
+    B4 --> D
+    B3 -->|Yes| C
+    
+    C --> C1[Initialize PORT-RECORD]
+    C1 --> C2[2100-GENERATE-KEY]
+    C2 --> C3[2200-GENERATE-CLIENT-INFO]
+    C3 --> C4[2300-GENERATE-PORTFOLIO-INFO]
+    C4 --> C5[2400-GENERATE-FINANCIAL-INFO]
+    C5 --> C6[Write Record]
+    C6 --> C7{Status OK?}
+    C7 -->|Yes| C8[Increment Count]
+    C7 -->|No| C9[Display Error]
+    C8 --> C10{Count >= Max?}
+    C9 --> C10
+    C10 -->|No| C
+    C10 -->|Yes| D
+    
+    D --> D1[Close File]
+    D1 --> D2[Display Record Count]
 ```
 
 ## Data Structures
@@ -42,23 +50,26 @@ graph TD
 
 | Level | Name | Picture | Value | Description |
 |-------|------|---------|-------|-------------|
+| 01 | WS-VARIABLES | - | - | Main working variables |
 | 05 | WS-FILE-STATUS | X(2) | - | File status code |
-| 05 | WS-RECORD-COUNT | 9(5) | 0 | Current record counter |
+| 05 | WS-RECORD-COUNT | 9(5) | 0 | Number of records generated |
 | 05 | WS-MAX-RECORDS | 9(5) | 100 | Maximum records to generate |
-| 05 | WS-CURRENT-DATE | 9(8) | - | Current date (YYYYMMDD) |
+| 05 | WS-CURRENT-DATE | 9(8) | - | System date (YYYYMMDD) |
 
 ### Test Value Constants
 
 | Level | Name | Picture | Value | Description |
 |-------|------|---------|-------|-------------|
-| 05 | WS-CLIENT-TYPES | X(3) | 'ICT' | Client type codes: I=Individual, C=Corporate, T=Trust |
-| 05 | WS-STATUS-TYPES | X(3) | 'ACS' | Status codes: A=Active, C=Closed, S=Suspended |
+| 01 | WS-TEST-VALUES | - | - | Test data generation values |
+| 05 | WS-CLIENT-TYPES | X(3) | 'ICT' | Client types: Individual, Corporate, Trust |
+| 05 | WS-STATUS-TYPES | X(3) | 'ACS' | Status types: Active, Closed, Suspended |
 | 05 | WS-NAME-PREFIX | X(4) | 'TEST' | Prefix for generated client names |
 
 ### Subscripts
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
+| 01 | WS-SUBSCRIPTS | - | Loop subscripts |
 | 05 | WS-TYPE-SUB | 9(1) | Subscript for client type selection |
 | 05 | WS-STATUS-SUB | 9(1) | Subscript for status selection |
 
@@ -66,201 +77,207 @@ graph TD
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | PORT-RECORD | - | Complete portfolio record |
+| 01 | PORT-RECORD | - | Portfolio master record |
+| 05 | PORT-KEY | - | Record key group |
 | 10 | PORT-ID | X(8) | Portfolio identifier |
 | 10 | PORT-ACCOUNT-NO | X(10) | Account number |
+| 05 | PORT-CLIENT-INFO | - | Client information group |
 | 10 | PORT-CLIENT-NAME | X(30) | Client name |
-| 10 | PORT-CLIENT-TYPE | X(1) | I=Individual, C=Corporate, T=Trust |
+| 10 | PORT-CLIENT-TYPE | X(1) | 'I'=Individual, 'C'=Corporate, 'T'=Trust |
+| 05 | PORT-PORTFOLIO-INFO | - | Portfolio information group |
 | 10 | PORT-CREATE-DATE | 9(8) | Creation date (YYYYMMDD) |
 | 10 | PORT-LAST-MAINT | 9(8) | Last maintenance date |
-| 10 | PORT-STATUS | X(1) | A=Active, C=Closed, S=Suspended |
+| 10 | PORT-STATUS | X(1) | 'A'=Active, 'C'=Closed, 'S'=Suspended |
+| 05 | PORT-FINANCIAL-INFO | - | Financial information group |
 | 10 | PORT-TOTAL-VALUE | S9(13)V99 COMP-3 | Total portfolio value |
-| 10 | PORT-CASH-BALANCE | S9(13)V99 COMP-3 | Available cash balance |
+| 10 | PORT-CASH-BALANCE | S9(13)V99 COMP-3 | Cash balance (10% of total) |
+| 05 | PORT-AUDIT-INFO | - | Audit information group |
 | 10 | PORT-LAST-USER | X(8) | Last user to modify |
 | 10 | PORT-LAST-TRANS | 9(8) | Last transaction date |
 | 05 | PORT-FILLER | X(50) | Reserved space |
 
 ## File I/O
 
-### Test File (TESTFILE)
+### File Definition
 
-| Attribute | Value |
-|-----------|-------|
-| DDname | TESTFILE |
-| Organization | Sequential |
-| Access Mode | Sequential |
-| File Status | WS-FILE-STATUS |
-| Record Layout | PORTFLIO copybook |
+| File Name | DD Name | Organization | Access | Description |
+|-----------|---------|--------------|--------|-------------|
+| TEST-FILE | TESTFILE | Sequential | Sequential | Output file for generated test records |
 
-**Operations:**
-- OPEN OUTPUT - Opens file for writing new records
-- WRITE - Writes generated portfolio records
-- CLOSE - Closes file at program termination
+### File Section
+
+The file section includes the PORTFLIO copybook, which defines PORT-RECORD as the file's record layout.
+
+### I/O Operations
+
+| File | Operation | Paragraph | Purpose |
+|------|-----------|-----------|---------|
+| TEST-FILE | OPEN OUTPUT | 1000-INITIALIZE | Open file for writing |
+| TEST-FILE | WRITE | 2000-GENERATE-RECORDS | Write generated portfolio record |
+| TEST-FILE | CLOSE | 3000-TERMINATE | Close file after generation |
 
 ## Control Flow
 
-### 0000-MAIN
+### 0000-MAIN (Main Control)
 
-Main control paragraph that orchestrates the test data generation:
+The main paragraph orchestrates the test data generation:
+1. Performs initialization (1000-INITIALIZE)
+2. Loops through record generation (2000-GENERATE-RECORDS) until WS-RECORD-COUNT reaches WS-MAX-RECORDS
+3. Performs termination (3000-TERMINATE)
+4. Returns to caller via GOBACK
 
-1. Performs 1000-INITIALIZE to set up the environment
-2. Loops through 2000-GENERATE-RECORDS until WS-RECORD-COUNT reaches WS-MAX-RECORDS (100)
-3. Performs 3000-TERMINATE to close files and display results
-4. Returns control via GOBACK
+### 1000-INITIALIZE (Setup)
 
-### 1000-INITIALIZE
+1. Accepts the current system date in YYYYMMDD format using `ACCEPT FROM DATE YYYYMMDD`
+2. Opens TEST-FILE for output
+3. Checks file status:
+   - If not '00': Displays error message, performs termination, and exits
+   - If '00': Continues to record generation
 
-Prepares the environment for data generation:
+### 2000-GENERATE-RECORDS (Record Creation)
 
-1. **Get Current Date**: Uses `ACCEPT WS-CURRENT-DATE FROM DATE YYYYMMDD` to retrieve system date
-2. **Open Output File**: Opens TEST-FILE for output
-3. **Validate Open**: If file status is not '00':
-   - Displays error message with status code
-   - Performs termination routine
-   - Exits program immediately
+Main record generation loop that creates one portfolio record per iteration:
 
-### 2000-GENERATE-RECORDS
+1. Initializes PORT-RECORD to spaces/zeros
+2. Calls subordinate paragraphs to populate each section:
+   - 2100-GENERATE-KEY: Creates portfolio ID and account number
+   - 2200-GENERATE-CLIENT-INFO: Creates client name and type
+   - 2300-GENERATE-PORTFOLIO-INFO: Sets dates and status
+   - 2400-GENERATE-FINANCIAL-INFO: Calculates financial values
+3. Writes the completed record to TEST-FILE
+4. If write successful ('00'): Increments WS-RECORD-COUNT
+5. If write fails: Displays error message with status code
 
-Generates a single portfolio record:
+### 2100-GENERATE-KEY (Key Generation)
 
-1. **Initialize Record**: Clears PORT-RECORD to spaces/zeros
-2. **Generate Components**: Calls subordinate paragraphs:
-   - 2100-GENERATE-KEY - Creates unique identifiers
-   - 2200-GENERATE-CLIENT-INFO - Populates client data
-   - 2300-GENERATE-PORTFOLIO-INFO - Sets portfolio metadata
-   - 2400-GENERATE-FINANCIAL-INFO - Generates financial values
-3. **Write Record**: Writes PORT-RECORD to file
-4. **Check Status**: If successful, increments record counter; otherwise displays error
+Generates unique key fields:
 
-### 2100-GENERATE-KEY
-
-Creates unique portfolio identifiers:
-
-1. **Portfolio ID**: Uses STRING to concatenate 'PORT' with record count
-   - Example: PORT00001, PORT00002, etc.
-2. **Set Random Seed**: Calls FUNCTION RANDOM with record count as seed
-3. **Account Number**: Computes account number as record count + 1,000,000,000
+1. Uses STRING to create PORT-ID by concatenating 'PORT' with the record count
+   - Example: 'PORT00001', 'PORT00002', etc.
+2. Uses FUNCTION RANDOM seeded with record count to set type subscript
+3. Computes PORT-ACCOUNT-NO by adding record count to 1000000000
    - Example: 1000000001, 1000000002, etc.
 
-### 2200-GENERATE-CLIENT-INFO
+### 2200-GENERATE-CLIENT-INFO (Client Data)
 
-Generates client-related data:
+Generates client information:
 
-1. **Client Name**: Uses STRING to concatenate 'TEST' prefix with record count
-   - Example: TEST00001, TEST00002, etc.
-2. **Client Type**: Extracts character from WS-CLIENT-TYPES using WS-TYPE-SUB
-   - Randomly assigns I (Individual), C (Corporate), or T (Trust)
+1. Uses STRING to create PORT-CLIENT-NAME by concatenating 'TEST' with record count
+   - Example: 'TEST00001', 'TEST00002', etc.
+2. Selects PORT-CLIENT-TYPE using WS-TYPE-SUB as subscript into WS-CLIENT-TYPES
+   - Produces 'I' (Individual), 'C' (Corporate), or 'T' (Trust)
 
-### 2300-GENERATE-PORTFOLIO-INFO
+### 2300-GENERATE-PORTFOLIO-INFO (Portfolio Data)
 
-Sets portfolio metadata:
+Generates portfolio metadata:
 
-1. **Create Date**: Sets to current date (WS-CURRENT-DATE)
-2. **Last Maintenance**: Sets to current date
-3. **Status**: Randomly selects from WS-STATUS-TYPES
-   - Computes random subscript 1-3
-   - Assigns A (Active), C (Closed), or S (Suspended)
+1. Moves current date to PORT-CREATE-DATE
+2. Moves current date to PORT-LAST-MAINT
+3. Computes random status subscript (1-3) using `FUNCTION RANDOM * 3 + 1`
+4. Selects PORT-STATUS using subscript into WS-STATUS-TYPES
+   - Produces 'A' (Active), 'C' (Closed), or 'S' (Suspended)
 
-### 2400-GENERATE-FINANCIAL-INFO
+### 2400-GENERATE-FINANCIAL-INFO (Financial Data)
 
 Generates financial values:
 
-1. **Total Value**: Random amount up to $1,000,000
-   - Formula: `FUNCTION RANDOM * 1000000`
-2. **Cash Balance**: 10% of total value
-   - Formula: `PORT-TOTAL-VALUE * 0.10`
+1. Computes PORT-TOTAL-VALUE as random value up to 1,000,000 using `FUNCTION RANDOM * 1000000`
+2. Computes PORT-CASH-BALANCE as 10% of total value
 
-### 3000-TERMINATE
-
-Cleanup and reporting:
+### 3000-TERMINATE (Cleanup)
 
 1. Closes TEST-FILE
-2. Displays final record count to SYSOUT
-
-## Generated Data Patterns
-
-| Field | Pattern | Example |
-|-------|---------|---------|
-| PORT-ID | 'PORT' + sequence | PORT00001 |
-| PORT-ACCOUNT-NO | 1000000000 + sequence | 1000000001 |
-| PORT-CLIENT-NAME | 'TEST' + sequence | TEST00001 |
-| PORT-CLIENT-TYPE | Random from 'ICT' | I, C, or T |
-| PORT-CREATE-DATE | Current date | 20240320 |
-| PORT-STATUS | Random from 'ACS' | A, C, or S |
-| PORT-TOTAL-VALUE | Random 0-1,000,000 | 547823.45 |
-| PORT-CASH-BALANCE | 10% of total | 54782.35 |
+2. Displays final record count generated
 
 ## Dependencies
 
 ### Copybooks
 
-- **PORTFLIO** - Portfolio master record layout defining the PORT-RECORD structure
-- **ERRHAND** - Standard error handling definitions (included but not actively used)
+- **PORTFLIO** - Portfolio master record layout defining PORT-RECORD structure
+- **ERRHAND** - Standard error handling definitions (included but not actively used in current implementation)
 
 ### Called Programs
 
-None - this is a standalone utility program.
+This program does not call other programs.
 
 ### Related Programs
 
-Programs that use the same PORTFLIO copybook and may consume test data:
-- PORTADD - Add new portfolio records
-- PORTDEL - Delete portfolio records
-- PORTREAD - Read/query portfolio records
-- PORTUPDT - Update portfolio records
-- TSTGEN00 - Another test data generator (uses PORTFLIO, ERRHAND)
+Programs that share the PORTFLIO copybook and process portfolio data:
 
-## JCL Example
-
-```jcl
-//PORTTEST JOB (ACCT),'GENERATE TEST DATA',
-//             CLASS=A,MSGCLASS=X
-//*
-//GENTEST  EXEC PGM=PORTTEST
-//STEPLIB  DD DSN=TEST.LOAD.LIBRARY,DISP=SHR
-//TESTFILE DD DSN=TEST.PORTFOLIO.DATA,
-//            DISP=(NEW,CATLG,DELETE),
-//            DCB=(RECFM=FB,LRECL=150,BLKSIZE=0),
-//            SPACE=(CYL,(1,1))
-//SYSOUT   DD SYSOUT=*
-```
-
-## Customization
-
-To modify the number of records generated, change the WS-MAX-RECORDS value:
-
-```cobol
-05  WS-MAX-RECORDS      PIC 9(5) VALUE 100.
-```
-
-To add new client types or statuses, modify the corresponding constants:
-
-```cobol
-05  WS-CLIENT-TYPES     PIC X(3) VALUE 'ICT'.
-05  WS-STATUS-TYPES     PIC X(3) VALUE 'ACS'.
-```
+- **PORTADD** - Add new portfolio records
+- **PORTDEL** - Delete portfolio records
+- **PORTREAD** - Read/retrieve portfolio records
+- **PORTUPDT** - Update existing portfolio records
+- **TSTGEN00** - Test generation utility (uses PORTFLIO and ERRHAND)
 
 ## Technical Notes
 
-1. **FUNCTION RANDOM**: COBOL intrinsic function that generates pseudo-random numbers between 0 and 1. When called with an argument, it seeds the random number generator for reproducible sequences.
+### Generated Data Characteristics
 
-2. **ACCEPT FROM DATE YYYYMMDD**: Retrieves the system date in 8-digit format (YYYYMMDD). This is a COBOL 85 extension supported by most mainframe compilers.
+| Field | Generation Method | Example Values |
+|-------|-------------------|----------------|
+| PORT-ID | 'PORT' + sequence | PORT00001, PORT00050, PORT00099 |
+| PORT-ACCOUNT-NO | 1000000000 + sequence | 1000000001, 1000000050 |
+| PORT-CLIENT-NAME | 'TEST' + sequence | TEST00001, TEST00050 |
+| PORT-CLIENT-TYPE | Random from 'ICT' | I, C, or T |
+| PORT-CREATE-DATE | Current date | 20240320 |
+| PORT-LAST-MAINT | Current date | 20240320 |
+| PORT-STATUS | Random from 'ACS' | A, C, or S |
+| PORT-TOTAL-VALUE | Random 0-1,000,000 | 500000.00 |
+| PORT-CASH-BALANCE | 10% of total | 50000.00 |
 
-3. **STRING Statement**: Concatenates multiple source fields into a target field. The DELIMITED BY SIZE clause uses the full length of each source field.
+### File Status Codes
 
-4. **Reference Modification**: The syntax `WS-CLIENT-TYPES(WS-TYPE-SUB:1)` extracts 1 character starting at position WS-TYPE-SUB, enabling array-like access to a character string.
+| Status | Meaning | Action |
+|--------|---------|--------|
+| 00 | Success | Continue processing |
+| Other | Error | Display message, terminate |
 
-5. **COMP-3 (Packed Decimal)**: Financial fields use packed decimal format for efficient storage and arithmetic. Each digit occupies half a byte, with the sign in the last nibble.
+### Configuration
 
-6. **INITIALIZE Statement**: Clears the record to spaces for alphanumeric fields and zeros for numeric fields, ensuring clean data before populating.
+The number of records generated is controlled by WS-MAX-RECORDS, which defaults to 100. To generate a different number of test records, this value can be modified in the working storage section.
 
-7. **Sequential File Processing**: Output-mode sequential files are simple and efficient for batch data generation, writing records in the order they are generated.
+### COBOL Features Used
 
-## Sample Output
+- **ACCEPT FROM DATE YYYYMMDD**: Retrieves system date in 8-digit format
+- **FUNCTION RANDOM**: Intrinsic function generating pseudo-random numbers between 0 and 1
+- **FUNCTION RANDOM(seed)**: Seeded random number for reproducible sequences
+- **STRING DELIMITED BY SIZE**: Concatenates multiple fields into a single field
+- **COMPUTE**: Performs arithmetic calculations with multiple operators
+- **Reference modification**: `WS-CLIENT-TYPES(WS-TYPE-SUB:1)` extracts single character at position
 
-After execution, the program displays:
+### Sample Output
+
+A generated record might contain:
+
 ```
-Records generated: 00100
+PORT-ID:          PORT00042
+PORT-ACCOUNT-NO:  1000000042
+PORT-CLIENT-NAME: TEST00042
+PORT-CLIENT-TYPE: C (Corporate)
+PORT-CREATE-DATE: 20240320
+PORT-LAST-MAINT:  20240320
+PORT-STATUS:      A (Active)
+PORT-TOTAL-VALUE: 725432.50
+PORT-CASH-BALANCE: 72543.25
 ```
 
-The generated file contains 100 portfolio records ready for use in testing portfolio management applications.
+### Usage
+
+The program is typically run via JCL that defines the TESTFILE DD:
+
+```jcl
+//GENTEST  EXEC PGM=PORTTEST
+//TESTFILE DD DSN=TEST.PORTFOLIO.DATA,
+//            DISP=(NEW,CATLG,DELETE),
+//            SPACE=(TRK,(10,5)),
+//            DCB=(RECFM=FB,LRECL=150,BLKSIZE=0)
+//SYSOUT   DD SYSOUT=*
+```
+
+### Limitations
+
+- PORT-AUDIT-INFO fields (PORT-LAST-USER, PORT-LAST-TRANS) are not populated
+- PORT-FILLER is left as spaces
+- Random seed based on record count produces same sequence each run
+- Financial values have no upper bound validation

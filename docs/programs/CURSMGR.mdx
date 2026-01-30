@@ -1,44 +1,40 @@
 ---
 title: "CURSMGR"
-description: "Cursor Management for Online Programs - CICS subprogram for managing DB2 cursor lifecycle, array fetching, and performance optimization"
+description: "CICS online cursor management module that handles DB2 cursor lifecycle operations including declare, open, fetch, and close with array fetch optimization"
 ---
 
 ## Overview
 
-CURSMGR is a CICS-based subprogram that provides centralized cursor management services for online programs. It encapsulates DB2 cursor operations including declaration, opening, fetching, and closing, while implementing performance optimization techniques such as array fetching.
+CURSMGR is a CICS-based COBOL subprogram that provides centralized DB2 cursor management services for online programs. It abstracts the complexity of cursor operations and provides a consistent interface for declaring, opening, fetching from, and closing DB2 cursors.
 
-The program serves as a reusable component that standardizes cursor handling across online applications, providing:
-- **Cursor lifecycle management** - Declare, open, fetch, and close operations
-- **Array fetching support** - Batch retrieval of multiple rows for improved performance
-- **Cursor statistics tracking** - Monitoring fetch counts and rows retrieved
-- **Unified response handling** - Consistent SQLCODE-based error reporting
+Key features of this cursor manager include:
 
-By centralizing cursor operations, CURSMGR promotes consistent coding practices, simplifies maintenance, and enables performance tuning at a single point.
+- **Cursor Lifecycle Management**: Handles the complete lifecycle of DB2 cursors (declare, open, fetch, close)
+- **Array Fetching**: Supports fetching multiple rows in a single operation for improved performance (up to 20 rows per fetch)
+- **Performance Statistics**: Tracks fetch counts, rows fetched, and fetch timing
+- **Standardized Interface**: Provides a uniform calling convention for all cursor operations
+
+This module is designed to be called by other CICS online programs that need to execute DB2 queries, providing a layer of abstraction that simplifies cursor handling and enables consistent error handling across the application.
 
 ## Program Structure
 
 ```mermaid
 graph TD
-    A[PROCEDURE DIVISION] --> B{EVALUATE Request Type}
+    A[PROCEDURE DIVISION] --> B{Request Type?}
     B -->|D - Declare| C[P100-DECLARE-CURSOR]
     B -->|O - Open| D[P200-OPEN-CURSOR]
     B -->|F - Fetch| E[P300-FETCH-DATA]
     B -->|C - Close| F[P400-CLOSE-CURSOR]
     
-    C --> C1[P100-EXIT]
-    D --> D1[P200-EXIT]
-    E --> E1[P300-EXIT]
-    F --> F1[P400-EXIT]
+    C --> G[P100-EXIT]
+    D --> H[P200-EXIT]
+    E --> I[P300-EXIT]
+    F --> J[P400-EXIT]
     
-    C1 --> G[EXEC CICS RETURN]
-    D1 --> G
-    E1 --> G
-    F1 --> G
-    
-    C --> C2[SQL DECLARE CURSOR]
-    D --> D2[SQL OPEN cursor]
-    E --> E2[SQL FETCH cursor]
-    F --> F2[SQL CLOSE cursor]
+    G --> K[EXEC CICS RETURN]
+    H --> K
+    I --> K
+    J --> K
 ```
 
 ## Data Structures
@@ -47,26 +43,28 @@ graph TD
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | WS-DB2-AREA | | DB2 communication area |
-| - | SQLCA | (INCLUDE) | SQL Communication Area (included via EXEC SQL) |
-| 01 | WS-CURSOR-STATS | | Cursor statistics tracking |
+| 01 | WS-DB2-AREA | - | DB2 communication area |
+| - | SQLCA | (included) | SQL Communication Area via EXEC SQL INCLUDE |
+| 01 | WS-CURSOR-STATS | - | Cursor statistics group |
 | 05 | WS-FETCH-COUNT | S9(8) COMP | Number of fetch operations performed |
-| 05 | WS-ROWS-FETCHED | S9(8) COMP | Total rows retrieved |
+| 05 | WS-ROWS-FETCHED | S9(8) COMP | Total rows fetched |
 | 05 | WS-FETCH-TIME | S9(8) COMP | Cumulative fetch time |
-| 01 | WS-ARRAY-AREA | | Array fetch configuration |
-| 05 | WS-MAX-ROWS | S9(4) COMP | Maximum rows per fetch (default 20) |
-| 05 | WS-ARRAY-SIZE | S9(4) COMP | Current array size setting |
+| 01 | WS-ARRAY-AREA | - | Array fetch configuration |
+| 05 | WS-MAX-ROWS | S9(4) COMP | Maximum rows per fetch (default: 20) |
+| 05 | WS-ARRAY-SIZE | S9(4) COMP | Current array size in use |
 
 ### Linkage Section (Calling Interface)
 
+The program receives parameters through the CURSOR-REQUEST-AREA structure:
+
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | CURSOR-REQUEST-AREA | | Main request structure |
-| 05 | CURS-REQUEST-TYPE | X | Operation code (see table below) |
-| 05 | CURS-NAME | X(18) | Cursor name |
+| 01 | CURSOR-REQUEST-AREA | - | Main parameter structure |
+| 05 | CURS-REQUEST-TYPE | X | Request type code (see table below) |
+| 05 | CURS-NAME | X(18) | Cursor name identifier |
 | 05 | CURS-STMT | X(240) | SQL SELECT statement for cursor |
-| 05 | CURS-ARRAY-FETCH | X | Array fetch flag ('Y'/'N') |
-| 05 | CURS-RESPONSE-CODE | S9(8) COMP | Response code (SQLCODE) |
+| 05 | CURS-ARRAY-FETCH | X | Array fetch flag (`Y`/`N`) |
+| 05 | CURS-RESPONSE-CODE | S9(8) COMP | Response/SQLCODE on return |
 | 05 | CURS-DATA-AREA | X(3000) | Data buffer for fetched rows |
 | 05 | CURS-DATA-LENGTH | S9(4) COMP | Length of data in buffer |
 
@@ -74,185 +72,183 @@ graph TD
 
 | Code | 88-Level Name | Description |
 |------|---------------|-------------|
-| D | CURS-DECLARE | Declare a new cursor |
-| O | CURS-OPEN | Open an existing cursor |
-| F | CURS-FETCH | Fetch data from cursor |
-| C | CURS-CLOSE | Close the cursor |
+| `D` | CURS-DECLARE | Declare a new cursor |
+| `O` | CURS-OPEN | Open a declared cursor |
+| `F` | CURS-FETCH | Fetch data from cursor |
+| `C` | CURS-CLOSE | Close the cursor |
 
 ### Array Fetch Flag
 
 | Value | 88-Level Name | Description |
 |-------|---------------|-------------|
-| Y | USE-ARRAY-FETCH | Enable array fetching (up to 20 rows) |
-| N | NO-ARRAY-FETCH | Single-row fetch mode |
+| `Y` | USE-ARRAY-FETCH | Enable multi-row fetch (up to 20 rows) |
+| `N` | NO-ARRAY-FETCH | Single-row fetch mode |
 
-## Calling Interface
+## File I/O
 
-### COBOL Call Example (from CICS program)
-
-```cobol
-       01  WS-CURSOR-REQUEST.
-           05 WS-REQUEST-TYPE       PIC X.
-           05 WS-CURSOR-NAME        PIC X(18).
-           05 WS-SQL-STMT           PIC X(240).
-           05 WS-ARRAY-FLAG         PIC X.
-           05 WS-RESPONSE           PIC S9(8) COMP.
-           05 WS-DATA-BUFFER        PIC X(3000).
-           05 WS-DATA-LEN           PIC S9(4) COMP.
-       
-       * Declare cursor
-           MOVE 'D' TO WS-REQUEST-TYPE
-           MOVE 'POSITION-CURSOR' TO WS-CURSOR-NAME
-           MOVE 'SELECT * FROM POSITIONS WHERE ACCT = :HV-ACCT'
-             TO WS-SQL-STMT
-           MOVE 'Y' TO WS-ARRAY-FLAG
-           EXEC CICS LINK
-               PROGRAM('CURSMGR')
-               COMMAREA(WS-CURSOR-REQUEST)
-               LENGTH(LENGTH OF WS-CURSOR-REQUEST)
-           END-EXEC
-       
-       * Open cursor
-           MOVE 'O' TO WS-REQUEST-TYPE
-           EXEC CICS LINK
-               PROGRAM('CURSMGR')
-               COMMAREA(WS-CURSOR-REQUEST)
-               LENGTH(LENGTH OF WS-CURSOR-REQUEST)
-           END-EXEC
-       
-       * Fetch data
-           MOVE 'F' TO WS-REQUEST-TYPE
-           EXEC CICS LINK
-               PROGRAM('CURSMGR')
-               COMMAREA(WS-CURSOR-REQUEST)
-               LENGTH(LENGTH OF WS-CURSOR-REQUEST)
-           END-EXEC
-       
-       * Close cursor
-           MOVE 'C' TO WS-REQUEST-TYPE
-           EXEC CICS LINK
-               PROGRAM('CURSMGR')
-               COMMAREA(WS-CURSOR-REQUEST)
-               LENGTH(LENGTH OF WS-CURSOR-REQUEST)
-           END-EXEC
-```
+This program does not use traditional file I/O. All data access is through DB2 SQL cursor operations via the linkage section interface.
 
 ## Control Flow
 
+### Main Entry Point
+
+The program uses an EVALUATE statement to dispatch to the appropriate paragraph based on CURS-REQUEST-TYPE. After processing, the program returns to CICS via `EXEC CICS RETURN`.
+
 ### Declare Cursor (P100-DECLARE-CURSOR)
 
-Declares a new DB2 cursor with the specified SQL statement:
+Declares a DB2 cursor for the specified SQL statement:
 
-1. Initializes response code to 0
-2. Sets array size based on `CURS-ARRAY-FETCH` flag:
-   - If 'Y': Sets `WS-ARRAY-SIZE` to `WS-MAX-ROWS` (20)
-   - If 'N': Sets `WS-ARRAY-SIZE` to 1
-3. Executes `EXEC SQL DECLARE :CURS-NAME CURSOR FOR :CURS-STMT END-EXEC`
-4. If SQLCODE ≠ 0, moves SQLCODE to response code
+1. Initializes CURS-RESPONSE-CODE to 0
+2. Sets array size based on CURS-ARRAY-FETCH flag:
+   - If `Y`: Uses WS-MAX-ROWS (20 rows)
+   - If `N`: Uses 1 row
+3. Executes `EXEC SQL DECLARE` with the cursor name and SQL statement
+4. If SQLCODE is non-zero, returns the SQLCODE in CURS-RESPONSE-CODE
+
+```sql
+DECLARE :CURS-NAME CURSOR FOR :CURS-STMT
+```
 
 ### Open Cursor (P200-OPEN-CURSOR)
 
 Opens a previously declared cursor for fetching:
 
-1. Resets statistics counters:
-   - `WS-FETCH-COUNT` = 0
-   - `WS-ROWS-FETCHED` = 0
-2. Executes `EXEC SQL OPEN :CURS-NAME END-EXEC`
-3. Sets response code to SQLCODE (0 for success)
+1. Resets fetch statistics (WS-FETCH-COUNT, WS-ROWS-FETCHED)
+2. Executes `EXEC SQL OPEN` for the named cursor
+3. Returns SQLCODE in CURS-RESPONSE-CODE (0 on success)
+
+```sql
+OPEN :CURS-NAME
+```
 
 ### Fetch Data (P300-FETCH-DATA)
 
-Fetches data from an open cursor into the data area. When array fetching is enabled, retrieves multiple rows in a single operation for improved performance.
+Fetches data from an open cursor into the CURS-DATA-AREA buffer. The fetch operation:
 
-*Note: This paragraph's implementation is not present in the available source.*
+- Retrieves single or multiple rows based on the array fetch setting
+- Updates WS-FETCH-COUNT and WS-ROWS-FETCHED statistics
+- Returns fetched data in CURS-DATA-AREA with length in CURS-DATA-LENGTH
+- Returns SQLCODE in CURS-RESPONSE-CODE (100 indicates end of data)
 
 ### Close Cursor (P400-CLOSE-CURSOR)
 
-Closes the cursor and releases associated resources.
+Closes an open cursor to release resources:
 
-*Note: This paragraph's implementation is not present in the available source.*
+1. Executes `EXEC SQL CLOSE` for the named cursor
+2. Returns SQLCODE in CURS-RESPONSE-CODE
 
-### Program Termination
-
-After completing the requested operation, the program returns control to CICS:
-```cobol
-EXEC CICS RETURN END-EXEC
+```sql
+CLOSE :CURS-NAME
 ```
-
-## File I/O
-
-This program does not perform any file I/O operations. All data exchange occurs through:
-- The linkage section parameter (CURSOR-REQUEST-AREA) passed via CICS COMMAREA
-- Embedded SQL statements to DB2
-
-## SQL Operations
-
-| Operation | SQL Statement | Purpose |
-|-----------|---------------|---------|
-| Declare | `DECLARE :name CURSOR FOR :stmt` | Define cursor with SQL statement |
-| Open | `OPEN :name` | Open cursor for fetching |
-| Fetch | `FETCH :name INTO :data-area` | Retrieve row(s) from cursor |
-| Close | `CLOSE :name` | Close cursor and release resources |
 
 ## Dependencies
 
 ### Copybooks
 
+This program uses inline SQL INCLUDE rather than traditional copybooks:
+
 - **SQLCA** - SQL Communication Area (included via `EXEC SQL INCLUDE SQLCA END-EXEC`)
 
 ### Called Programs
 
-None - this program does not call other programs.
+This program does not call other programs. It is designed to be called by other CICS programs.
 
-### Calling Programs
+### Related Programs
 
-This program is designed to be called by any CICS online program that requires DB2 cursor operations. Potential callers include:
-- Portfolio inquiry programs
-- Position display programs
-- Transaction history browsers
-- Any program requiring scrollable result sets
+Programs in the online subsystem that may use CURSMGR for cursor operations:
+
+| Program | Description |
+|---------|-------------|
+| DB2ONLN | DB2 online processing |
+| DB2RECV | DB2 recovery processing |
+| INQHIST | History inquiry |
+| INQONLN | Online inquiry |
+| INQPORT | Portfolio inquiry |
 
 ## Technical Notes
 
-### Array Fetching
+### Array Fetch Optimization
 
-Array fetching (also known as multi-row fetch) retrieves multiple rows in a single database call, significantly reducing network round-trips and improving performance for large result sets. When enabled:
+Array fetching (also known as multi-row fetch) is a DB2 performance optimization technique that retrieves multiple rows in a single fetch operation, reducing the number of round trips between the application and the database.
 
-- Up to 20 rows are fetched per operation (`WS-MAX-ROWS`)
-- The `CURS-DATA-AREA` buffer (3000 bytes) holds the fetched rows
-- `CURS-DATA-LENGTH` indicates the amount of data returned
+When USE-ARRAY-FETCH is enabled:
+- Up to 20 rows are fetched per operation (WS-MAX-ROWS)
+- The CURS-DATA-AREA (3000 bytes) receives multiple row images
+- CURS-DATA-LENGTH indicates the total bytes of data returned
 
-This is particularly beneficial in CICS environments where minimizing DB2 calls improves response time.
+This is particularly beneficial for:
+- Batch-style processing within online transactions
+- Populating scrollable lists or tables
+- Reducing network overhead in distributed environments
 
-### Dynamic Cursor Declaration
+### CICS Integration
 
-The program uses host variables for both cursor name (`:CURS-NAME`) and SQL statement (`:CURS-STMT`), enabling dynamic cursor creation. This allows calling programs to:
-- Define different cursors at runtime
-- Use different SQL statements for different queries
-- Reuse the cursor manager for various data access patterns
+The program is designed for the CICS transaction processing environment:
+- Uses `EXEC CICS RETURN` to return control to CICS
+- Can be invoked via `EXEC CICS LINK` from other CICS programs
+- Maintains cursor state across CICS pseudo-conversational transactions when used with appropriate techniques
 
-### CICS Considerations
+### Calling Convention
 
-- The program uses `EXEC CICS RETURN` to return control to the calling program
-- Data is passed via the COMMAREA (CURSOR-REQUEST-AREA)
-- Each CICS task has its own working storage, ensuring thread safety
-- Cursor state must be managed carefully across pseudo-conversational transactions
+To call CURSMGR from another CICS COBOL program:
+
+```cobol
+WORKING-STORAGE SECTION.
+01  WS-CURSOR-REQUEST.
+    05  WS-REQUEST-TYPE      PIC X.
+    05  WS-CURSOR-NAME       PIC X(18).
+    05  WS-SQL-STMT          PIC X(240).
+    05  WS-ARRAY-FLAG        PIC X.
+    05  WS-RESPONSE          PIC S9(8) COMP.
+    05  WS-DATA-AREA         PIC X(3000).
+    05  WS-DATA-LEN          PIC S9(4) COMP.
+
+PROCEDURE DIVISION.
+* Declare cursor
+    MOVE 'D' TO WS-REQUEST-TYPE
+    MOVE 'PORTFOLIO-CURSOR' TO WS-CURSOR-NAME
+    MOVE 'SELECT * FROM PORTFOLIO WHERE STATUS = ''A'''
+      TO WS-SQL-STMT
+    MOVE 'Y' TO WS-ARRAY-FLAG
+    EXEC CICS LINK PROGRAM('CURSMGR')
+         COMMAREA(WS-CURSOR-REQUEST)
+    END-EXEC
+    
+* Open cursor
+    MOVE 'O' TO WS-REQUEST-TYPE
+    EXEC CICS LINK PROGRAM('CURSMGR')
+         COMMAREA(WS-CURSOR-REQUEST)
+    END-EXEC
+    
+* Fetch loop
+    PERFORM UNTIL WS-RESPONSE = 100
+        MOVE 'F' TO WS-REQUEST-TYPE
+        EXEC CICS LINK PROGRAM('CURSMGR')
+             COMMAREA(WS-CURSOR-REQUEST)
+        END-EXEC
+        IF WS-RESPONSE = 0
+            ... process WS-DATA-AREA ...
+        END-IF
+    END-PERFORM
+    
+* Close cursor
+    MOVE 'C' TO WS-REQUEST-TYPE
+    EXEC CICS LINK PROGRAM('CURSMGR')
+         COMMAREA(WS-CURSOR-REQUEST)
+    END-EXEC
+```
 
 ### Response Codes
 
-The `CURS-RESPONSE-CODE` field contains the DB2 SQLCODE:
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 100 | End of data (no more rows to fetch) |
+| Other | DB2 SQLCODE indicating error condition |
 
-| SQLCODE | Meaning |
-|---------|---------|
-| 0 | Successful operation |
-| +100 | No more rows (end of cursor) |
-| -501 | Cursor not open |
-| -502 | Cursor already open |
-| -504 | Cursor not declared |
-| Other | DB2 error (see DB2 SQL Reference) |
+### Dynamic SQL Considerations
 
-### Source Code Note
-
-:::caution Incomplete Source
-The available source code for this program appears to be incomplete. The P300-FETCH-DATA and P400-CLOSE-CURSOR paragraphs referenced in the EVALUATE statement are not present in the source file. The documentation above describes the intended functionality based on the program comments and available code structure.
-:::
+The cursor uses dynamic SQL via host variables for both the cursor name and SQL statement. This provides flexibility but requires:
+- Proper SQL statement formatting in CURS-STMT
+- Valid cursor names (up to 18 characters)
+- Appropriate authorization for the SQL being executed

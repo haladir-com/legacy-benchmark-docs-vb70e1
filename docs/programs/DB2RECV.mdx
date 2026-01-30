@@ -1,49 +1,57 @@
 ---
 title: "DB2RECV"
-description: "DB2 Recovery Manager for Online Programs - Handles connection failures, retry logic, and transaction rollback in CICS"
+description: "DB2 Recovery Manager for Online Programs - handles connection failures, implements retry logic, and manages transaction rollback"
 ---
 
 ## Overview
 
-DB2RECV is a CICS online program that provides DB2 recovery services for other online applications. It handles three types of recovery scenarios: connection failures, transaction rollbacks, and cursor recovery. The program implements intelligent retry logic with configurable intervals and maximum attempts.
+DB2RECV is a CICS-based recovery manager that handles DB2 failures in online transaction processing environments. It provides automated recovery services for three types of DB2 problems: connection failures, transaction errors requiring rollback, and cursor-related issues.
 
-This program serves as a centralized recovery component that can be called by any CICS program experiencing DB2 issues. By standardizing recovery procedures, it ensures consistent behavior across the application suite and reduces code duplication in individual programs.
+The program implements a robust retry mechanism for connection recovery, attempting to reconnect up to three times with configurable wait intervals between attempts. This approach helps applications survive transient network issues or brief DB2 unavailability without immediately failing the user's transaction.
 
-Key capabilities include:
-- **Connection Recovery**: Attempts to re-establish DB2 connections with configurable retry intervals
-- **Transaction Recovery**: Performs SQL ROLLBACK to undo uncommitted changes
-- **Cursor Recovery**: Logs cursor errors and determines whether processing can continue
+DB2RECV is designed to be called by other CICS programs when they encounter DB2 errors. It centralizes recovery logic, ensuring consistent error handling across the application and simplifying the error recovery code in individual programs.
 
 ## Program Structure
 
 ```mermaid
 graph TD
-    A[PROCEDURE DIVISION] --> B{EVALUATE Request Type}
+    A[PROCEDURE DIVISION] --> B{Request Type?}
     B -->|C - Connection| C[P100-RECOVER-CONNECTION]
     B -->|T - Transaction| D[P200-RECOVER-TRANSACTION]
     B -->|R - Cursor| E[P300-RECOVER-CURSOR]
     
-    C --> C1[P110-ATTEMPT-RECONNECT]
-    C --> C2[P120-WAIT-INTERVAL]
-    C1 -->|Success| F[Set RECV-SUCCESS]
-    C1 -->|Failure| C2
-    C2 --> C1
-    C1 -->|Max Retries| G[Set RECV-FAILED]
+    C --> C1[Initialize Retry Count]
+    C1 --> C2{Retries < Max?}
+    C2 -->|Yes| C3[P110-ATTEMPT-RECONNECT]
+    C3 --> C4{Success?}
+    C4 -->|Yes| C5[Exit Loop]
+    C4 -->|No| C6[P120-WAIT-INTERVAL]
+    C6 --> C7[Increment Retry Count]
+    C7 --> C2
+    C2 -->|No| C8[Set FAILED Status]
     
-    D --> D1[SQL ROLLBACK]
-    D1 -->|SQLCODE=0| H[Set RECV-SUCCESS]
-    D1 -->|Error| I[Set RECV-FAILED]
+    C3 --> C3a[LINK to DB2ONLN]
+    C3a --> C3b{Response = 0?}
+    C3b -->|Yes| C3c[Set SUCCESS]
+    C3b -->|No| C3d[Set RETRY]
     
-    E --> E1[LINK to ERRHNDL]
-    E1 -->|ERR-CONTINUE| J[Set RECV-RETRY]
-    E1 -->|Otherwise| K[Set RECV-FAILED]
+    D --> D1[EXEC SQL ROLLBACK]
+    D1 --> D2{SQLCODE = 0?}
+    D2 -->|Yes| D3[Set SUCCESS]
+    D2 -->|No| D4[Set FAILED]
     
-    F --> Z[EXEC CICS RETURN]
-    G --> Z
-    H --> Z
-    I --> Z
-    J --> Z
-    K --> Z
+    E --> E1[Populate Error Area]
+    E1 --> E2[LINK to ERRHNDL]
+    E2 --> E3{ERR-CONTINUE?}
+    E3 -->|Yes| E4[Set RETRY]
+    E3 -->|No| E5[Set FAILED]
+    
+    C5 --> F[EXEC CICS RETURN]
+    C8 --> F
+    D3 --> F
+    D4 --> F
+    E4 --> F
+    E5 --> F
 ```
 
 ## Data Structures
@@ -52,206 +60,240 @@ graph TD
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 05 | RECV-REQUEST-TYPE | X | Recovery type: `C`=Connection, `T`=Transaction, `R`=Cursor |
-| 05 | RECV-RESPONSE-CODE | S9(8) COMP | Return code (0=success, -1=failure) |
-| 05 | RECV-SQLCODE | S9(9) COMP | SQL code from failed operation |
-| 10 | RECV-PROGRAM | X(8) | Program that encountered the error |
+| 01 | RECOVERY-REQUEST-AREA | - | Main communication area |
+| 05 | RECV-REQUEST-TYPE | X | Recovery type: 'C', 'T', or 'R' |
+| 05 | RECV-RESPONSE-CODE | S9(8) COMP | Response code (0=success, -1=failure) |
+| 05 | RECV-SQLCODE | S9(9) COMP | DB2 SQLCODE from failed operation |
+| 05 | RECV-ERROR-INFO | - | Error details group |
+| 10 | RECV-PROGRAM | X(8) | Program that encountered error |
 | 10 | RECV-CURSOR | X(18) | Cursor name (for cursor recovery) |
 | 10 | RECV-MESSAGE | X(80) | Error message text |
-| 05 | RECV-STATUS | X | Status: `S`=Success, `F`=Failed, `R`=Retry |
+| 05 | RECV-STATUS | X | Recovery outcome: 'S', 'F', or 'R' |
+
+### Request Type Values
+
+| Value | Condition Name | Description |
+|-------|---------------|-------------|
+| 'C' | RECV-CONNECTION | Recover from connection failure |
+| 'T' | RECV-TRANSACTION | Rollback failed transaction |
+| 'R' | RECV-CURSOR | Recover from cursor error |
+
+### Status Values
+
+| Value | Condition Name | Description |
+|-------|---------------|-------------|
+| 'S' | RECV-SUCCESS | Recovery completed successfully |
+| 'F' | RECV-FAILED | Recovery failed, cannot continue |
+| 'R' | RECV-RETRY | Caller should retry the operation |
 
 ### Working Storage - Recovery Statistics
 
 | Level | Name | Picture | Value | Description |
 |-------|------|---------|-------|-------------|
-| 05 | WS-RETRY-COUNT | S9(4) COMP | 0 | Current retry attempt counter |
+| 05 | WS-RETRY-COUNT | S9(4) COMP | 0 | Current retry attempt number |
 | 05 | WS-MAX-RETRIES | S9(4) COMP | 3 | Maximum retry attempts |
-| 05 | WS-RETRY-INTERVAL | S9(8) COMP | 2 | Seconds to wait between retries |
+| 05 | WS-RETRY-INTERVAL | S9(8) COMP | 2 | Seconds between retries |
 | 05 | WS-LAST-ERROR | S9(9) COMP | 0 | Last SQLCODE encountered |
 
 ### DB2 Request Area (from DB2REQ copybook)
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 05 | DB2-REQUEST-TYPE | X | `C`=Connect, `D`=Disconnect, `S`=Status |
+| 01 | DB2-REQUEST-AREA | - | Request area for DB2ONLN |
+| 05 | DB2-REQUEST-TYPE | X | 'C'=Connect, 'D'=Disconnect, 'S'=Status |
 | 05 | DB2-RESPONSE-CODE | S9(8) COMP | Response from DB2ONLN |
-| 05 | DB2-CONNECTION-TOKEN | X(16) | DB2 connection identifier |
-| 10 | DB2-SQLCODE | S9(9) COMP | SQL return code |
-| 10 | DB2-ERROR-MSG | X(80) | Error message |
+| 05 | DB2-CONNECTION-TOKEN | X(16) | Connection identifier |
+| 05 | DB2-SQLCODE | S9(9) COMP | SQLCODE from DB2 operation |
+| 05 | DB2-ERROR-MSG | X(80) | Error message |
 
 ### Error Handling Area (from ERRHND copybook)
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
+| 01 | ERROR-HANDLING | - | Error area for ERRHNDL |
 | 05 | ERR-PROGRAM | X(8) | Program name |
 | 05 | ERR-PARAGRAPH | X(30) | Paragraph/cursor name |
-| 05 | ERR-SQLCODE | S9(9) COMP | SQL code |
-| 05 | ERR-CICS-RESP | S9(8) COMP | CICS RESP code |
-| 05 | ERR-CICS-RESP2 | S9(8) COMP | CICS RESP2 code |
-| 05 | ERR-SEVERITY | X | `F`=Fatal, `W`=Warning, `I`=Info |
+| 05 | ERR-SQLCODE | S9(9) COMP | SQLCODE |
+| 05 | ERR-CICS-RESP | S9(8) COMP | CICS EIBRESP |
+| 05 | ERR-CICS-RESP2 | S9(8) COMP | CICS EIBRESP2 |
+| 05 | ERR-SEVERITY | X | 'F'=Fatal, 'W'=Warning, 'I'=Info |
 | 05 | ERR-MESSAGE | X(80) | Error message |
-| 05 | ERR-ACTION | X | `R`=Return, `C`=Continue, `A`=Abend |
-| 10 | ERR-TRACE-ID | X(16) | Trace identifier |
-| 10 | ERR-TIMESTAMP | X(26) | Error timestamp |
+| 05 | ERR-ACTION | X | 'R'=Return, 'C'=Continue, 'A'=Abend |
 
 ## Control Flow
 
-### P100-RECOVER-CONNECTION (Request Type: C)
+### Connection Recovery (RECV-REQUEST-TYPE = 'C')
 
-Handles DB2 connection recovery with retry logic:
+The connection recovery function implements a retry loop to reestablish DB2 connectivity:
 
-1. **Initialize**: Sets retry counter to zero
-2. **Retry Loop**: Executes up to WS-MAX-RETRIES (3) times:
-   - Calls P110-ATTEMPT-RECONNECT to try re-establishing connection
-   - If successful, exits loop with RECV-SUCCESS status
-   - If failed, calls P120-WAIT-INTERVAL and increments retry counter
-3. **Final Status**: If max retries exceeded, sets RECV-FAILED with response code -1
+1. **P100-RECOVER-CONNECTION**: Main connection recovery routine
+   - Initializes retry count to zero
+   - Enters retry loop (up to WS-MAX-RETRIES attempts)
+   - On each iteration:
+     - Calls P110-ATTEMPT-RECONNECT to try connecting
+     - If successful, exits the loop
+     - If not successful, calls P120-WAIT-INTERVAL and increments retry count
+   - If all retries exhausted, sets RECV-FAILED and response code to -1
 
-### P110-ATTEMPT-RECONNECT
+2. **P110-ATTEMPT-RECONNECT**: Single reconnection attempt
+   - Sets DB2-REQUEST-TYPE to 'C' (Connect)
+   - Uses `EXEC CICS LINK` to call DB2ONLN program
+   - If DB2ONLN returns response code 0:
+     - Sets RECV-SUCCESS
+     - Sets response code to 0
+   - Otherwise:
+     - Sets RECV-RETRY status
+     - Copies the SQLCODE to RECV-SQLCODE
 
-Attempts to re-establish DB2 connection:
+3. **P120-WAIT-INTERVAL**: Delay between retries
+   - Uses `EXEC CICS DELAY INTERVAL` to pause for WS-RETRY-INTERVAL seconds
+   - Default wait is 2 seconds
 
-1. Sets request type to `C` (Connect) in DB2 request area
-2. Issues `EXEC CICS LINK` to program DB2ONLN
-3. Evaluates response:
-   - If DB2-RESPONSE-CODE = 0: Sets RECV-SUCCESS, response code 0
-   - Otherwise: Sets RECV-RETRY, copies SQLCODE to response area
+### Transaction Recovery (RECV-REQUEST-TYPE = 'T')
 
-### P120-WAIT-INTERVAL
+The transaction recovery function performs a database rollback:
 
-Implements delay between retry attempts:
+1. **P200-RECOVER-TRANSACTION**: Rollback routine
+   - Executes `EXEC SQL ROLLBACK` to undo uncommitted changes
+   - If SQLCODE = 0:
+     - Sets RECV-SUCCESS
+     - Sets response code to 0
+   - If SQLCODE ≠ 0:
+     - Sets RECV-FAILED
+     - Copies SQLCODE to RECV-SQLCODE
+     - Sets response code to -1
 
-1. Issues `EXEC CICS DELAY INTERVAL(WS-RETRY-INTERVAL)`
-2. Default wait time is 2 seconds
+### Cursor Recovery (RECV-REQUEST-TYPE = 'R')
 
-### P200-RECOVER-TRANSACTION (Request Type: T)
+The cursor recovery function delegates to the error handler for guidance:
 
-Handles transaction rollback:
-
-1. Issues `EXEC SQL ROLLBACK`
-2. Evaluates SQLCODE:
-   - If SQLCODE = 0: Sets RECV-SUCCESS, response code 0
-   - Otherwise: Sets RECV-FAILED, copies SQLCODE, response code -1
-
-### P300-RECOVER-CURSOR (Request Type: R)
-
-Handles cursor error recovery:
-
-1. Initializes error handling area
-2. Populates error details from request:
-   - Program name, cursor name, SQLCODE
-   - Sets severity to Warning
-3. Issues `EXEC CICS LINK` to program ERRHNDL
-4. Evaluates error handler response:
-   - If ERR-CONTINUE: Sets RECV-RETRY (caller should retry cursor operation)
-   - Otherwise: Sets RECV-FAILED
-5. Returns error message to caller
+1. **P300-RECOVER-CURSOR**: Cursor error handling
+   - Initializes WS-ERROR-AREA with spaces
+   - Populates error fields from linkage section:
+     - RECV-PROGRAM → ERR-PROGRAM
+     - RECV-CURSOR → ERR-PARAGRAPH
+     - RECV-SQLCODE → ERR-SQLCODE
+   - Sets ERR-WARNING severity
+   - Uses `EXEC CICS LINK` to call ERRHNDL program
+   - Checks error handler's recommendation:
+     - If ERR-CONTINUE: Sets RECV-RETRY (caller can retry)
+     - Otherwise: Sets RECV-FAILED
+   - Copies ERR-MESSAGE to RECV-MESSAGE for caller
 
 ## CICS Commands Used
 
-| Command | Purpose |
-|---------|---------|
-| `EXEC CICS LINK PROGRAM('DB2ONLN')` | Calls DB2 connection manager |
-| `EXEC CICS LINK PROGRAM('ERRHNDL')` | Calls error handler for logging |
-| `EXEC CICS DELAY INTERVAL(n)` | Waits between retry attempts |
-| `EXEC CICS RETURN` | Returns control to calling program |
+| Command | Paragraph | Purpose |
+|---------|-----------|---------|
+| EXEC CICS LINK | P110-ATTEMPT-RECONNECT | Call DB2ONLN for connection |
+| EXEC CICS LINK | P300-RECOVER-CURSOR | Call ERRHNDL for error handling |
+| EXEC CICS DELAY | P120-WAIT-INTERVAL | Wait between retry attempts |
+| EXEC CICS RETURN | Main procedure | Return to calling program |
 
-## Return Codes
+## Database Access
 
-| RECV-STATUS | RECV-RESPONSE-CODE | Meaning |
-|-------------|-------------------|---------|
-| `S` (Success) | 0 | Recovery operation successful |
-| `F` (Failed) | -1 | Recovery failed after all attempts |
-| `R` (Retry) | varies | Caller should retry the operation |
+### SQL Operations
+
+| Operation | Paragraph | Purpose |
+|-----------|-----------|---------|
+| ROLLBACK | P200-RECOVER-TRANSACTION | Undo uncommitted database changes |
+
+The SQLCA is included for access to SQLCODE after the ROLLBACK operation.
 
 ## Dependencies
 
 ### Copybooks
 
-- **SQLCA** - SQL Communication Area (included via EXEC SQL INCLUDE)
-- **ERRHND** - Online error handling structure for CICS programs
-- **DB2REQ** - DB2 request area for communication with DB2ONLN
+- **ERRHND** - Online error handling structure with severity levels and action codes
+- **DB2REQ** - DB2 request area for communicating with DB2ONLN connection manager
 
 ### Called Programs
 
-- **DB2ONLN** - DB2 connection manager for online programs (via CICS LINK)
-- **ERRHNDL** - Error handler for logging and determining recovery action (via CICS LINK)
+| Program | Command | Purpose |
+|---------|---------|---------|
+| DB2ONLN | EXEC CICS LINK | DB2 connection manager for online programs |
+| ERRHNDL | EXEC CICS LINK | Online error handler for determining recovery action |
 
 ### Related Programs
 
-Programs that may call DB2RECV for recovery:
-- DB2ONLN - DB2 online connection manager (uses ERRHND)
-- ERRHNDL - Error handler (uses ERRHND)
-- INQONLN - Online inquiry program (uses ERRHND)
-- SECMGR - Security manager (uses ERRHND)
+Programs that share copybooks and may call DB2RECV:
 
-## Usage Example
-
-```cobol
-*---------------------------------------------------------*
-* Recover from a DB2 connection failure
-*---------------------------------------------------------*
-    MOVE 'C' TO RECV-REQUEST-TYPE
-    MOVE SQLCODE TO RECV-SQLCODE
-    MOVE 'MYPROG00' TO RECV-PROGRAM
-    
-    EXEC CICS LINK PROGRAM('DB2RECV')
-              COMMAREA(RECOVERY-REQUEST-AREA)
-              LENGTH(LENGTH OF RECOVERY-REQUEST-AREA)
-    END-EXEC
-    
-    IF RECV-SUCCESS
-        CONTINUE
-    ELSE
-        PERFORM HANDLE-UNRECOVERABLE-ERROR
-    END-IF
-
-*---------------------------------------------------------*
-* Rollback a failed transaction
-*---------------------------------------------------------*
-    MOVE 'T' TO RECV-REQUEST-TYPE
-    MOVE SQLCODE TO RECV-SQLCODE
-    
-    EXEC CICS LINK PROGRAM('DB2RECV')
-              COMMAREA(RECOVERY-REQUEST-AREA)
-              LENGTH(LENGTH OF RECOVERY-REQUEST-AREA)
-    END-EXEC
-
-*---------------------------------------------------------*
-* Handle cursor error with possible retry
-*---------------------------------------------------------*
-    MOVE 'R' TO RECV-REQUEST-TYPE
-    MOVE SQLCODE TO RECV-SQLCODE
-    MOVE 'MYPROG00' TO RECV-PROGRAM
-    MOVE 'CUSTOMER-CURSOR' TO RECV-CURSOR
-    
-    EXEC CICS LINK PROGRAM('DB2RECV')
-              COMMAREA(RECOVERY-REQUEST-AREA)
-              LENGTH(LENGTH OF RECOVERY-REQUEST-AREA)
-    END-EXEC
-    
-    IF RECV-RETRY
-        PERFORM REOPEN-AND-REPOSITION-CURSOR
-    END-IF
-```
+- **DB2ONLN** - DB2 online connection manager (uses ERRHND)
+- **ERRHNDL** - Error handler (uses ERRHND)
+- **INQONLN** - Online inquiry program (uses ERRHND)
+- **SECMGR** - Security manager (uses ERRHND)
 
 ## Technical Notes
 
-1. **CICS LINK vs XCTL**: Uses LINK (not XCTL) to call subprograms, allowing control to return to DB2RECV after the linked program completes
+### Response Codes
 
-2. **COMMAREA Communication**: Passes data to linked programs via COMMAREA, the standard CICS mechanism for inter-program communication
+| Code | Meaning |
+|------|---------|
+| 0 | Recovery successful |
+| -1 | Recovery failed after all attempts |
 
-3. **EXEC CICS DELAY**: Implements non-blocking waits that release the CICS task while waiting, allowing other transactions to execute
+### Retry Configuration
 
-4. **88-Level Conditions**: Extensively uses condition names for request types (`RECV-CONNECTION`, `RECV-TRANSACTION`, `RECV-CURSOR`) and status flags (`RECV-SUCCESS`, `RECV-FAILED`, `RECV-RETRY`)
+The retry behavior is controlled by working storage constants:
 
-5. **Embedded SQL in CICS**: Uses `EXEC SQL ROLLBACK` directly within CICS, which is valid when the program is bound to a DB2 plan
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| WS-MAX-RETRIES | 3 | Maximum connection retry attempts |
+| WS-RETRY-INTERVAL | 2 | Seconds to wait between retries |
 
-6. **Retry Pattern**: Implements the classic retry pattern with:
-   - Maximum retry count (3 attempts)
-   - Fixed interval delay (2 seconds)
-   - Clear success/failure indication
+These values can be modified to tune recovery behavior for different environments.
 
-7. **SQLCA Include**: Uses `EXEC SQL INCLUDE SQLCA` instead of COPY to include the SQL Communication Area, which is the standard approach for DB2/COBOL programs
+### Recovery Decision Matrix
 
-8. **Program Qualification**: When referencing fields from copybooks that may have duplicate names (like DB2-REQUEST-TYPE), uses OF qualification (e.g., `DB2-REQUEST-TYPE OF WS-DB2-REQUEST`)
+| Request Type | Outcome | Status | Action for Caller |
+|--------------|---------|--------|-------------------|
+| Connection | DB2ONLN returns 0 | SUCCESS | Proceed with operation |
+| Connection | All retries fail | FAILED | Display error, end transaction |
+| Transaction | ROLLBACK succeeds | SUCCESS | Transaction cleanly rolled back |
+| Transaction | ROLLBACK fails | FAILED | Serious DB2 issue, escalate |
+| Cursor | ERRHNDL says continue | RETRY | Close and reopen cursor |
+| Cursor | ERRHNDL says stop | FAILED | Cannot recover, end operation |
+
+### Usage Example
+
+```cobol
+* After encountering a DB2 connection error...
+MOVE 'C' TO RECV-REQUEST-TYPE
+MOVE SQLCODE TO RECV-SQLCODE
+MOVE 'MYPROG01' TO RECV-PROGRAM
+MOVE 'Connection lost during update' TO RECV-MESSAGE
+
+EXEC CICS LINK PROGRAM('DB2RECV')
+              COMMAREA(RECOVERY-REQUEST-AREA)
+              LENGTH(LENGTH OF RECOVERY-REQUEST-AREA)
+END-EXEC
+
+EVALUATE TRUE
+    WHEN RECV-SUCCESS
+        CONTINUE WITH OPERATION
+    WHEN RECV-RETRY
+        PERFORM RETRY-OPERATION
+    WHEN RECV-FAILED
+        PERFORM ERROR-HANDLING
+END-EVALUATE
+```
+
+### CICS Considerations
+
+- **EXEC CICS LINK**: Used instead of CALL for CICS program invocation, providing proper resource management
+- **EXEC CICS DELAY**: Implements the wait interval without busy-waiting, allowing CICS to manage resources efficiently
+- **EXEC CICS RETURN**: Returns control to the calling program; DB2RECV does not set TRANSID, so the caller remains in control
+
+### Error Severity Mapping
+
+When calling ERRHNDL for cursor recovery, the severity is set to WARNING ('W'). The error handler then determines whether:
+- **ERR-CONTINUE ('C')**: The error is recoverable, caller should retry
+- **ERR-RETURN ('R')**: Return to caller without retry
+- **ERR-ABEND ('A')**: Fatal error, transaction should abend
+
+### COBOL Features Used
+
+- **88-level condition names**: Used extensively for request types, status values, and action codes
+- **EXEC SQL INCLUDE SQLCA**: Includes the SQL Communication Area for SQLCODE access
+- **PERFORM THRU**: Executes from a starting paragraph through an exit paragraph
+- **EXEC CICS commands**: LINK, DELAY, and RETURN for CICS integration
+- **LENGTH OF**: Special register to get the length of a data item for COMMAREA

@@ -16,26 +16,8 @@ const sidebars = {
             'programs/BCHCTL00',
             'programs/CKPRST',
             'programs/HISTLD00',
-            'programs/POSUPDT',
             'programs/PRCSEQ00',
             'programs/RCVPRC00',
-            'programs/RPTAUD00',
-            'programs/RPTPOS00',
-            'programs/RPTSTA00',
-            'programs/RTNANA00',
-            'programs/RTNCDE00',
-          ],
-        },
-        {
-          type: 'category',
-          label: 'Common Services',
-          items: [
-            'programs/AUDPROC',
-            'programs/DB2CMT',
-            'programs/DB2CONN',
-            'programs/DB2ERR',
-            'programs/DB2STAT',
-            'programs/ERRPROC',
           ],
         },
         {
@@ -54,6 +36,16 @@ const sidebars = {
         },
         {
           type: 'category',
+          label: 'DB2 Database',
+          items: [
+            'programs/DB2CMT',
+            'programs/DB2CONN',
+            'programs/DB2ERR',
+            'programs/DB2STAT',
+          ],
+        },
+        {
+          type: 'category',
           label: 'Portfolio Management',
           items: [
             'programs/PORTADD',
@@ -64,20 +56,34 @@ const sidebars = {
             'programs/PORTTRAN',
             'programs/PORTUPDT',
             'programs/PORTVALD',
+            'programs/POSUPDT',
           ],
         },
         {
           type: 'category',
-          label: 'Testing',
+          label: 'Reporting',
+          items: [
+            'programs/RPTAUD00',
+            'programs/RPTPOS00',
+            'programs/RPTSTA00',
+            'programs/RTNANA00',
+            'programs/RTNCDE00',
+          ],
+        },
+        {
+          type: 'category',
+          label: 'Error Handling',
+          items: [
+            'programs/AUDPROC',
+            'programs/ERRPROC',
+          ],
+        },
+        {
+          type: 'category',
+          label: 'Testing & Utilities',
           items: [
             'programs/TSTGEN00',
             'programs/TSTVAL00',
-          ],
-        },
-        {
-          type: 'category',
-          label: 'Utilities',
-          items: [
             'programs/UTLMNT00',
             'programs/UTLMON00',
             'programs/UTLVAL00',
@@ -98,14 +104,14 @@ const sidebars = {
     {
       type: 'category',
       label: 'Copybooks',
-      collapsed: false,
+      collapsed: true,
       items: [
         {
           type: 'category',
           label: 'Batch',
           items: [
-            'copybooks/BCHCON',
             'copybooks/BCHCTL',
+            'copybooks/BCHCON',
             'copybooks/CKPRST',
             'copybooks/PRCSEQ',
           ],
@@ -115,7 +121,6 @@ const sidebars = {
           label: 'Common',
           items: [
             'copybooks/AUDITLOG',
-            'copybooks/COMMON',
             'copybooks/ERRHAND',
             'copybooks/HISTREC',
             'copybooks/PORTFLIO',
@@ -140,8 +145,10 @@ const sidebars = {
           label: 'Online',
           items: [
             'copybooks/DB2REQ',
+            'copybooks/DB2STAT',
             'copybooks/ERRHND',
             'copybooks/INQCOM',
+            'copybooks/PORTREC',
           ],
         },
       ],

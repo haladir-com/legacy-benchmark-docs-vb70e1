@@ -1,20 +1,15 @@
 ---
 title: "PORTDEL"
-description: "Portfolio Deletion Program - batch processing of portfolio deletion requests with audit trail"
+description: "Batch portfolio deletion program that processes deletion requests and maintains an audit trail"
 ---
 
 ## Overview
 
-PORTDEL is a batch program that processes portfolio deletion requests. It reads deletion requests from an input file, removes the corresponding records from the portfolio master file, and maintains a complete audit trail of all deletion activities.
+PORTDEL is a batch program that processes portfolio deletion requests. It reads a sequential file containing deletion requests, removes the corresponding records from the indexed portfolio master file, and writes audit records documenting each deletion.
 
-Key features:
-- **Batch Deletion Processing**: Reads sequential file of deletion requests
-- **VSAM Random Access**: Uses random access to efficiently locate and delete specific portfolio records
-- **Audit Trail**: Creates audit records for each successful deletion
-- **Error Handling**: Tracks and reports records not found and processing errors
-- **Statistics Reporting**: Displays counts of deletions, not-found records, and errors at completion
+The program is part of the portfolio management subsystem and handles the controlled removal of portfolio records. It supports multiple deletion reason codes (account closed, transferred, or customer requested) and tracks statistics for successful deletions, records not found, and errors.
 
-This program is typically run as part of account closure or portfolio maintenance batch jobs.
+PORTDEL implements proper audit trail maintenance by recording each deletion with a timestamp, the deleted key, reason code, and the portfolio's status at the time of deletion. This ensures regulatory compliance and provides a complete history of portfolio lifecycle events.
 
 ## Program Structure
 
@@ -23,179 +18,154 @@ graph TD
     A[0000-MAIN] --> B[1000-INITIALIZE]
     A --> C[2000-PROCESS]
     A --> D[3000-TERMINATE]
-    A --> E[GOBACK]
     
-    B --> B1[INITIALIZE WS-WORK-AREAS]
-    B --> B2[OPEN I-O PORTFOLIO-FILE]
-    B --> B3[OPEN INPUT DELETE-FILE]
-    B --> B4[OPEN OUTPUT AUDIT-FILE]
-    B -->|Error| B5[Display Error]
-    B5 --> D
+    B --> E[INITIALIZE WS-WORK-AREAS]
+    B --> F[OPEN Files]
+    B --> G{Files OK?}
+    G -->|No| H[Display Error]
+    H --> D
     
-    C --> C1[READ DELETE-FILE]
-    C1 -->|AT END| C2[Set END-OF-FILE]
-    C1 -->|NOT AT END| C3[2100-PROCESS-DELETE]
+    C --> I[READ DELETE-FILE]
+    I --> J{EOF?}
+    J -->|No| K[2100-PROCESS-DELETE]
+    J -->|Yes| D
     
-    C3 --> C4[Move DEL-KEY to PORT-KEY]
-    C3 --> C5[READ PORTFOLIO-FILE]
-    C3 --> C6{EVALUATE Status}
-    C6 -->|Success| C7[2200-DELETE-RECORD]
-    C6 -->|Not Found| C8[Increment NOT-FND-COUNT]
-    C6 -->|Other| C9[Increment ERROR-COUNT]
+    K --> L[READ PORTFOLIO-FILE]
+    K --> M{Record Found?}
+    M -->|Yes| N[2200-DELETE-RECORD]
+    M -->|No| O[Increment Not Found]
+    M -->|Error| P[Increment Error]
     
-    C7 --> C7A[DELETE PORTFOLIO-FILE]
-    C7A -->|Success| C7B[Increment DELETE-COUNT]
-    C7B --> C7C[2300-WRITE-AUDIT]
-    C7A -->|Error| C7D[Increment ERROR-COUNT]
+    N --> Q[DELETE PORTFOLIO-FILE]
+    N --> R{Delete OK?}
+    R -->|Yes| S[2300-WRITE-AUDIT]
+    R -->|No| P
     
-    C7C --> C7E[ACCEPT TIMESTAMP]
-    C7C --> C7F[Build AUDIT-RECORD]
-    C7C --> C7G[WRITE AUDIT-RECORD]
+    S --> T[WRITE AUDIT-RECORD]
     
-    D --> D1[CLOSE All Files]
-    D --> D2[Display Statistics]
-    D --> D3[Set RETURN-CODE]
+    D --> U[CLOSE Files]
+    D --> V[Display Statistics]
     
     subgraph "Files"
-        F1[PORTFOLIO-FILE<br/>VSAM Indexed]
-        F2[DELETE-FILE<br/>Sequential Input]
-        F3[AUDIT-FILE<br/>Sequential Output]
+        W[(PORTFOLIO-FILE)]
+        X[DELETE-FILE]
+        Y[AUDIT-FILE]
     end
+    
+    L -.-> W
+    Q -.-> W
+    I -.-> X
+    T -.-> Y
 ```
 
 ## Data Structures
 
 ### File Section
 
-#### PORTFOLIO-FILE (PORTFLIO Copybook)
+#### PORTFOLIO-FILE (PORT-RECORD from PORTFLIO copybook)
+
+The indexed master file containing portfolio records:
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | PORT-RECORD | - | Portfolio master record |
-| 05 | PORT-KEY | - | Composite primary key |
+| 01 | PORT-RECORD | | Portfolio master record |
+| 05 | PORT-KEY | | Composite primary key |
 | 10 | PORT-ID | X(8) | Portfolio identifier |
 | 10 | PORT-ACCOUNT-NO | X(10) | Account number |
-| 05 | PORT-CLIENT-INFO | - | Client information |
+| 05 | PORT-CLIENT-INFO | | Client information group |
 | 10 | PORT-CLIENT-NAME | X(30) | Client name |
 | 10 | PORT-CLIENT-TYPE | X(1) | Client type code |
-| 05 | PORT-PORTFOLIO-INFO | - | Portfolio information |
-| 10 | PORT-CREATE-DATE | 9(8) | Creation date |
+| 05 | PORT-PORTFOLIO-INFO | | Portfolio status group |
+| 10 | PORT-CREATE-DATE | 9(8) | Creation date (YYYYMMDD) |
 | 10 | PORT-LAST-MAINT | 9(8) | Last maintenance date |
 | 10 | PORT-STATUS | X(1) | Portfolio status |
-| 05 | PORT-FINANCIAL-INFO | - | Financial data |
+| 05 | PORT-FINANCIAL-INFO | | Financial data group |
 | 10 | PORT-TOTAL-VALUE | S9(13)V99 COMP-3 | Total portfolio value |
 | 10 | PORT-CASH-BALANCE | S9(13)V99 COMP-3 | Cash balance |
-| 05 | PORT-AUDIT-INFO | - | Audit information |
+| 05 | PORT-AUDIT-INFO | | Audit information group |
 | 10 | PORT-LAST-USER | X(8) | Last user to modify |
 | 10 | PORT-LAST-TRANS | 9(8) | Last transaction date |
 | 05 | PORT-FILLER | X(50) | Reserved space |
 
-##### Client Type Values (PORT-CLIENT-TYPE)
+**PORT-CLIENT-TYPE Values:**
+- `I` - Individual (PORT-INDIVIDUAL)
+- `C` - Corporate (PORT-CORPORATE)
+- `T` - Trust (PORT-TRUST)
 
-| Value | 88-Level Name | Meaning |
-|-------|---------------|---------|
-| `'I'` | PORT-INDIVIDUAL | Individual account |
-| `'C'` | PORT-CORPORATE | Corporate account |
-| `'T'` | PORT-TRUST | Trust account |
+**PORT-STATUS Values:**
+- `A` - Active (PORT-ACTIVE)
+- `C` - Closed (PORT-CLOSED)
+- `S` - Suspended (PORT-SUSPENDED)
 
-##### Portfolio Status Values (PORT-STATUS)
+#### DELETE-FILE (DELETE-RECORD)
 
-| Value | 88-Level Name | Meaning |
-|-------|---------------|---------|
-| `'A'` | PORT-ACTIVE | Active portfolio |
-| `'C'` | PORT-CLOSED | Closed portfolio |
-| `'S'` | PORT-SUSPENDED | Suspended portfolio |
-
-#### DELETE-FILE
+Sequential input file containing deletion requests:
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | DELETE-RECORD | - | Deletion request record |
-| 05 | DEL-KEY | - | Key to delete |
+| 01 | DELETE-RECORD | | Deletion request record |
+| 05 | DEL-KEY | | Key of record to delete |
 | 10 | DEL-ID | X(8) | Portfolio ID |
 | 10 | DEL-ACCT-NO | X(10) | Account number |
-| 05 | DEL-REASON-CODE | X(2) | Deletion reason |
-| 05 | DEL-FILLER | X(60) | Reserved space |
+| 05 | DEL-REASON-CODE | X(2) | Reason for deletion |
+| 05 | DEL-FILLER | X(60) | Reserved/unused |
 
-##### Deletion Reason Codes (DEL-REASON-CODE)
+**DEL-REASON-CODE Values (88-level conditions):**
+- `01` - Account closed (DEL-CLOSED)
+- `02` - Transferred to another institution (DEL-TRANSFERRED)
+- `03` - Customer requested deletion (DEL-REQUESTED)
 
-| Value | 88-Level Name | Meaning |
-|-------|---------------|---------|
-| `'01'` | DEL-CLOSED | Account closed |
-| `'02'` | DEL-TRANSFERRED | Transferred to another institution |
-| `'03'` | DEL-REQUESTED | Customer requested deletion |
+#### AUDIT-FILE (AUDIT-RECORD)
 
-#### AUDIT-FILE
+Sequential output file for audit trail:
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | AUDIT-RECORD | - | Audit trail record |
+| 01 | AUDIT-RECORD | | Audit trail record |
 | 05 | AUD-TIMESTAMP | X(26) | Deletion timestamp |
-| 05 | AUD-ACTION | X(6) | Action code (`'DELETE'`) |
-| 05 | AUD-KEY | X(18) | Deleted record key |
+| 05 | AUD-ACTION | X(6) | Action performed ('DELETE') |
+| 05 | AUD-KEY | X(18) | Deleted portfolio key |
 | 05 | AUD-REASON | X(2) | Deletion reason code |
 | 05 | AUD-STATUS | X(1) | Portfolio status at deletion |
 | 05 | AUD-FILLER | X(27) | Reserved space |
 
 ### Working Storage
 
-#### Constants
+#### Constants (WS-CONSTANTS)
 
 | Level | Name | Picture | Value | Description |
 |-------|------|---------|-------|-------------|
-| 01 | WS-CONSTANTS | - | - | Program constants |
-| 05 | WS-PROGRAM-NAME | X(8) | `'PORTDEL'` | Program identifier |
+| 05 | WS-PROGRAM-NAME | X(8) | 'PORTDEL' | Program identifier |
 | 05 | WS-SUCCESS | S9(4) | +0 | Success return code |
 | 05 | WS-ERROR | S9(4) | +8 | Error return code |
 
-#### File Status Switches
+#### File Status Switches (WS-SWITCHES)
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | WS-SWITCHES | - | Status switches |
 | 05 | WS-FILE-STATUS | X(2) | Portfolio file status |
 | 05 | WS-DEL-STATUS | X(2) | Delete file status |
 | 05 | WS-AUD-STATUS | X(2) | Audit file status |
 | 05 | WS-END-OF-FILE-SW | X | EOF indicator |
 
-##### Portfolio File Status (WS-FILE-STATUS)
+**WS-FILE-STATUS Values:**
+- `00` - Success (WS-SUCCESS-STATUS)
+- `23` - Record not found (WS-REC-NOT-FND)
+- `10` - End of file (WS-EOF-STATUS)
 
-| Value | 88-Level Name | Meaning |
-|-------|---------------|---------|
-| `'00'` | WS-SUCCESS-STATUS | Successful operation |
-| `'23'` | WS-REC-NOT-FND | Record not found |
-| `'10'` | WS-EOF-STATUS | End of file |
+**WS-END-OF-FILE-SW Values:**
+- `Y` - End of file reached (END-OF-FILE)
+- `N` - Not end of file (NOT-END-OF-FILE)
 
-##### Delete File Status (WS-DEL-STATUS)
-
-| Value | 88-Level Name | Meaning |
-|-------|---------------|---------|
-| `'00'` | WS-DEL-SUCCESS | Successful operation |
-| `'10'` | WS-DEL-EOF | End of file |
-
-##### Audit File Status (WS-AUD-STATUS)
-
-| Value | 88-Level Name | Meaning |
-|-------|---------------|---------|
-| `'00'` | WS-AUD-SUCCESS | Successful operation |
-
-##### End of File Switch (WS-END-OF-FILE-SW)
-
-| Value | 88-Level Name | Meaning |
-|-------|---------------|---------|
-| `'Y'` | END-OF-FILE | End of file reached |
-| `'N'` | NOT-END-OF-FILE | More records to process |
-
-#### Work Areas
+#### Work Areas (WS-WORK-AREAS)
 
 | Level | Name | Picture | Initial | Description |
 |-------|------|---------|---------|-------------|
-| 01 | WS-WORK-AREAS | - | - | Work area group |
-| 05 | WS-DELETE-COUNT | 9(7) | ZERO | Successful deletions |
-| 05 | WS-ERROR-COUNT | 9(7) | ZERO | Processing errors |
-| 05 | WS-NOT-FND-COUNT | 9(7) | ZERO | Records not found |
+| 05 | WS-DELETE-COUNT | 9(7) | ZERO | Successful deletions count |
+| 05 | WS-ERROR-COUNT | 9(7) | ZERO | Error count |
+| 05 | WS-NOT-FND-COUNT | 9(7) | ZERO | Records not found count |
 | 05 | WS-RETURN-CODE | S9(4) | +0 | Program return code |
-| 05 | WS-TIMESTAMP | X(26) | - | Current timestamp |
+| 05 | WS-TIMESTAMP | X(26) | | Current timestamp |
 
 ## File I/O
 
@@ -203,233 +173,187 @@ graph TD
 
 | Property | Value |
 |----------|-------|
-| DD Name | PORTFILE |
-| Organization | INDEXED (VSAM KSDS) |
-| Access Mode | RANDOM |
-| Record Key | PORT-KEY (PORT-ID + PORT-ACCOUNT-NO) |
+| Logical Name | PORTFOLIO-FILE |
+| Physical Assignment | PORTFILE |
+| Organization | Indexed (VSAM KSDS) |
+| Access Mode | Random |
+| Record Key | PORT-KEY |
 | File Status | WS-FILE-STATUS |
 | Open Mode | I-O (Input-Output) |
 
-The portfolio file is opened for I-O to allow both READ and DELETE operations.
+The portfolio master file is opened for I-O to allow both reading and deleting records.
 
 ### DELETE-FILE
 
 | Property | Value |
 |----------|-------|
-| DD Name | DELEFILE |
-| Organization | SEQUENTIAL |
+| Logical Name | DELETE-FILE |
+| Physical Assignment | DELEFILE |
+| Organization | Sequential |
 | File Status | WS-DEL-STATUS |
-| Open Mode | INPUT |
+| Open Mode | Input |
 
-Sequential input file containing deletion requests.
+Contains the list of portfolios to be deleted with reason codes.
 
 ### AUDIT-FILE
 
 | Property | Value |
 |----------|-------|
-| DD Name | AUDFILE |
-| Organization | SEQUENTIAL |
+| Logical Name | AUDIT-FILE |
+| Physical Assignment | AUDFILE |
+| Organization | Sequential |
 | File Status | WS-AUD-STATUS |
-| Open Mode | OUTPUT |
+| Open Mode | Output |
 
-Sequential output file for audit trail records.
-
-### File Operations Summary
-
-| Paragraph | File | Operation |
-|-----------|------|-----------|
-| 1000-INITIALIZE | PORTFOLIO-FILE | OPEN I-O |
-| 1000-INITIALIZE | DELETE-FILE | OPEN INPUT |
-| 1000-INITIALIZE | AUDIT-FILE | OPEN OUTPUT |
-| 2000-PROCESS | DELETE-FILE | READ |
-| 2100-PROCESS-DELETE | PORTFOLIO-FILE | READ (random) |
-| 2200-DELETE-RECORD | PORTFOLIO-FILE | DELETE |
-| 2300-WRITE-AUDIT | AUDIT-FILE | WRITE |
-| 3000-TERMINATE | All files | CLOSE |
+Records all deletion activity for audit purposes.
 
 ## Control Flow
 
-### 0000-MAIN
+### Main Processing (0000-MAIN)
 
-The main entry point that orchestrates the deletion process:
-1. **PERFORM 1000-INITIALIZE**: Set up files and work areas
-2. **PERFORM 2000-PROCESS UNTIL END-OF-FILE**: Process all deletion requests
-3. **PERFORM 3000-TERMINATE**: Close files and report statistics
-4. **GOBACK**: Return to caller/operating system
+The program follows a standard batch processing pattern:
 
-### 1000-INITIALIZE
+1. **Initialize** - Open files and set up work areas
+2. **Process** - Loop through deletion requests until EOF
+3. **Terminate** - Close files and display statistics
+4. **GOBACK** - Return to caller/operating system
 
-Performs program initialization:
-1. **INITIALIZE WS-WORK-AREAS**: Clears counters and work fields
-2. **OPEN files**: Opens all three files with appropriate modes
-3. **Error check**: If any file fails to open:
-   - Displays error message with all file statuses
-   - Sets WS-RETURN-CODE to WS-ERROR (8)
+### Initialization (1000-INITIALIZE)
+
+1. **Initialize Work Areas**: Clears WS-WORK-AREAS to initial values
+2. **Open Files**:
+   - PORTFOLIO-FILE opened for I-O (read and delete)
+   - DELETE-FILE opened for INPUT
+   - AUDIT-FILE opened for OUTPUT
+3. **Check File Status**: If any file fails to open:
+   - Displays error message with all file status codes
+   - Sets WS-RETURN-CODE to 8 (error)
    - Performs 3000-TERMINATE to clean up
 
-### 2000-PROCESS
+### Main Loop (2000-PROCESS)
 
-Reads and processes deletion requests in a loop:
-1. **READ DELETE-FILE**: Reads next deletion request
-   - AT END: Sets END-OF-FILE flag to stop loop
-   - NOT AT END: Performs 2100-PROCESS-DELETE
+Executed repeatedly until END-OF-FILE:
 
-### 2100-PROCESS-DELETE
+1. **Read Delete Request**: Reads next record from DELETE-FILE
+2. **Check for EOF**: Sets END-OF-FILE flag if at end
+3. **Process Deletion**: If not EOF, performs 2100-PROCESS-DELETE
 
-Processes a single deletion request:
-1. **MOVE DEL-KEY TO PORT-KEY**: Sets up key for portfolio lookup
-2. **READ PORTFOLIO-FILE**: Random read using the key
-3. **EVALUATE status**:
-   - **WS-SUCCESS-STATUS**: Record found, perform 2200-DELETE-RECORD
-   - **WS-REC-NOT-FND**: Record not in file, increment WS-NOT-FND-COUNT, display message
-   - **OTHER**: Unexpected error, increment WS-ERROR-COUNT, display message
+### Process Delete (2100-PROCESS-DELETE)
 
-### 2200-DELETE-RECORD
+1. **Set Key**: Moves DEL-KEY to PORT-KEY to identify target record
+2. **Read Portfolio**: Reads the record to verify it exists
+3. **Evaluate Result**:
+   - **Success**: Record found, performs 2200-DELETE-RECORD
+   - **Not Found**: Increments WS-NOT-FND-COUNT, displays message
+   - **Other Error**: Increments WS-ERROR-COUNT, displays message
 
-Performs the actual deletion:
-1. **DELETE PORTFOLIO-FILE**: Removes the record from the indexed file
-2. **Check status**:
-   - **Success**: Increment WS-DELETE-COUNT, perform 2300-WRITE-AUDIT
-   - **Error**: Increment WS-ERROR-COUNT, display failure message
+### Delete Record (2200-DELETE-RECORD)
 
-### 2300-WRITE-AUDIT
+1. **Delete Record**: Executes `DELETE PORTFOLIO-FILE` to remove the record
+2. **Check Status**: 
+   - **Success**: Increments WS-DELETE-COUNT, performs 2300-WRITE-AUDIT
+   - **Failure**: Increments WS-ERROR-COUNT, displays error message
 
-Creates an audit trail record:
-1. **ACCEPT WS-TIMESTAMP FROM TIME STAMP**: Gets current system time
-2. **Build audit record**:
+### Write Audit (2300-WRITE-AUDIT)
+
+1. **Get Timestamp**: Uses `ACCEPT WS-TIMESTAMP FROM TIME STAMP`
+2. **Build Audit Record**:
    - AUD-TIMESTAMP = current timestamp
-   - AUD-ACTION = `'DELETE'`
-   - AUD-KEY = deleted portfolio key
-   - AUD-REASON = deletion reason code
+   - AUD-ACTION = 'DELETE'
+   - AUD-KEY = the deleted portfolio key
+   - AUD-REASON = deletion reason code from input
    - AUD-STATUS = portfolio status at time of deletion
-3. **WRITE AUDIT-RECORD**: Writes to audit file
-4. **Check status**: If write fails, display error message (processing continues)
+3. **Write Record**: Writes AUDIT-RECORD to AUDIT-FILE
+4. **Check Status**: Displays warning if audit write fails
 
-### 3000-TERMINATE
+### Termination (3000-TERMINATE)
 
-Performs cleanup and reporting:
-1. **CLOSE all files**: Closes PORTFOLIO-FILE, DELETE-FILE, AUDIT-FILE
-2. **Display statistics**:
-   - Records deleted count
-   - Records not found count
-   - Errors occurred count
-3. **MOVE WS-RETURN-CODE TO RETURN-CODE**: Sets job return code
-
-## Processing Summary
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    PORTDEL Processing                        │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  DELETE-FILE ──────► Read Request                            │
-│       │                   │                                  │
-│       │                   ▼                                  │
-│       │         ┌─────────────────┐                         │
-│       │         │ Lookup in       │                         │
-│       │         │ PORTFOLIO-FILE  │                         │
-│       │         └────────┬────────┘                         │
-│       │                  │                                   │
-│       │         ┌────────┴────────┐                         │
-│       │         │                 │                         │
-│       │         ▼                 ▼                         │
-│       │      Found           Not Found                       │
-│       │         │                 │                         │
-│       │         ▼                 ▼                         │
-│       │    Delete Record    Log to Console                  │
-│       │         │                                           │
-│       │         ▼                                           │
-│       │    Write Audit ──────► AUDIT-FILE                   │
-│       │                                                      │
-│       └──────► Next Request (loop until EOF)                │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-```
-
-## Sample JCL
-
-```jcl
-//PORTDEL  EXEC PGM=PORTDEL
-//STEPLIB  DD DSN=your.loadlib,DISP=SHR
-//PORTFILE DD DSN=your.portfolio.vsam.file,DISP=SHR
-//DELEFILE DD DSN=your.delete.requests,DISP=SHR
-//AUDFILE  DD DSN=your.audit.output,
-//            DISP=(NEW,CATLG,DELETE),
-//            DCB=(RECFM=FB,LRECL=80,BLKSIZE=0),
-//            SPACE=(TRK,(5,2),RLSE)
-//SYSOUT   DD SYSOUT=*
-```
+1. **Close Files**: Closes all three files
+2. **Display Statistics**:
+   - Records deleted (successful)
+   - Records not found
+   - Errors occurred
+3. **Set Return Code**: Moves WS-RETURN-CODE to RETURN-CODE
 
 ## Dependencies
 
 ### Copybooks
-
-- **PORTFLIO** - Portfolio master record layout with client, financial, and audit information
+- PORTFLIO - Portfolio master record layout
 
 ### Called Programs
-
 None - PORTDEL is a standalone batch program.
 
 ### Related Programs
 
-- Programs that create portfolio records (PORTADD, PORTMSTR)
-- Programs that read the audit file (RPTAUD00)
-- Programs that generate deletion request files
+Programs that share the PORTFLIO copybook:
+- PORTADD - Portfolio addition program
+- PORTREAD - Portfolio read/inquiry program
+- PORTTEST - Portfolio test program
+- PORTUPDT - Portfolio update program
+- TSTGEN00 - Test data generation
+
+## JCL Requirements
+
+Example JCL for executing PORTDEL:
+
+```jcl
+//PORTDEL  EXEC PGM=PORTDEL
+//STEPLIB  DD DSN=your.loadlib,DISP=SHR
+//PORTFILE DD DSN=your.portfolio.master,DISP=SHR
+//DELEFILE DD DSN=your.delete.requests,DISP=SHR
+//AUDFILE  DD DSN=your.audit.file,
+//            DISP=(NEW,CATLG,DELETE),
+//            DCB=(RECFM=FB,LRECL=80,BLKSIZE=0),
+//            SPACE=(CYL,(1,1),RLSE)
+//SYSOUT   DD SYSOUT=*
+```
+
+### Input File Format (DELEFILE)
+
+Fixed-length 80-byte records:
+- Positions 1-8: Portfolio ID
+- Positions 9-18: Account Number
+- Positions 19-20: Reason Code (01, 02, or 03)
+- Positions 21-80: Filler (spaces)
 
 ## Return Codes
 
 | Code | Meaning |
 |------|---------|
 | 0 | Successful completion (may include not-found records) |
-| 8 | Error during processing (file open failure or delete errors) |
+| 8 | Error occurred (file open failure or other error) |
 
-## Console Output
+## Processing Statistics
 
-The program produces console output for monitoring:
+The program displays the following statistics at termination:
 
-**Error Messages:**
-- `Error opening files: PORT=xx DEL=xx AUD=xx` - File open failure
-- `Record not found: [key]` - Deletion request for non-existent record
-- `Read error for: [key]` - Unexpected read error
-- `Delete failed for: [key]` - Delete operation failed
-- `Audit write failed for: [key]` - Audit record write failed
-
-**Statistics (at termination):**
-```
-Records deleted:  0000025
-Records not found:0000003
-Errors occurred:  0000000
-```
+| Statistic | Description |
+|-----------|-------------|
+| Records deleted | Number of portfolios successfully removed |
+| Records not found | Number of deletion requests where portfolio didn't exist |
+| Errors occurred | Number of I/O or processing errors |
 
 ## Technical Notes
 
-### COBOL Constructs Used
+### DELETE Statement
 
-- **INDEXED File with RANDOM Access**: The PORTFOLIO-FILE uses random access mode to directly locate records by key without sequential scanning. This is efficient for deletion processing where specific records need to be located.
+The program uses the COBOL `DELETE` statement to remove records from the indexed VSAM file. This requires:
+1. The file must be opened for I-O
+2. The record must be read first (to position the file)
+3. The DELETE operates on the last-read record
 
-- **DELETE Statement**: The COBOL DELETE statement removes a record from an indexed file. The record must first be successfully read before it can be deleted (record locking).
+### Random Access
 
-- **OPEN I-O**: Opens the file for both input and output operations, required when both reading and deleting records from the same file.
+The PORTFOLIO-FILE uses random access mode, allowing direct retrieval of records by key without sequential processing. This is efficient for deletion processing where specific records are targeted.
 
-- **ACCEPT FROM TIME STAMP**: IBM extension that retrieves the current system timestamp in ISO format (`YYYY-MM-DD-HH.MM.SS.FFFFFF`).
+### Audit Trail Integrity
 
-- **PERFORM UNTIL**: Loop construct that continues processing until the END-OF-FILE condition becomes true.
+Each successful deletion is immediately followed by an audit write. If the audit write fails, a warning is displayed but processing continues. This ensures deletion statistics are accurate even if audit logging has issues.
 
-- **EVALUATE TRUE**: Multi-way branch based on condition name evaluation, similar to a switch/case statement.
+### COMP-3 (Packed Decimal)
 
-- **Multiple file CLOSE**: COBOL allows closing multiple files in a single CLOSE statement.
+The financial fields in PORT-RECORD (PORT-TOTAL-VALUE, PORT-CASH-BALANCE) use COMP-3 format. These fields are not directly used by PORTDEL but are part of the record structure defined in the PORTFLIO copybook.
 
-### File Status Codes
+### ACCEPT TIME STAMP
 
-| Status | Meaning |
-|--------|---------|
-| `'00'` | Successful operation |
-| `'10'` | End of file (sequential read) |
-| `'23'` | Record not found (random read/delete) |
-
-### Processing Characteristics
-
-- **Non-destructive on not-found**: Records not found in portfolio file are logged but do not cause program failure
-- **Audit before continue**: Each successful deletion is audited before processing the next request
-- **Statistics tracking**: Maintains separate counts for deletions, not-found, and errors
-- **Graceful degradation**: Continues processing even if audit writes fail
+The program uses the IBM COBOL extension `ACCEPT WS-TIMESTAMP FROM TIME STAMP` to obtain a 26-character timestamp in ISO format for audit records.

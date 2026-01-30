@@ -1,389 +1,366 @@
 ---
 title: "ERRHND"
-description: "Online Error Handling Copybook - defines the standard structure for error information in CICS programs including severity levels, CICS/DB2 response codes, and trace information"
+description: "Online Error Handling Copybook - defines the CICS error communication structure with severity levels, action codes, and trace information"
 ---
 
 ## Overview
 
-ERRHND is a copybook that defines the standard error handling structure for CICS online programs. It provides a consistent format for capturing, communicating, and processing error information across the online transaction processing environment.
+ERRHND is a copybook that defines the Online Error Handling structure used by CICS programs for standardized error communication. It provides a comprehensive error record that captures program context, error details (including DB2 and CICS response codes), severity levels, and recommended recovery actions.
 
-This copybook is fundamental to the online error handling infrastructure, containing:
-- **Error Identification** - Program and paragraph where error occurred
-- **Response Codes** - SQLCODE for DB2 errors and CICS RESP/RESP2 codes
-- **Severity Classification** - Fatal, Warning, and Informational levels
-- **Action Directives** - Return, Continue, or Abend instructions
-- **Trace Information** - Unique trace ID and timestamp for debugging
+The copybook is designed specifically for CICS online transactions and is typically passed through the DFHCOMMAREA to centralized error handling programs like ERRHNDL. It includes trace information (trace ID and timestamp) that enables correlation between user-facing error messages and detailed error logs.
+
+This structure enables consistent error handling across all online programs, supporting the determination of appropriate recovery actions based on error severity.
 
 ## Record Layout
 
 ```
 +------------------------------------------------------------------+
-|                       ERROR-HANDLING                              |
+| ERROR-HANDLING (176 bytes)                                        |
 +------------------------------------------------------------------+
-| ERR-PROGRAM (8) + ERR-PARAGRAPH (30)                             |
+| ERR-PROGRAM | ERR-PARAGRAPH | ERR-SQLCODE | ERR-CICS-RESP/RESP2 |
+|     (8)     |     (30)      |     (4)     |       (8)           |
 +------------------------------------------------------------------+
-| ERR-SQLCODE (4) + ERR-CICS-RESP (4) + ERR-CICS-RESP2 (4)        |
-+------------------------------------------------------------------+
-| ERR-SEVERITY (1) + ERR-MESSAGE (80) + ERR-ACTION (1)             |
-+------------------------------------------------------------------+
-| ERR-TRACE                                                         |
-|   +-- ERR-TRACE-ID (16) + ERR-TIMESTAMP (26)                     |
-+------------------------------------------------------------------+
-| Total: ~173 bytes                                                 |
+| ERR-SEVERITY | ERR-MESSAGE | ERR-ACTION | ERR-TRACE              |
+|     (1)      |    (80)     |    (1)     |   (42)                 |
 +------------------------------------------------------------------+
 ```
 
-## Data Structures
+**Total Record Length: 176 bytes**
 
-### Error Handling Record (ERROR-HANDLING)
+## Data Structure
 
-The top-level structure containing all error information:
+### ERROR-HANDLING (01 Level)
 
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 01 | ERROR-HANDLING | - | Complete error handling record |
+| Level | Name | Picture | Bytes | Description |
+|-------|------|---------|-------|-------------|
+| 01 | ERROR-HANDLING | | 176 | Complete error handling record |
 
-### Error Location
+### Error Context Fields
 
-Fields identifying where the error occurred:
+| Level | Name | Picture | Bytes | Description |
+|-------|------|---------|-------|-------------|
+| 05 | ERR-PROGRAM | X(8) | 8 | Program where error occurred |
+| 05 | ERR-PARAGRAPH | X(30) | 30 | Paragraph/section name |
 
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 05 | ERR-PROGRAM | X(8) | Program name where error occurred |
-| 05 | ERR-PARAGRAPH | X(30) | Paragraph or section name |
+### Error Code Fields
 
-### Response Codes
+| Level | Name | Picture | Bytes | Description |
+|-------|------|---------|-------|-------------|
+| 05 | ERR-SQLCODE | S9(9) COMP | 4 | DB2 SQLCODE value |
+| 05 | ERR-CICS-RESP | S9(8) COMP | 4 | CICS EIBRESP value |
+| 05 | ERR-CICS-RESP2 | S9(8) COMP | 4 | CICS EIBRESP2 value |
 
-System response codes for diagnosis:
+### ERR-SEVERITY (Error Classification)
 
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 05 | ERR-SQLCODE | S9(9) COMP | DB2 SQL return code |
-| 05 | ERR-CICS-RESP | S9(8) COMP | CICS RESP value (EIBRESP) |
-| 05 | ERR-CICS-RESP2 | S9(8) COMP | CICS RESP2 value (EIBRESP2) |
+| Level | Name | Picture | Bytes | Description |
+|-------|------|---------|-------|-------------|
+| 05 | ERR-SEVERITY | X | 1 | Error severity level |
 
-### Severity Level (ERR-SEVERITY)
+**Severity Values (88-level conditions):**
 
-Classification of error severity:
+| Value | Condition Name | Description |
+|-------|----------------|-------------|
+| `F` | ERR-FATAL | Fatal error - cannot continue |
+| `W` | ERR-WARNING | Warning - processing can continue |
+| `I` | ERR-INFO | Informational - no action required |
 
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 05 | ERR-SEVERITY | X(1) | Severity level code |
-| 88 | ERR-FATAL | VALUE 'F' | Fatal error - cannot continue |
-| 88 | ERR-WARNING | VALUE 'W' | Warning - can continue with caution |
-| 88 | ERR-INFO | VALUE 'I' | Informational - no action required |
+### ERR-MESSAGE
 
-**Severity Levels:**
+| Level | Name | Picture | Bytes | Description |
+|-------|------|---------|-------|-------------|
+| 05 | ERR-MESSAGE | X(80) | 80 | Error message text |
 
-| Code | Condition | Description | Typical Use |
-|------|-----------|-------------|-------------|
-| F | ERR-FATAL | Fatal error | Database unavailable, security violation |
-| W | ERR-WARNING | Warning | Validation failed, data not found |
-| I | ERR-INFO | Information | Audit logging, status messages |
+### ERR-ACTION (Recovery Action)
 
-### Error Message
+| Level | Name | Picture | Bytes | Description |
+|-------|------|---------|-------|-------------|
+| 05 | ERR-ACTION | X | 1 | Recommended recovery action |
 
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 05 | ERR-MESSAGE | X(80) | Human-readable error description |
+**Action Values (88-level conditions):**
 
-### Action Directive (ERR-ACTION)
+| Value | Condition Name | Description |
+|-------|----------------|-------------|
+| `R` | ERR-RETURN | Return to caller with error status |
+| `C` | ERR-CONTINUE | Continue processing |
+| `A` | ERR-ABEND | Abend the transaction |
 
-Instruction for how the calling program should respond:
+### ERR-TRACE (Correlation Information)
 
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 05 | ERR-ACTION | X(1) | Recommended action code |
-| 88 | ERR-RETURN | VALUE 'R' | Return to caller with error |
-| 88 | ERR-CONTINUE | VALUE 'C' | Continue processing |
-| 88 | ERR-ABEND | VALUE 'A' | Abend the transaction |
+| Level | Name | Picture | Bytes | Description |
+|-------|------|---------|-------|-------------|
+| 05 | ERR-TRACE | | 42 | Trace/correlation information |
+| 10 | ERR-TRACE-ID | X(16) | 16 | Unique trace identifier |
+| 10 | ERR-TIMESTAMP | X(26) | 26 | Error occurrence timestamp |
 
-**Action Codes:**
+## Severity and Action Relationship
 
-| Code | Condition | Description | When Used |
-|------|-----------|-------------|-----------|
-| R | ERR-RETURN | Return | Normal error return to calling program |
-| C | ERR-CONTINUE | Continue | Warning or info - processing can proceed |
-| A | ERR-ABEND | Abend | Fatal error - terminate transaction |
+```mermaid
+flowchart TD
+    A[Error Detected] --> B{ERR-SEVERITY?}
+    
+    B -->|F - Fatal| C[ERR-FATAL]
+    B -->|W - Warning| D[ERR-WARNING]
+    B -->|I - Info| E[ERR-INFO]
+    
+    C --> F[Set ERR-ABEND]
+    D --> G[Set ERR-CONTINUE]
+    E --> G
+    
+    F --> H[Transaction Abends]
+    G --> I[Processing Continues]
+    
+    subgraph "Caller Response"
+        H
+        I
+        J[ERR-RETURN: Return with Error]
+    end
+```
 
-### Trace Information (ERR-TRACE)
+## Error Handling Flow
 
-Debugging and tracking information:
+```mermaid
+sequenceDiagram
+    participant App as Application Program
+    participant ErrHnd as ERRHNDL
+    participant DB2Log as Error Log (DB2)
+    participant User as User/Terminal
 
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 05 | ERR-TRACE | - | Trace information group |
-| 10 | ERR-TRACE-ID | X(16) | Unique identifier for error tracking |
-| 10 | ERR-TIMESTAMP | X(26) | ISO format timestamp (YYYY-MM-DD-HH.MM.SS.FFFFFF) |
+    App->>App: Error Detected
+    App->>App: Populate ERROR-HANDLING
+    App->>ErrHnd: EXEC CICS LINK (COMMAREA)
+    
+    ErrHnd->>ErrHnd: Generate Trace ID
+    ErrHnd->>ErrHnd: Set Timestamp
+    ErrHnd->>DB2Log: INSERT Error Record
+    ErrHnd->>ErrHnd: Format Message
+    ErrHnd->>ErrHnd: Determine Action
+    ErrHnd-->>App: Return (Updated COMMAREA)
+    
+    alt ERR-ABEND
+        App->>App: EXEC CICS ABEND
+    else ERR-RETURN
+        App->>User: Display Error Message
+    else ERR-CONTINUE
+        App->>App: Continue Processing
+    end
+```
 
-## Usage
+## Usage Patterns
 
-### Working-Storage Declaration
+### Populating Error Information
 
 ```cobol
 WORKING-STORAGE SECTION.
 01  WS-ERROR-AREA.
     COPY ERRHND.
-```
 
-### Linkage Section (for Error Handler)
-
-```cobol
-LINKAGE SECTION.
-01  DFHCOMMAREA.
-    COPY ERRHND.
-```
-
-### Populating Error Information
-
-```cobol
-* Capture error details
-MOVE 'MYPROG01' TO ERR-PROGRAM
-MOVE 'P200-PROCESS-DATA' TO ERR-PARAGRAPH
-MOVE SQLCODE TO ERR-SQLCODE
-MOVE EIBRESP TO ERR-CICS-RESP
-MOVE EIBRESP2 TO ERR-CICS-RESP2
-SET ERR-WARNING TO TRUE
-MOVE 'Record not found for account' TO ERR-MESSAGE
-
-* Generate trace information
-MOVE FUNCTION CURRENT-DATE TO ERR-TIMESTAMP
-```
-
-### Calling the Error Handler
-
-```cobol
-P900-ERROR-ROUTINE.
-    MOVE 'INQONLN' TO ERR-PROGRAM
-    MOVE 'P900-ERROR-ROUTINE' TO ERR-PARAGRAPH
+PROCEDURE DIVISION.
+* When an error occurs...
+    MOVE 'INQONLN ' TO ERR-PROGRAM
+    MOVE 'P300-READ-PORTFOLIO' TO ERR-PARAGRAPH
+    MOVE SQLCODE TO ERR-SQLCODE
     MOVE EIBRESP TO ERR-CICS-RESP
     MOVE EIBRESP2 TO ERR-CICS-RESP2
     SET ERR-WARNING TO TRUE
+    MOVE 'Portfolio not found' TO ERR-MESSAGE
+    MOVE SPACES TO ERR-TRACE-ID
     
-    EXEC CICS LINK PROGRAM('ERRHNDL')
-              COMMAREA(WS-ERROR-AREA)
-              LENGTH(LENGTH OF WS-ERROR-AREA)
+    EXEC CICS LINK
+        PROGRAM('ERRHNDL')
+        COMMAREA(WS-ERROR-AREA)
+        LENGTH(LENGTH OF WS-ERROR-AREA)
     END-EXEC
-    
-    * Check recommended action
-    IF ERR-ABEND
-       EXEC CICS ABEND ABCODE('IERR') END-EXEC
-    END-IF
-    
-    MOVE ERR-MESSAGE TO WS-DISPLAY-MESSAGE.
-P900-EXIT.
-    EXIT.
 ```
 
 ### Handling Different Severity Levels
 
 ```cobol
+* Fatal error - DB2 connection lost
+SET ERR-FATAL TO TRUE
+MOVE 'Database connection failed' TO ERR-MESSAGE
+
+* Warning - data validation issue
+SET ERR-WARNING TO TRUE
+MOVE 'Invalid account format' TO ERR-MESSAGE
+
+* Informational - non-critical notice
+SET ERR-INFO TO TRUE
+MOVE 'Using default currency' TO ERR-MESSAGE
+```
+
+### Processing Returned Action
+
+```cobol
+* After LINK to ERRHNDL, check recommended action
 EVALUATE TRUE
-    WHEN ERR-FATAL
-        * Log and terminate
-        PERFORM LOG-FATAL-ERROR
-        EXEC CICS ABEND ABCODE('FERR') END-EXEC
-    WHEN ERR-WARNING
-        * Log and continue with caution
-        PERFORM LOG-WARNING
-        IF ERR-CONTINUE
-            CONTINUE
-        ELSE
-            EXEC CICS RETURN END-EXEC
-        END-IF
-    WHEN ERR-INFO
-        * Just log for audit
-        PERFORM LOG-INFO
+    WHEN ERR-ABEND
+        EXEC CICS ABEND
+            ABCODE('UERR')
+        END-EXEC
+    WHEN ERR-RETURN
+        PERFORM DISPLAY-ERROR-TO-USER
+        EXEC CICS RETURN END-EXEC
+    WHEN ERR-CONTINUE
+        CONTINUE
 END-EVALUATE
 ```
 
-### Using Trace ID for Debugging
+### Capturing DB2 Errors
 
 ```cobol
-* Generate unique trace ID if not already set
-IF ERR-TRACE-ID = SPACES
-    STRING EIBTRNID DELIMITED BY SIZE
-           EIBTIME DELIMITED BY SIZE
-           INTO ERR-TRACE-ID
-END-IF
-
-* Display trace ID to user for support calls
-STRING 'Error occurred. Reference: '
-       ERR-TRACE-ID
-       DELIMITED BY SIZE
-       INTO WS-USER-MESSAGE
-```
-
-## Programs Using This Copybook
-
-### ERRHNDL - Centralized Error Handler
-
-**Purpose:** Processes all online errors, logs to DB2, formats messages, and determines recovery action
-
-**Usage:**
-- Receives ERROR-HANDLING structure in DFHCOMMAREA
-- Populates ERR-TIMESTAMP if not set
-- Generates ERR-TRACE-ID using FUNCTION RANDOM if blank
-- Inserts error record into ERRLOG DB2 table
-- Formats ERR-MESSAGE with program name and trace ID
-- Sets ERR-ACTION based on ERR-SEVERITY:
-  - Fatal → Abend
-  - Warning → Continue
-  - Info → Continue
-- Returns updated structure to caller
-
-**Key Code Pattern:**
-```cobol
-EVALUATE TRUE
-    WHEN ERR-FATAL
-         SET ERR-ABEND TO TRUE
-    WHEN ERR-WARNING
-         SET ERR-CONTINUE TO TRUE
-    WHEN ERR-INFO
-         SET ERR-CONTINUE TO TRUE
-    WHEN OTHER
-         SET ERR-RETURN TO TRUE
-END-EVALUATE
-```
-
-### DB2ONLN - Online DB2 Connection Manager
-
-**Purpose:** Manages DB2 connection pool with error handling support
-
-**Usage:**
-- Includes ERRHND in WS-ERROR-AREA
-- Uses error structure for connection failure reporting
-
-### DB2RECV - DB2 Recovery Manager
-
-**Purpose:** Handles DB2 connection failures with retry logic
-
-**Usage:**
-- Populates ERR-PROGRAM with failing program name
-- Populates ERR-PARAGRAPH with cursor name for cursor recovery
-- Sets ERR-SQLCODE from failed SQL operation
-- Calls ERRHNDL to log and determine action
-- Checks ERR-CONTINUE to decide on retry
-- Copies ERR-MESSAGE to recovery response
-
-**Key Code Pattern:**
-```cobol
-MOVE RECV-PROGRAM TO ERR-PROGRAM
-MOVE RECV-CURSOR TO ERR-PARAGRAPH
-MOVE RECV-SQLCODE TO ERR-SQLCODE
-SET ERR-WARNING TO TRUE
-
-EXEC CICS LINK PROGRAM('ERRHNDL')
-          COMMAREA(WS-ERROR-AREA)
-          LENGTH(LENGTH OF WS-ERROR-AREA)
+EXEC SQL
+    SELECT PORTFOLIO_NAME
+    INTO :WS-PORT-NAME
+    FROM PORTFOLIO
+    WHERE PORTFOLIO_ID = :WS-PORT-ID
 END-EXEC
 
-IF ERR-CONTINUE
-   SET RECV-RETRY TO TRUE
-ELSE
-   SET RECV-FAILED TO TRUE
+IF SQLCODE NOT = 0
+    MOVE 'DB2ONLN ' TO ERR-PROGRAM
+    MOVE 'P200-GET-PORTFOLIO' TO ERR-PARAGRAPH
+    MOVE SQLCODE TO ERR-SQLCODE
+    MOVE 0 TO ERR-CICS-RESP
+    MOVE 0 TO ERR-CICS-RESP2
+    
+    EVALUATE SQLCODE
+        WHEN +100
+            SET ERR-WARNING TO TRUE
+            MOVE 'Portfolio not found' TO ERR-MESSAGE
+        WHEN -911
+            SET ERR-FATAL TO TRUE
+            MOVE 'Database timeout' TO ERR-MESSAGE
+        WHEN OTHER
+            SET ERR-FATAL TO TRUE
+            STRING 'SQL Error: ' DELIMITED SIZE
+                   SQLCODE DELIMITED SIZE
+              INTO ERR-MESSAGE
+    END-EVALUATE
+    
+    EXEC CICS LINK PROGRAM('ERRHNDL')
+        COMMAREA(WS-ERROR-AREA)
+        LENGTH(LENGTH OF WS-ERROR-AREA)
+    END-EXEC
 END-IF
 ```
 
-### INQONLN - Portfolio Online Inquiry
+### Capturing CICS Errors
 
-**Purpose:** Main inquiry handler with comprehensive error handling
-
-**Usage:**
-- Stores EIBRESP and EIBRESP2 in error structure
-- Links to ERRHNDL for centralized error processing
-- Checks ERR-ABEND to decide on transaction termination
-- Displays ERR-MESSAGE to user
-
-**Key Code Pattern:**
 ```cobol
-MOVE 'INQONLN' TO ERR-PROGRAM
-MOVE 'P900-ERROR-ROUTINE' TO ERR-PARAGRAPH
-MOVE EIBRESP TO ERR-CICS-RESP
-MOVE EIBRESP2 TO ERR-CICS-RESP2
-SET ERR-WARNING TO TRUE
-
-EXEC CICS LINK PROGRAM('ERRHNDL')
-          COMMAREA(WS-ERROR-AREA)
-          LENGTH(LENGTH OF WS-ERROR-AREA)
+EXEC CICS READ
+    FILE('PORTFILE')
+    INTO(WS-PORT-RECORD)
+    RIDFLD(WS-PORT-KEY)
+    RESP(WS-RESP)
+    RESP2(WS-RESP2)
 END-EXEC
 
-IF ERR-ABEND
-   EXEC CICS ABEND ABCODE('IERR') END-EXEC
+IF WS-RESP NOT = DFHRESP(NORMAL)
+    MOVE 'INQPORT ' TO ERR-PROGRAM
+    MOVE 'P100-READ-FILE' TO ERR-PARAGRAPH
+    MOVE 0 TO ERR-SQLCODE
+    MOVE WS-RESP TO ERR-CICS-RESP
+    MOVE WS-RESP2 TO ERR-CICS-RESP2
+    
+    EVALUATE WS-RESP
+        WHEN DFHRESP(NOTFND)
+            SET ERR-WARNING TO TRUE
+            MOVE 'Record not found' TO ERR-MESSAGE
+        WHEN DFHRESP(DISABLED)
+            SET ERR-FATAL TO TRUE
+            MOVE 'File is disabled' TO ERR-MESSAGE
+        WHEN OTHER
+            SET ERR-FATAL TO TRUE
+            MOVE 'Unexpected file error' TO ERR-MESSAGE
+    END-EVALUATE
+    
+    EXEC CICS LINK PROGRAM('ERRHNDL')
+        COMMAREA(WS-ERROR-AREA)
+        LENGTH(LENGTH OF WS-ERROR-AREA)
+    END-EXEC
 END-IF
 ```
 
-### SECMGR - Security Manager
+## Common CICS Response Codes
 
-**Purpose:** Validates credentials and manages access control
+| EIBRESP | Name | Typical Severity |
+|---------|------|------------------|
+| 0 | NORMAL | N/A |
+| 13 | NOTFND | WARNING |
+| 14 | DUPREC | WARNING |
+| 16 | INVREQ | FATAL |
+| 22 | DISABLED | FATAL |
+| 26 | FILENOTFOUND | FATAL |
+| 27 | NOTOPEN | FATAL |
+| 81 | EXPIRED | WARNING |
+| 84 | MAPFAIL | WARNING |
 
-**Usage:**
-- Includes ERRHND for potential error handling
-- Available for logging security violations and access denials
-
-## Error Flow Architecture
-
-```mermaid
-graph TD
-    A[Application Program] -->|Error Occurs| B[Populate ERROR-HANDLING]
-    B --> C[LINK to ERRHNDL]
-    C --> D[Log to ERRLOG Table]
-    D --> E[Format Message]
-    E --> F[Determine Action]
-    F --> G{ERR-ACTION?}
-    G -->|ERR-ABEND| H[CICS ABEND]
-    G -->|ERR-CONTINUE| I[Continue Processing]
-    G -->|ERR-RETURN| J[Return to Caller]
-    J --> K[Application Handles Error]
-```
-
-## Common SQLCODE Values
+## Common DB2 SQLCODEs
 
 | SQLCODE | Description | Typical Severity |
 |---------|-------------|------------------|
 | 0 | Success | N/A |
-| +100 | No data found | Warning |
-| -803 | Duplicate key | Warning |
-| -811 | Multiple rows | Warning |
-| -904 | Resource unavailable | Fatal |
-| -911 | Deadlock/timeout | Warning (retry) |
-| -30081 | Connection failed | Fatal |
+| +100 | Not found | WARNING |
+| -803 | Duplicate key | WARNING |
+| -811 | Multiple rows | WARNING |
+| -904 | Unavailable resource | FATAL |
+| -911 | Deadlock/timeout | FATAL |
+| -922 | Authorization failure | FATAL |
 
-## Common CICS RESP Values
+## Programs Using This Copybook
 
-| RESP | Constant | Description | Typical Severity |
-|------|----------|-------------|------------------|
-| 0 | NORMAL | Success | N/A |
-| 13 | NOTFND | Record not found | Warning |
-| 14 | DUPREC | Duplicate record | Warning |
-| 16 | INVREQ | Invalid request | Warning |
-| 22 | PGMIDERR | Program not found | Fatal |
-| 27 | SYSIDERR | System ID error | Fatal |
-
-## Best Practices
-
-1. **Always Populate Program/Paragraph**: Set ERR-PROGRAM and ERR-PARAGRAPH before calling error handler for accurate diagnostics
-
-2. **Preserve Original Codes**: Copy SQLCODE and EIBRESP immediately when error occurs before they're overwritten
-
-3. **Use Appropriate Severity**: 
-   - Fatal: Unrecoverable errors requiring transaction termination
-   - Warning: Recoverable errors that need user attention
-   - Info: Audit/logging purposes only
-
-4. **Generate Trace IDs Early**: Create ERR-TRACE-ID at the start of transaction for consistent tracking across multiple errors
-
-5. **Meaningful Messages**: Include relevant data in ERR-MESSAGE (account number, key values) while avoiding sensitive information
-
-6. **Check Action on Return**: Always check ERR-ACTION after calling error handler to take appropriate action
-
-7. **Consistent Error Routine**: Use a standard error routine paragraph (e.g., P900-ERROR-ROUTINE) across all programs
+| Program | Description | Usage |
+|---------|-------------|-------|
+| ERRHNDL | Centralized Error Handler | Processes error records, logs to DB2 |
+| DB2ONLN | Online DB2 Operations | Reports DB2 errors |
+| DB2RECV | DB2 Recovery Processing | Reports recovery errors |
+| INQONLN | Online Inquiry | Reports inquiry errors |
+| SECMGR | Security Manager | Reports security errors |
 
 ## Related Copybooks
 
 | Copybook | Relationship |
-|----------|--------------|
-| ERRHAND | Batch error handling (different structure for batch programs) |
-| INQCOM | Contains error message field for inquiry programs |
-| DB2REQ | Contains error info for DB2 operations |
-| AUDITLOG | May receive error records for audit trail |
+|----------|-------------|
+| ERRHAND | Batch error handling (different structure) |
+| AUDITLOG | Audit logging (may log errors for audit trail) |
+| SQLCA | SQL Communication Area (source of SQLCODE) |
+
+## Comparison: ERRHND vs ERRHAND
+
+| Feature | ERRHND (Online) | ERRHAND (Batch) |
+|---------|-----------------|-----------------|
+| Environment | CICS | Batch |
+| CICS Response | Yes (RESP/RESP2) | No |
+| Trace ID | Yes | No |
+| Categories | No | Yes (VSAM, VALID, etc.) |
+| Details Field | No | Yes (256 bytes) |
+| Typical Handler | ERRHNDL | ERRPROC |
+
+## Technical Notes
+
+1. **COMP Fields**: ERR-SQLCODE uses S9(9) COMP (fullword) to accommodate DB2's SQLCODE range. ERR-CICS-RESP and ERR-CICS-RESP2 use S9(8) COMP for CICS response codes.
+
+2. **Trace ID Generation**: The ERR-TRACE-ID is typically generated by ERRHNDL using `FUNCTION RANDOM` or a similar mechanism. Programs should initialize it to SPACES before calling the error handler.
+
+3. **Timestamp Format**: ERR-TIMESTAMP uses the 26-character format from `FUNCTION CURRENT-DATE`, providing microsecond precision with timezone.
+
+4. **COMMAREA Usage**: This structure is designed to be passed via DFHCOMMAREA. Programs should use `LENGTH OF` to ensure correct length specification:
+   ```cobol
+   EXEC CICS LINK PROGRAM('ERRHNDL')
+       COMMAREA(WS-ERROR-AREA)
+       LENGTH(LENGTH OF WS-ERROR-AREA)
+   END-EXEC
+   ```
+
+5. **Message Formatting**: The 80-byte ERR-MESSAGE should be formatted for user display. Include the trace ID in the message for support correlation:
+   ```
+   Error in INQONLN - Account not found (A1B2C3D4E5F67890)
+   ```
+
+6. **Action Determination**: ERRHNDL typically determines ERR-ACTION based on ERR-SEVERITY:
+   - ERR-FATAL → ERR-ABEND
+   - ERR-WARNING → ERR-CONTINUE
+   - ERR-INFO → ERR-CONTINUE
+
+7. **Paragraph Name**: Use meaningful paragraph names in ERR-PARAGRAPH (up to 30 characters) to aid in problem diagnosis. Include the paragraph number if applicable.
+
+8. **Zero Response Codes**: When reporting DB2-only errors, set ERR-CICS-RESP and ERR-CICS-RESP2 to zero. For CICS-only errors, set ERR-SQLCODE to zero.

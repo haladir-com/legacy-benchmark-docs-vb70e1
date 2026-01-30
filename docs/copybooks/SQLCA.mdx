@@ -1,141 +1,74 @@
 ---
 title: "SQLCA"
-description: "SQL Communication Area - DB2 status codes and diagnostic information for embedded SQL"
+description: "SQL Communication Area copybook providing DB2 status handling with the standard SQLCA structure and application-defined SQLSTATE codes"
 ---
 
 ## Overview
 
-SQLCA is a copybook that provides the SQL Communication Area structure and common SQLSTATE codes for DB2 database operations. It includes the standard IBM DB2 SQLCA via `EXEC SQL INCLUDE SQLCA` and adds application-specific SQLSTATE constants for common error conditions.
+SQLCA is a DB2-specific copybook that provides the SQL Communication Area for programs that interact with DB2 databases. It combines the standard IBM-provided SQLCA structure (included via `EXEC SQL INCLUDE SQLCA`) with application-defined SQLSTATE codes for common database conditions.
 
-The SQLCA is essential for any COBOL program that uses embedded SQL. After each SQL statement executes, DB2 populates the SQLCA with:
-- Return codes indicating success or failure
-- Diagnostic information about errors
-- Row counts and other operation statistics
+The SQL Communication Area is fundamental to DB2 programming—it receives status information after every SQL statement execution, enabling programs to detect and respond to success, warnings, and errors. This copybook extends the standard SQLCA with pre-defined constants for frequently encountered SQLSTATE values, making status checking more readable and maintainable.
 
-## Copybook Contents
+This copybook is used by all programs that perform DB2 database operations, including batch loaders, commit controllers, connection managers, and error handlers.
 
-This copybook contains two parts:
+## Data Structures
 
-1. **Standard SQLCA**: Included via `EXEC SQL INCLUDE SQLCA END-EXEC`
-2. **SQL-STATUS-CODES**: Application-defined SQLSTATE constants
+### Standard SQLCA (IBM-Provided)
 
-### EXEC SQL INCLUDE SQLCA
+The `EXEC SQL INCLUDE SQLCA END-EXEC` directive includes the standard IBM SQLCA structure. The key fields are:
 
-The `EXEC SQL INCLUDE SQLCA` directive instructs the DB2 precompiler to insert the standard SQLCA structure. This is equivalent to:
+| Field | Type | Description |
+|-------|------|-------------|
+| SQLCODE | S9(9) COMP | Primary return code from DB2 |
+| SQLERRM | VARCHAR(70) | Error message text |
+| SQLERRP | CHAR(8) | Product signature (e.g., 'DSN') |
+| SQLERRD | ARRAY(6) OF S9(9) COMP | Diagnostic information array |
+| SQLWARN | CHAR(11) | Warning flags |
+| SQLSTATE | CHAR(5) | SQL standard state code |
 
-```cobol
-01  SQLCA.
-    05  SQLCAID        PIC X(8) VALUE 'SQLCA   '.
-    05  SQLCABC        PIC S9(9) COMP-5 VALUE 136.
-    05  SQLCODE        PIC S9(9) COMP-5.
-    05  SQLERRM.
-        49  SQLERRML   PIC S9(4) COMP-5.
-        49  SQLERRMC   PIC X(70).
-    05  SQLERRP        PIC X(8).
-    05  SQLERRD        OCCURS 6 TIMES PIC S9(9) COMP-5.
-    05  SQLWARN.
-        10  SQLWARN0   PIC X.
-        10  SQLWARN1   PIC X.
-        10  SQLWARN2   PIC X.
-        10  SQLWARN3   PIC X.
-        10  SQLWARN4   PIC X.
-        10  SQLWARN5   PIC X.
-        10  SQLWARN6   PIC X.
-        10  SQLWARN7   PIC X.
-        10  SQLWARN8   PIC X.
-        10  SQLWARN9   PIC X.
-        10  SQLWARNA   PIC X.
-    05  SQLSTATE       PIC X(5).
-```
-
-### SQL Status Codes (SQL-STATUS-CODES)
-
-Application-defined constants for common SQLSTATE values:
-
-| Level | Name | Picture | Value | Description |
-|-------|------|---------|-------|-------------|
-| 01 | SQL-STATUS-CODES | - | - | SQLSTATE constants |
-| 05 | SQL-SUCCESS | X(5) | `'00000'` | Successful completion |
-| 05 | SQL-NOT-FOUND | X(5) | `'02000'` | No data found |
-| 05 | SQL-DUP-KEY | X(5) | `'23505'` | Duplicate key violation |
-| 05 | SQL-DEADLOCK | X(5) | `'40001'` | Deadlock detected |
-| 05 | SQL-TIMEOUT | X(5) | `'40003'` | Statement timeout |
-| 05 | SQL-CONNECTION-ERROR | X(5) | `'08001'` | Connection failure |
-| 05 | SQL-DB-ERROR | X(5) | `'58004'` | System error |
-
-## Standard SQLCA Fields
-
-### Primary Fields
-
-| Field | Picture | Description |
-|-------|---------|-------------|
-| SQLCAID | X(8) | Eye-catcher identifier (`'SQLCA   '`) |
-| SQLCABC | S9(9) COMP-5 | Length of SQLCA (136 bytes) |
-| SQLCODE | S9(9) COMP-5 | SQL return code |
-| SQLERRM | - | Error message group |
-| SQLERRML | S9(4) COMP-5 | Length of error message |
-| SQLERRMC | X(70) | Error message text |
-| SQLERRP | X(8) | Product identifier |
-| SQLERRD | S9(9) COMP-5 OCCURS 6 | Diagnostic information array |
-| SQLWARN | - | Warning flags group |
-| SQLSTATE | X(5) | SQLSTATE status code |
-
-### SQLCODE Values
+#### SQLCODE Values
 
 | Value | Meaning |
 |-------|---------|
 | 0 | Successful execution |
-| 100 | No data found (end of cursor, no rows) |
+| > 0 | Success with warning |
+| 100 | No data found (end of cursor) |
 | < 0 | Error occurred |
-| > 0 (not 100) | Warning condition |
 
-### Common SQLCODE Values
+#### Common Negative SQLCODEs
 
 | SQLCODE | Description |
 |---------|-------------|
-| 0 | Success |
-| 100 | Row not found / End of data |
 | -803 | Duplicate key on insert |
-| -811 | Multiple rows returned for single fetch |
-| -818 | Timestamp mismatch (plan/package) |
+| -805 | Package not found |
+| -811 | Multiple rows returned for SELECT INTO |
+| -818 | Timestamp mismatch |
 | -904 | Resource unavailable |
 | -911 | Deadlock or timeout |
-| -913 | Unsuccessful execution - deadlock |
+| -913 | Deadlock detected |
 
-### SQLERRD Array
+### Application-Defined SQLSTATE Codes (SQL-STATUS-CODES)
 
-| Element | Description |
-|---------|-------------|
-| SQLERRD(1) | Reserved |
-| SQLERRD(2) | Reserved |
-| SQLERRD(3) | Number of rows affected by INSERT/UPDATE/DELETE |
-| SQLERRD(4) | Relative cost estimate |
-| SQLERRD(5) | Position of syntax error |
-| SQLERRD(6) | Reserved |
+Pre-defined constants for common SQLSTATE values:
 
-### SQLWARN Flags
+| Level | Name | Picture | Value | Description |
+|-------|------|---------|-------|-------------|
+| 01 | SQL-STATUS-CODES | - | - | SQLSTATE constants group |
+| 05 | SQL-SUCCESS | X(5) | '00000' | Successful completion |
+| 05 | SQL-NOT-FOUND | X(5) | '02000' | No data found |
+| 05 | SQL-DUP-KEY | X(5) | '23505' | Unique constraint violation |
+| 05 | SQL-DEADLOCK | X(5) | '40001' | Serialization failure (deadlock) |
+| 05 | SQL-TIMEOUT | X(5) | '40003' | Statement completion unknown (timeout) |
+| 05 | SQL-CONNECTION-ERROR | X(5) | '08001' | Connection exception |
+| 05 | SQL-DB-ERROR | X(5) | '58004' | System error |
 
-| Flag | Meaning When `'W'` |
-|------|-------------------|
-| SQLWARN0 | At least one other warning flag is set |
-| SQLWARN1 | String column truncated |
-| SQLWARN2 | NULL values eliminated from function |
-| SQLWARN3 | Number of columns != number of host variables |
-| SQLWARN4 | UPDATE/DELETE without WHERE clause |
-| SQLWARN5 | SQL statement not valid for execution |
-| SQLWARN6 | Date arithmetic resulted in end-of-month adjustment |
-| SQLWARN7 | Reserved |
-| SQLWARN8 | Character could not be converted |
-| SQLWARN9 | Reserved |
-| SQLWARNA | Reserved |
-
-### SQLSTATE Classes
+## SQLSTATE Class Codes
 
 SQLSTATE is a 5-character code where the first 2 characters indicate the class:
 
-| Class | Description |
-|-------|-------------|
-| 00 | Successful completion |
+| Class | Meaning |
+|-------|---------|
+| 00 | Success |
 | 01 | Warning |
 | 02 | No data |
 | 07 | Dynamic SQL error |
@@ -144,9 +77,11 @@ SQLSTATE is a 5-character code where the first 2 characters indicate the class:
 | 22 | Data exception |
 | 23 | Constraint violation |
 | 24 | Invalid cursor state |
+| 25 | Invalid transaction state |
 | 26 | Invalid SQL statement identifier |
 | 40 | Transaction rollback |
-| 42 | Syntax error or access rule violation |
+| 42 | Syntax error or access violation |
+| 44 | WITH CHECK OPTION violation |
 | 51 | Invalid application state |
 | 54 | SQL or product limit exceeded |
 | 55 | Object not in prerequisite state |
@@ -156,185 +91,222 @@ SQLSTATE is a 5-character code where the first 2 characters indicate the class:
 
 ## Usage Examples
 
-### Checking SQL Success
+### Basic SQL Status Checking
 
 ```cobol
 WORKING-STORAGE SECTION.
     COPY SQLCA.
 
 PROCEDURE DIVISION.
-    ...
     EXEC SQL
-        SELECT PORTFOLIO_NAME
-        INTO :WS-PORTFOLIO-NAME
-        FROM PORTFOLIO
-        WHERE PORTFOLIO_ID = :WS-PORTFOLIO-ID
+        SELECT COL1, COL2 
+        INTO :WS-COL1, :WS-COL2
+        FROM MYTABLE
+        WHERE KEY = :WS-KEY
     END-EXEC
     
     EVALUATE TRUE
         WHEN SQLCODE = 0
             CONTINUE
         WHEN SQLCODE = 100
-            MOVE 'Portfolio not found' TO WS-ERROR-MSG
-            PERFORM HANDLE-NOT-FOUND
-        WHEN SQLCODE < 0
-            PERFORM HANDLE-SQL-ERROR
+            MOVE 'Record not found' TO WS-MESSAGE
+        WHEN SQLCODE = -803
+            MOVE 'Duplicate key' TO WS-MESSAGE
+        WHEN OTHER
+            PERFORM 9000-SQL-ERROR
     END-EVALUATE
-    ...
 ```
 
 ### Using SQLSTATE Constants
 
 ```cobol
     EXEC SQL
-        INSERT INTO PORTFOLIO
-        (PORTFOLIO_ID, PORTFOLIO_NAME, STATUS)
-        VALUES (:WS-ID, :WS-NAME, :WS-STATUS)
+        INSERT INTO MYTABLE VALUES (:WS-RECORD)
     END-EXEC
     
     EVALUATE SQLSTATE
         WHEN SQL-SUCCESS
-            CONTINUE
+            ADD 1 TO WS-INSERT-COUNT
         WHEN SQL-DUP-KEY
-            MOVE 'Duplicate portfolio ID' TO WS-ERROR-MSG
-            PERFORM HANDLE-DUPLICATE
+            MOVE 'Duplicate record - skipping' TO WS-MESSAGE
+            ADD 1 TO WS-DUP-COUNT
         WHEN SQL-DEADLOCK
-            PERFORM HANDLE-DEADLOCK-RETRY
+            PERFORM 9100-HANDLE-DEADLOCK
         WHEN OTHER
-            PERFORM HANDLE-SQL-ERROR
+            PERFORM 9000-SQL-ERROR
     END-EVALUATE
 ```
 
-### Retrieving Row Count
+### Error Logging with SQLCA Fields
 
 ```cobol
-    EXEC SQL
-        UPDATE PORTFOLIO
-        SET STATUS = 'C'
-        WHERE LAST_ACTIVITY < :WS-CUTOFF-DATE
-    END-EXEC
+9000-SQL-ERROR.
+    DISPLAY 'SQL Error occurred'
+    DISPLAY '  SQLCODE:  ' SQLCODE
+    DISPLAY '  SQLSTATE: ' SQLSTATE
+    DISPLAY '  SQLERRMC: ' SQLERRMC
     
-    IF SQLCODE = 0
-        MOVE SQLERRD(3) TO WS-ROWS-UPDATED
-        DISPLAY 'Portfolios closed: ' WS-ROWS-UPDATED
-    END-IF
+    MOVE SQLCODE TO WS-ERROR-SQLCODE
+    MOVE SQLSTATE TO WS-ERROR-SQLSTATE
+    MOVE SQLERRMC TO WS-ERROR-MESSAGE
+    
+    PERFORM 9500-WRITE-ERROR-LOG
+    .
 ```
 
-### Comprehensive Error Handling
+### Deadlock Retry Logic
 
 ```cobol
-HANDLE-SQL-ERROR.
-    DISPLAY '=========================================='
-    DISPLAY 'SQL ERROR OCCURRED'
-    DISPLAY '=========================================='
-    DISPLAY 'SQLCODE:    ' SQLCODE
-    DISPLAY 'SQLSTATE:   ' SQLSTATE
-    DISPLAY 'SQLERRMC:   ' SQLERRMC(1:SQLERRML)
-    DISPLAY 'SQLERRD(3): ' SQLERRD(3)
-    DISPLAY '=========================================='
+2000-INSERT-WITH-RETRY.
+    MOVE 0 TO WS-RETRY-COUNT
+    MOVE 'N' TO WS-SUCCESS-FLAG
     
-    EVALUATE TRUE
-        WHEN SQLSTATE = SQL-DEADLOCK
-            PERFORM ATTEMPT-RETRY
-        WHEN SQLSTATE = SQL-TIMEOUT
-            PERFORM ATTEMPT-RETRY
-        WHEN SQLSTATE = SQL-CONNECTION-ERROR
-            PERFORM RECONNECT-DB2
-        WHEN OTHER
-            MOVE SQLCODE TO WS-SQL-RETURN-CODE
-            MOVE SQLERRMC TO WS-SQL-ERROR-MSG
-            SET WS-FATAL-ERROR TO TRUE
-    END-EVALUATE.
-```
-
-### Cursor Processing with SQLCA
-
-```cobol
-    EXEC SQL DECLARE PORTFOLIO_CURSOR CURSOR FOR
-        SELECT PORTFOLIO_ID, PORTFOLIO_NAME
-        FROM PORTFOLIO
-        WHERE STATUS = 'A'
-    END-EXEC
-    
-    EXEC SQL OPEN PORTFOLIO_CURSOR END-EXEC
-    
-    IF SQLCODE NOT = 0
-        PERFORM HANDLE-SQL-ERROR
-        GO TO CURSOR-EXIT
-    END-IF
-    
-    PERFORM UNTIL SQLCODE = 100
+    PERFORM UNTIL WS-SUCCESS-FLAG = 'Y'
+                  OR WS-RETRY-COUNT > 3
         EXEC SQL
-            FETCH PORTFOLIO_CURSOR
-            INTO :WS-PORTFOLIO-ID, :WS-PORTFOLIO-NAME
+            INSERT INTO MYTABLE VALUES (:WS-RECORD)
         END-EXEC
         
-        IF SQLCODE = 0
-            PERFORM PROCESS-PORTFOLIO
-        ELSE IF SQLCODE NOT = 100
-            PERFORM HANDLE-SQL-ERROR
+        EVALUATE SQLSTATE
+            WHEN SQL-SUCCESS
+                MOVE 'Y' TO WS-SUCCESS-FLAG
+            WHEN SQL-DEADLOCK
+                ADD 1 TO WS-RETRY-COUNT
+                IF WS-RETRY-COUNT <= 3
+                    EXEC SQL ROLLBACK END-EXEC
+                    CALL 'DELAY' USING WS-WAIT-TIME
+                END-IF
+            WHEN OTHER
+                PERFORM 9000-SQL-ERROR
+                MOVE 'Y' TO WS-SUCCESS-FLAG
+        END-EVALUATE
+    END-PERFORM
+    .
+```
+
+### Cursor Processing with Status Check
+
+```cobol
+2100-FETCH-LOOP.
+    PERFORM UNTIL SQLSTATE = SQL-NOT-FOUND
+        EXEC SQL
+            FETCH MYCURSOR INTO :WS-ROW
+        END-EXEC
+        
+        IF SQLSTATE = SQL-SUCCESS
+            ADD 1 TO WS-FETCH-COUNT
+            PERFORM 2200-PROCESS-ROW
+        ELSE
+            IF SQLSTATE NOT = SQL-NOT-FOUND
+                PERFORM 9000-SQL-ERROR
+            END-IF
         END-IF
     END-PERFORM
-    
-    EXEC SQL CLOSE PORTFOLIO_CURSOR END-EXEC.
-    
-CURSOR-EXIT.
-    EXIT.
+    .
 ```
 
 ## Programs Using This Copybook
 
-| Program | Purpose |
-|---------|---------|
-| HISTLD00 | History data loading with DB2 |
-| DB2CMT | DB2 commit handling |
-| DB2CONN | DB2 connection management |
-| DB2ERR | DB2 error handling |
-| DB2STAT | DB2 statistics collection |
+SQLCA is used by 5 programs that perform DB2 operations:
+
+| Program | Description |
+|---------|-------------|
+| HISTLD00 | Position history DB2 loader - bulk inserts into POSHIST table |
+| DB2CMT | DB2 commit controller - manages commits, rollbacks, savepoints |
+| DB2CONN | DB2 connection manager - handles database connections |
+| DB2ERR | DB2 error handler - processes and logs SQL errors |
+| DB2STAT | DB2 status checker - validates connection and statement status |
 
 ## Related Copybooks
 
 | Copybook | Relationship |
 |----------|--------------|
-| DBPROC | DB2 processing procedures |
-| DBTBLS | DB2 table definitions |
-| ERRHAND | General error handling (complements SQL errors) |
+| DBPROC | DB2 procedures - standard routines that use SQLCA |
+| DBTBLS | DB2 table definitions - host variable structures |
+| ERRHAND | Error handling - complements SQLCA for error reporting |
 
 ## Technical Notes
 
-### DB2 Precompiler
+### SQLCA vs SQLSTATE
 
-The `EXEC SQL INCLUDE SQLCA END-EXEC` statement is processed by the DB2 precompiler, not the COBOL compiler. The precompiler:
-1. Expands the INCLUDE into the full SQLCA structure
-2. Replaces EXEC SQL statements with CALL statements
-3. Generates a modified source file for COBOL compilation
-
-### SQLCODE vs SQLSTATE
+DB2 provides two mechanisms for status checking:
 
 | Aspect | SQLCODE | SQLSTATE |
 |--------|---------|----------|
-| Format | Integer | 5-char string |
-| Standard | DB2-specific | SQL standard (ISO) |
-| Portability | Limited | High |
-| Granularity | Product-specific | Standardized classes |
+| Format | Signed integer | 5-character string |
+| Standard | IBM-specific | SQL standard (ISO/ANSI) |
+| Granularity | Very specific | Class-based categories |
+| Portability | DB2 only | Cross-platform |
 | Recommendation | Legacy code | New development |
 
-### Thread Safety
+**Best Practice**: Use SQLSTATE for new code as it's more portable and follows SQL standards.
 
-Each thread/task should have its own SQLCA. In CICS, the SQLCA is automatically managed per task. In batch, each run unit has its own SQLCA.
+### SQLERRD Array
+
+The SQLERRD array contains diagnostic information:
+
+| Element | Content |
+|---------|---------|
+| SQLERRD(1) | Internal use |
+| SQLERRD(2) | Internal use |
+| SQLERRD(3) | Number of rows affected by INSERT/UPDATE/DELETE |
+| SQLERRD(4) | Relative cost estimate for PREPARE |
+| SQLERRD(5) | Position of error in SQL statement |
+| SQLERRD(6) | Internal use |
+
+### SQLWARN Flags
+
+The SQLWARN field contains warning indicators:
+
+| Flag | Meaning |
+|------|---------|
+| SQLWARN0 | Set if any other warning flag is set |
+| SQLWARN1 | String truncation occurred |
+| SQLWARN2 | Null values eliminated from function |
+| SQLWARN3 | Number of columns exceeds host variables |
+| SQLWARN4 | UPDATE/DELETE without WHERE clause |
+| SQLWARN5 | SQL statement is not valid |
+| SQLWARN6 | Date arithmetic adjustment |
+| SQLWARN7 | Character conversion adjustment |
+
+### Connection Error Handling
+
+For connection errors (SQLSTATE '08xxx'), the application should:
+
+1. Log the error details
+2. Attempt reconnection (with limits)
+3. If reconnection fails, terminate gracefully
+4. Notify operations/monitoring systems
+
+```cobol
+IF SQLSTATE(1:2) = '08'
+    PERFORM 9200-CONNECTION-ERROR
+END-IF
+```
 
 ### Performance Considerations
 
-- Check SQLCODE after every SQL statement
-- Use SQLSTATE for portable error handling
-- SQLERRD(3) is populated only for INSERT/UPDATE/DELETE
-- Warning flags (SQLWARN) indicate non-fatal issues that may need attention
+1. **Check SQLCODE first**: It's a simple integer comparison
+2. **Use SQLSTATE for categorization**: When you need to handle classes of errors
+3. **Minimize SQLERRMC access**: String handling is slower than numeric comparison
+4. **Cache status locally**: Copy SQLCODE/SQLSTATE before additional SQL operations
 
-### Best Practices
+### Precompiler Requirements
 
-1. **Always check SQLCODE**: Never assume SQL success
-2. **Use constants**: Compare SQLSTATE against defined constants
-3. **Log diagnostics**: Include SQLCODE, SQLSTATE, and SQLERRMC in error logs
-4. **Handle +100**: Not finding data may be normal (end of cursor)
-5. **Retry deadlocks**: SQLSTATE '40001' often succeeds on retry
-6. **Check warnings**: SQLWARN0 = 'W' means check other flags
+The `EXEC SQL INCLUDE SQLCA END-EXEC` statement requires:
+- DB2 precompiler processing before COBOL compilation
+- Proper precompiler options (e.g., `SQL('HOST(COB2)')`)
+- Access to DB2 DCLGEN/INCLUDE libraries
+
+### JCL Considerations
+
+When compiling programs using SQLCA:
+
+```jcl
+//PRECOMP  EXEC PGM=DSNHPC,PARM='HOST(COB2),SQL(DB2)'
+//DBRMLIB  DD  DSN=your.dbrm.library,DISP=SHR
+//SYSLIB   DD  DSN=your.copybook.library,DISP=SHR
+//SYSCIN   DD  DSN=&&TEMP,DISP=(NEW,PASS)
+//SYSPRINT DD  SYSOUT=*
+//SYSIN    DD  DSN=your.source.library(PROGRAM),DISP=SHR
+```

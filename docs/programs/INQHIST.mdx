@@ -1,64 +1,60 @@
 ---
 title: "INQHIST"
-description: "CICS Transaction History Inquiry Handler - retrieves and displays transaction history from DB2"
+description: "CICS online transaction history inquiry program that retrieves and displays portfolio transaction history from DB2"
 ---
 
 ## Overview
 
-INQHIST is a CICS online program that provides transaction history inquiry capabilities. It retrieves transaction history data from a DB2 database table and displays it to users through a BMS map. The program supports scrolling through historical transaction records for a given account.
+INQHIST is a CICS online program that provides transaction history inquiry functionality for the portfolio management system. It retrieves historical transaction data from a DB2 database table and displays it on a CICS terminal screen, allowing users to review past portfolio transactions.
 
-Key features:
-- **DB2 Integration**: Connects to DB2 and executes cursor-based queries
-- **Transaction History**: Retrieves history from the POSHIST table ordered by date descending
-- **Error Recovery**: Implements DB2 connection recovery through the DB2RECV program
-- **BMS Display**: Formats and displays history data using CICS maps
+The program is part of the online inquiry subsystem and works in conjunction with other inquiry programs (INQONLN, INQPORT) that share a common communication area structure. It demonstrates typical CICS-DB2 integration patterns including connection management, cursor-based data retrieval, error handling, and BMS map display.
 
-This program is typically invoked as part of an online inquiry transaction when users need to view the transaction history for a portfolio account.
+INQHIST supports viewing transaction history ordered by date (most recent first) and integrates with centralized utility programs for DB2 connection management (DB2ONLN), cursor management (CURSMGR), and error recovery (DB2RECV).
 
 ## Program Structure
 
 ```mermaid
 graph TD
     A[PROCEDURE DIVISION] --> B[P100-INIT-PROGRAM]
-    A --> C[P200-GET-HISTORY]
-    A --> D[P300-FORMAT-DISPLAY]
-    A --> E[EXEC CICS RETURN]
+    B --> C[P150-DB2-CONNECT]
+    A --> D[P200-GET-HISTORY]
+    D --> E[P250-FETCH-HISTORY]
+    A --> F[P300-FORMAT-DISPLAY]
+    A --> G[EXEC CICS RETURN]
     
-    B --> B1[Move DFHCOMMAREA to WS]
-    B --> B2[Initialize flags]
-    B --> B3[HANDLE CONDITION]
-    B --> B4[P150-DB2-CONNECT]
+    B --> H{Error?}
+    H -->|Yes| I[P999-ERROR-ROUTINE]
     
-    B4 --> B4A[LINK DB2ONLN]
-    B4A -->|Error| B4B[LINK DB2RECV]
-    B4B -->|Success| B4C[Retry Connect]
-    B4B -->|Failed| B4D[P999-ERROR-ROUTINE]
+    C --> J[EXEC CICS LINK DB2ONLN]
+    J --> K{Connect OK?}
+    K -->|No| L[EXEC CICS LINK DB2RECV]
+    L --> M{Recovery OK?}
+    M -->|Yes| C
+    M -->|No| I
     
-    C --> C1[Build SQL Statement]
-    C --> C2[LINK CURSMGR - Declare]
-    C --> C3[LINK CURSMGR - Open]
-    C --> C4[P250-FETCH-HISTORY]
-    C --> C5[LINK CURSMGR - Close]
+    D --> N[Declare Cursor]
+    D --> O[Open Cursor]
+    D --> P[Fetch Data]
+    D --> Q[Close Cursor]
     
-    C4 --> C4A[LINK CURSMGR - Fetch]
-    C4A --> C4B[Move data to WS-HISTORY-TABLE]
+    N --> R[EXEC CICS LINK CURSMGR]
+    O --> R
+    P --> R
+    Q --> R
     
-    D --> D1[SEND MAP HISMAP]
+    F --> S[EXEC CICS SEND MAP]
     
-    subgraph "External Programs"
-        EP1[DB2ONLN]
-        EP2[DB2RECV]
-        EP3[CURSMGR]
+    subgraph "DB2 Database"
+        T[(POSHIST Table)]
     end
     
-    subgraph "DB2"
-        DB[(POSHIST Table)]
+    subgraph "CICS Services"
+        U[DB2ONLN]
+        V[CURSMGR]
+        W[DB2RECV]
     end
     
-    C2 & C3 & C4A & C5 --> EP3
-    B4A --> EP1
-    B4B --> EP2
-    EP3 -.->|Query| DB
+    E -.-> T
 ```
 
 ## Data Structures
@@ -67,156 +63,151 @@ graph TD
 
 #### Communication Area (WS-COMMAREA)
 
-Uses the INQCOM copybook:
+Contains the INQCOM copybook structure for inter-program communication:
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | INQCOM-AREA | - | Inquiry communication area |
+| 01 | INQCOM-AREA | | Inquiry communication area |
 | 05 | INQCOM-FUNCTION | X(4) | Function code |
 | 05 | INQCOM-ACCOUNT-NO | X(10) | Account number for inquiry |
-| 05 | INQCOM-RESPONSE-CODE | S9(8) COMP | Response/error code |
+| 05 | INQCOM-RESPONSE-CODE | S9(8) COMP | Response/return code |
 | 05 | INQCOM-ERROR-MSG | X(80) | Error message text |
 
-##### Function Codes (INQCOM-FUNCTION)
-
-| Value | 88-Level Name | Meaning |
-|-------|---------------|---------|
-| `'MENU'` | INQCOM-MENU | Return to menu |
-| `'INQP'` | INQCOM-PORTFOLIO | Portfolio inquiry |
-| `'INQH'` | INQCOM-HISTORY | History inquiry |
-| `'EXIT'` | INQCOM-EXIT | Exit application |
+**INQCOM-FUNCTION Values (88-level conditions):**
+- `MENU` - Return to menu (INQCOM-MENU)
+- `INQP` - Portfolio inquiry (INQCOM-PORTFOLIO)
+- `INQH` - History inquiry (INQCOM-HISTORY)
+- `EXIT` - Exit application (INQCOM-EXIT)
 
 #### DB2 Area (WS-DB2-AREA)
 
-Contains the SQL Communication Area (SQLCA) included via EXEC SQL INCLUDE.
+| Level | Name | Description |
+|-------|------|-------------|
+| 01 | WS-DB2-AREA | Contains SQLCA (SQL Communication Area) |
 
-#### History Table
+The SQLCA is included via `EXEC SQL INCLUDE SQLCA END-EXEC` and provides DB2 status information including SQLCODE.
+
+#### History Table (WS-HISTORY-TABLE)
+
+Array structure to hold fetched transaction history records:
+
+| Level | Name | Picture | Occurs | Description |
+|-------|------|---------|--------|-------------|
+| 01 | WS-HISTORY-TABLE | | | History data container |
+| 05 | WS-HISTORY-ENTRY | | 10 | Individual history record |
+| 10 | WS-TRANS-DATE | X(10) | | Transaction date |
+| 10 | WS-TRANS-TYPE | X(4) | | Transaction type code |
+| 10 | WS-TRANS-UNITS | S9(9)V99 COMP-3 | | Number of units traded |
+| 10 | WS-TRANS-PRICE | S9(9)V99 COMP-3 | | Price per unit |
+| 10 | WS-TRANS-AMOUNT | S9(9)V99 COMP-3 | | Total transaction amount |
+
+#### Flags (WS-FLAGS)
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | WS-HISTORY-TABLE | - | History display table |
-| 05 | WS-HISTORY-ENTRY | OCCURS 10 | Array of history entries |
-| 10 | WS-TRANS-DATE | X(10) | Transaction date |
-| 10 | WS-TRANS-TYPE | X(4) | Transaction type code |
-| 10 | WS-TRANS-UNITS | S9(9)V99 COMP-3 | Number of units |
-| 10 | WS-TRANS-PRICE | S9(9)V99 COMP-3 | Price per unit |
-| 10 | WS-TRANS-AMOUNT | S9(9)V99 COMP-3 | Total amount |
-
-#### Processing Flags
-
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 01 | WS-FLAGS | - | Processing flags |
+| 01 | WS-FLAGS | | Processing flags |
 | 05 | WS-RESPONSE-CODE | S9(8) COMP | CICS response code |
 | 05 | WS-MORE-HISTORY | X | More rows indicator |
-| 05 | WS-ROW-COUNT | S9(4) COMP | Row counter |
+| 05 | WS-ROW-COUNT | S9(4) COMP | Count of rows fetched |
 
-##### More History Indicator (WS-MORE-HISTORY)
+**WS-MORE-HISTORY Values:**
+- `Y` - More rows available (MORE-ROWS)
+- `N` - No more rows (NO-MORE-ROWS)
 
-| Value | 88-Level Name | Meaning |
-|-------|---------------|---------|
-| `'Y'` | MORE-ROWS | Additional rows available |
-| `'N'` | NO-MORE-ROWS | No more rows to fetch |
+#### DB2 Request Structure (WS-DB2-REQUEST)
 
-#### DB2 Request Structure
+Communication area for DB2ONLN connection manager:
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | WS-DB2-REQUEST | - | DB2 connection request |
-| 05 | DB2-REQUEST-TYPE | X | Request type code |
-| 05 | DB2-RESPONSE-CODE | S9(8) COMP | Response code |
-| 05 | DB2-CONNECTION-TOKEN | X(16) | Connection token |
-| 05 | DB2-ERROR-INFO | - | Error information |
+| 01 | WS-DB2-REQUEST | | DB2 connection request |
+| 05 | DB2-REQUEST-TYPE | X | Request type (C=Connect, D=Disconnect, S=Status) |
+| 05 | DB2-RESPONSE-CODE | S9(8) COMP | Response from DB2ONLN |
+| 05 | DB2-CONNECTION-TOKEN | X(16) | Connection identifier |
+| 05 | DB2-ERROR-INFO | | Error information group |
 | 10 | DB2-SQLCODE | S9(9) COMP | SQL return code |
 | 10 | DB2-ERROR-MSG | X(80) | Error message |
 
-#### Cursor Request Structure
+#### Cursor Request Structure (WS-CURSOR-REQUEST)
+
+Communication area for CURSMGR cursor manager:
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | WS-CURSOR-REQUEST | - | Cursor management request |
-| 05 | CURS-REQUEST-TYPE | X | Request type (D/O/F/C) |
-| 05 | CURS-NAME | X(18) | Cursor name (`'HISTORY_CURSOR'`) |
-| 05 | CURS-STMT | X(240) | SQL statement |
-| 05 | CURS-ARRAY-FETCH | X | Array fetch flag (`'Y'`) |
+| 01 | WS-CURSOR-REQUEST | | Cursor management request |
+| 05 | CURS-REQUEST-TYPE | X | Request type |
+| 05 | CURS-NAME | X(18) | Cursor name ('HISTORY_CURSOR') |
+| 05 | CURS-STMT | X(240) | SQL SELECT statement |
+| 05 | CURS-ARRAY-FETCH | X | Array fetch flag ('Y'/'N') |
 | 05 | CURS-RESPONSE-CODE | S9(8) COMP | Response code |
-| 05 | CURS-DATA-AREA | X(3000) | Data buffer |
-| 05 | CURS-DATA-LENGTH | S9(4) COMP | Data length |
+| 05 | CURS-DATA-AREA | X(3000) | Fetched data buffer |
+| 05 | CURS-DATA-LENGTH | S9(4) COMP | Length of data |
 
-##### Cursor Request Types (CURS-REQUEST-TYPE)
+**CURS-REQUEST-TYPE Values:**
+- `D` - Declare cursor
+- `O` - Open cursor
+- `F` - Fetch data
+- `C` - Close cursor
 
-| Value | Meaning |
-|-------|---------|
-| `'D'` | Declare cursor |
-| `'O'` | Open cursor |
-| `'F'` | Fetch rows |
-| `'C'` | Close cursor |
+#### Recovery Request Structure (WS-RECOVERY-REQUEST)
 
-#### Recovery Request Structure
+Communication area for DB2RECV recovery handler:
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | WS-RECOVERY-REQUEST | - | DB2 recovery request |
+| 01 | WS-RECOVERY-REQUEST | | Recovery request |
 | 05 | RECV-REQUEST-TYPE | X | Request type |
 | 05 | RECV-RESPONSE-CODE | S9(8) COMP | Response code |
 | 05 | RECV-SQLCODE | S9(9) COMP | SQL code that caused error |
-| 05 | RECV-ERROR-INFO | - | Error context |
+| 05 | RECV-ERROR-INFO | | Error context |
 | 10 | RECV-PROGRAM | X(8) | Program name |
 | 10 | RECV-CURSOR | X(18) | Cursor name |
 | 10 | RECV-MESSAGE | X(80) | Error message |
 | 05 | RECV-STATUS | X | Recovery status |
 
-##### Recovery Status (RECV-STATUS)
-
-| Value | 88-Level Name | Meaning |
-|-------|---------------|---------|
-| `'S'` | RECV-SUCCESS | Recovery successful |
-| `'F'` | RECV-FAILED | Recovery failed |
-| `'R'` | RECV-RETRY | Retry recommended |
+**RECV-STATUS Values:**
+- `S` - Success (RECV-SUCCESS)
+- `F` - Failed (RECV-FAILED)
+- `R` - Retry (RECV-RETRY)
 
 ### Linkage Section
 
 #### DFHCOMMAREA
 
-Uses the INQCOM copybook (same structure as WS-COMMAREA). This is the CICS communication area passed between programs.
+The CICS communication area, containing the same INQCOM structure as WS-COMMAREA. This is passed between CICS programs and transactions.
 
 ## Control Flow
 
-### Main Processing Flow
+### Main Processing
 
-The PROCEDURE DIVISION executes three main paragraphs in sequence:
+The program executes four main phases:
 
-1. **P100-INIT-PROGRAM THRU P100-EXIT**: Initialize program and establish DB2 connection
-2. **P200-GET-HISTORY THRU P200-EXIT**: Execute query and fetch history data
-3. **P300-FORMAT-DISPLAY THRU P300-EXIT**: Format and send display to terminal
-4. **EXEC CICS RETURN**: Return control to CICS
+1. **P100-INIT-PROGRAM** - Initialize and establish DB2 connection
+2. **P200-GET-HISTORY** - Retrieve transaction history via cursor
+3. **P300-FORMAT-DISPLAY** - Send data to terminal screen
+4. **EXEC CICS RETURN** - Return control to CICS
 
-### P100-INIT-PROGRAM
+### Initialization (P100-INIT-PROGRAM THRU P100-EXIT)
 
-Performs program initialization:
+1. **Copy COMMAREA**: Moves DFHCOMMAREA to WS-COMMAREA for local processing
+2. **Initialize Flags**: Sets WS-ROW-COUNT to zeros and NO-MORE-ROWS to true
+3. **Set Error Handler**: Uses `EXEC CICS HANDLE CONDITION ERROR(P999-ERROR-ROUTINE)` to establish error handling
+4. **Connect to DB2**: Performs P150-DB2-CONNECT to establish database connection
 
-1. **Copy DFHCOMMAREA**: Moves the linkage communication area to working storage
-2. **Initialize counters**: Sets WS-ROW-COUNT to zeros, NO-MORE-ROWS to true
-3. **Set up error handling**: Uses EXEC CICS HANDLE CONDITION to route errors to P999-ERROR-ROUTINE
-4. **Establish DB2 connection**: Performs P150-DB2-CONNECT
+### DB2 Connection (P150-DB2-CONNECT THRU P150-EXIT)
 
-### P150-DB2-CONNECT
-
-Establishes the DB2 database connection:
-
-1. **Request connection**: Sets request type to `'C'` (Connect) and LINKs to DB2ONLN program
-2. **Check response**: If connection fails:
+1. **Request Connection**: Sets DB2-REQUEST-TYPE to 'C' (Connect)
+2. **Link to DB2ONLN**: Calls the DB2 connection manager via `EXEC CICS LINK`
+3. **Check Response**: If connection fails:
    - Sets up recovery request with program name and SQLCODE
-   - LINKs to DB2RECV for recovery attempt
-   - If recovery succeeds, recursively retries connection
+   - Links to DB2RECV for error recovery
+   - If recovery succeeds, retries connection (recursive call)
    - If recovery fails, moves error message and performs error routine
-3. **Save token**: On success, stores DB2-CONNECTION-TOKEN for subsequent operations
+4. **Save Token**: Stores DB2-CONNECTION-TOKEN for subsequent operations
 
-### P200-GET-HISTORY
+### History Retrieval (P200-GET-HISTORY THRU P200-EXIT)
 
-Retrieves transaction history using cursor operations:
-
-1. **Build SQL statement**: Constructs SELECT query for POSHIST table:
+1. **Build SQL Statement**: Constructs SELECT statement for POSHIST table:
    ```sql
    SELECT TRANS_DATE, TRANS_TYPE, TRANS_UNITS, 
           TRANS_PRICE, TRANS_AMOUNT 
@@ -224,138 +215,138 @@ Retrieves transaction history using cursor operations:
    WHERE ACCOUNT_NO = ? 
    ORDER BY TRANS_DATE DESC
    ```
-2. **Declare cursor**: Sets request type to `'D'` and LINKs to CURSMGR
-3. **Open cursor**: Sets request type to `'O'` and LINKs to CURSMGR
-4. **Fetch data**: If open successful, performs P250-FETCH-HISTORY
-5. **Close cursor**: Sets request type to `'C'` and LINKs to CURSMGR
 
-### P250-FETCH-HISTORY
+2. **Declare Cursor**: Sets CURS-REQUEST-TYPE to 'D' and links to CURSMGR
 
-Fetches history rows from the cursor:
+3. **Open Cursor**: Sets CURS-REQUEST-TYPE to 'O' and links to CURSMGR
 
-1. **Request fetch**: Sets request type to `'F'` and LINKs to CURSMGR
-2. **Move data**: If successful (response >= 0), moves CURS-DATA-AREA to WS-HISTORY-TABLE
+4. **Fetch Data**: If cursor opened successfully, performs P250-FETCH-HISTORY
 
-### P300-FORMAT-DISPLAY
+5. **Close Cursor**: Sets CURS-REQUEST-TYPE to 'C' and links to CURSMGR
 
-Displays the history data to the terminal:
+### Data Fetch (P250-FETCH-HISTORY THRU P250-EXIT)
 
-1. **Send map**: Uses EXEC CICS SEND MAP to display HISMAP from mapset INQSET
-2. **ERASE option**: Clears the screen before displaying
-3. **Capture response**: Stores CICS response code in WS-RESPONSE-CODE
+1. **Request Fetch**: Sets CURS-REQUEST-TYPE to 'F'
+2. **Link to CURSMGR**: Retrieves data into CURS-DATA-AREA
+3. **Move Data**: If successful, moves CURS-DATA-AREA to WS-HISTORY-TABLE
 
-### P999-ERROR-ROUTINE
+### Display (P300-FORMAT-DISPLAY THRU P300-EXIT)
 
-Handles errors during processing:
+Sends the history data to the terminal using BMS (Basic Mapping Support):
 
-1. **Set response code**: Moves SQLCODE to INQCOM-RESPONSE-CODE in working storage
-2. **Update DFHCOMMAREA**: Copies WS-COMMAREA back to linkage section for return to caller
+```cobol
+EXEC CICS SEND MAP('HISMAP')
+          MAPSET('INQSET')
+          FROM(WS-HISTORY-TABLE)
+          LENGTH(LENGTH OF WS-HISTORY-TABLE)
+          ERASE
+          RESP(WS-RESPONSE-CODE)
+END-EXEC
+```
 
-## DB2 Integration
+### Error Handling (P999-ERROR-ROUTINE THRU P999-EXIT)
 
-### POSHIST Table Query
-
-The program queries the POSHIST (Position History) table to retrieve transaction records:
-
-| Column | Maps To | Description |
-|--------|---------|-------------|
-| TRANS_DATE | WS-TRANS-DATE | Transaction date |
-| TRANS_TYPE | WS-TRANS-TYPE | Transaction type code |
-| TRANS_UNITS | WS-TRANS-UNITS | Number of units traded |
-| TRANS_PRICE | WS-TRANS-PRICE | Price per unit |
-| TRANS_AMOUNT | WS-TRANS-AMOUNT | Total transaction amount |
-
-Results are ordered by TRANS_DATE descending (most recent first).
-
-### Cursor Management
-
-The program uses a modular cursor management approach via the CURSMGR program:
-
-| Operation | Request Type | Description |
-|-----------|--------------|-------------|
-| Declare | `'D'` | Prepares the cursor with the SQL statement |
-| Open | `'O'` | Opens the cursor for fetching |
-| Fetch | `'F'` | Retrieves rows into the data area |
-| Close | `'C'` | Closes the cursor and releases resources |
-
-## CICS Commands Used
-
-| Command | Purpose |
-|---------|---------|
-| `EXEC CICS HANDLE CONDITION` | Sets up error handling to route to P999-ERROR-ROUTINE |
-| `EXEC CICS LINK PROGRAM` | Calls external programs (DB2ONLN, DB2RECV, CURSMGR) |
-| `EXEC CICS SEND MAP` | Displays the history map to the terminal |
-| `EXEC CICS RETURN` | Returns control to CICS |
-
-## BMS Map
-
-| Map Name | Mapset | Purpose |
-|----------|--------|---------|
-| HISMAP | INQSET | Transaction history display screen |
-
-The map displays the WS-HISTORY-TABLE data, showing up to 10 transaction history entries per screen.
+1. Moves SQLCODE to INQCOM-RESPONSE-CODE in WS-COMMAREA
+2. Copies WS-COMMAREA back to DFHCOMMAREA for return to caller
 
 ## Dependencies
 
 ### Copybooks
-
-- **INQCOM** - Online inquiry communication area structure
-- **SQLCA** - SQL Communication Area (included via EXEC SQL INCLUDE)
+- INQCOM - Online inquiry communication area structure
 
 ### Called Programs
 
-| Program | Purpose |
-|---------|---------|
-| **DB2ONLN** | DB2 online connection manager |
-| **DB2RECV** | DB2 error recovery handler |
-| **CURSMGR** | Cursor management service |
+| Program | Purpose | Call Method |
+|---------|---------|-------------|
+| DB2ONLN | DB2 connection management | EXEC CICS LINK |
+| CURSMGR | Cursor lifecycle management | EXEC CICS LINK |
+| DB2RECV | DB2 error recovery | EXEC CICS LINK |
 
 ### Related Programs
 
-Programs that share the INQCOM communication area or participate in the online inquiry flow may include portfolio inquiry and menu programs.
+Programs that share the INQCOM copybook:
+- INQONLN - Main online inquiry handler
+- INQPORT - Portfolio inquiry handler
+
+### Database Objects
+
+| Object | Type | Description |
+|--------|------|-------------|
+| POSHIST | Table | Position history containing transaction records |
+
+**POSHIST Columns Used:**
+- ACCOUNT_NO - Account identifier (WHERE clause)
+- TRANS_DATE - Transaction date
+- TRANS_TYPE - Transaction type code
+- TRANS_UNITS - Units traded
+- TRANS_PRICE - Price per unit
+- TRANS_AMOUNT - Total amount
+
+### BMS Maps
+
+| Map | Mapset | Description |
+|-----|--------|-------------|
+| HISMAP | INQSET | History display map |
+
+## CICS Resources
+
+### Commands Used
+
+| Command | Purpose |
+|---------|---------|
+| HANDLE CONDITION | Establish error handler |
+| LINK | Call subprograms |
+| SEND MAP | Display BMS screen |
+| RETURN | Return to CICS |
+
+### Transaction Flow
+
+```
+User Request → INQHIST → DB2ONLN (Connect)
+                      → CURSMGR (Declare/Open/Fetch/Close)
+                      → SEND MAP (Display)
+                      → RETURN
+```
 
 ## Error Handling
 
-### DB2 Connection Errors
+### Connection Errors
 
-When DB2 connection fails:
+When DB2ONLN returns a non-zero response code:
 1. Program attempts recovery via DB2RECV
-2. If recovery succeeds, connection is retried
-3. If recovery fails, error message is set and P999-ERROR-ROUTINE is invoked
+2. If DB2RECV indicates success (RECV-SUCCESS), retries connection
+3. If recovery fails, error message is set and P999-ERROR-ROUTINE is performed
 
-### CICS Error Handling
+### Cursor Errors
 
-The `HANDLE CONDITION ERROR` directive routes all CICS errors to P999-ERROR-ROUTINE.
+Cursor operations check CURS-RESPONSE-CODE after each CURSMGR call. The cursor is always closed in P200-GET-HISTORY regardless of fetch success/failure.
 
-### Error Response
+### General CICS Errors
 
-On error, the program:
-1. Sets INQCOM-RESPONSE-CODE to the SQLCODE
-2. Updates DFHCOMMAREA with error information
-3. Allows normal return to CICS (no ABEND)
+The `EXEC CICS HANDLE CONDITION ERROR(P999-ERROR-ROUTINE)` directive routes unexpected errors to the error routine, which captures the SQLCODE and returns it to the caller.
 
 ## Technical Notes
 
-### COBOL Constructs Used
+### COMP-3 (Packed Decimal)
 
-- **EXEC SQL INCLUDE SQLCA**: Embeds the SQL Communication Area for DB2 interaction. SQLCA contains SQLCODE and diagnostic information after each SQL operation.
+The transaction amounts (WS-TRANS-UNITS, WS-TRANS-PRICE, WS-TRANS-AMOUNT) use `COMP-3` (packed decimal) format. This is efficient for decimal arithmetic and is the standard format for DB2 DECIMAL columns.
 
-- **COMP-3 (Packed Decimal)**: The WS-TRANS-UNITS, WS-TRANS-PRICE, and WS-TRANS-AMOUNT fields use COMP-3 format, which stores two digits per byte plus a sign nibble. This is efficient for decimal arithmetic on mainframes.
+### Array Fetch
 
-- **OCCURS Clause**: WS-HISTORY-ENTRY OCCURS 10 TIMES creates an array of 10 history entries for display.
+The program sets `CURS-ARRAY-FETCH` to 'Y', enabling the cursor manager to fetch multiple rows in a single operation. This improves performance by reducing the number of DB2 fetch operations.
 
-- **PERFORM THRU**: The program uses PERFORM...THRU...EXIT pattern for structured flow control. Each paragraph has a corresponding EXIT paragraph.
+### PERFORM THRU
 
-- **String Concatenation**: The SQL statement is built using the `&` continuation character to span multiple lines.
-
-- **88-Level Conditions**: Used throughout for readable condition testing (MORE-ROWS, NO-MORE-ROWS, RECV-SUCCESS, etc.).
-
-### CICS Considerations
-
-- **COMMAREA Pattern**: Uses DFHCOMMAREA for inter-program communication, copying to working storage for manipulation
-- **LINK vs XCTL**: Uses LINK to call service programs (expecting return) rather than XCTL (transfer control)
-- **RESP Option**: Captures response codes to avoid abends on SEND MAP errors
+The program uses `PERFORM paragraph-name THRU paragraph-name-EXIT` pattern. This ensures proper paragraph boundary handling and allows for consistent exit points.
 
 ### Recursive Recovery
 
-The P150-DB2-CONNECT paragraph can recursively call itself after successful recovery. This provides automatic retry capability but should be monitored to prevent infinite loops in case of persistent failures.
+The DB2 connection logic includes recursive retry capability—if DB2RECV indicates recovery was successful, P150-DB2-CONNECT calls itself to retry the connection. This handles transient connection failures automatically.
+
+### Communication Area Flow
+
+```
+DFHCOMMAREA (input) → WS-COMMAREA (working) → DFHCOMMAREA (output)
+```
+
+The COMMAREA is copied to working storage for manipulation, then copied back before returning to preserve any error information.

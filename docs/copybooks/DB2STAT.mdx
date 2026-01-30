@@ -1,0 +1,288 @@
+---
+title: "DB2STAT"
+description: "DB2 Statistics File Definition - defines the file and record layout for DB2 performance metrics and statistics"
+---
+
+## Overview
+
+DB2STAT is a copybook that defines the file description (FD) and record layout for storing DB2 database statistics and performance metrics. It provides a standardized structure for capturing program-level DB2 activity including row operations, commits, rollbacks, and timing information.
+
+The copybook is used in the FILE SECTION of programs that need to read or write DB2 statistics data. It works in conjunction with the DB2STAT program (a statistics collector) and is consumed by reporting and monitoring programs to analyze database performance.
+
+This file structure enables tracking of DB2 activity across batch jobs, supporting performance analysis, capacity planning, and problem diagnosis.
+
+## Data Structures
+
+### File Definition
+
+```cobol
+FD  DB2-STATS
+    RECORDING MODE IS F
+    BLOCK CONTAINS 0 RECORDS.
+```
+
+The file is defined as:
+- **Organization**: Indexed (VSAM KSDS)
+- **Access Mode**: Sequential or Dynamic
+- **Record Key**: STAT-KEY
+- **Recording Mode**: Fixed-length records
+
+### DB2-STATS-RECORD (Main Structure)
+
+```
+01  DB2-STATS-RECORD.
+    05  STAT-KEY.
+        10  STAT-PROGRAM-ID     PIC X(8).
+        10  STAT-TIMESTAMP      PIC X(26).
+    05  STAT-OPERATIONS.
+        10  STAT-ROWS-READ      PIC S9(9) COMP.
+        10  STAT-ROWS-INSERTED  PIC S9(9) COMP.
+        10  STAT-ROWS-UPDATED   PIC S9(9) COMP.
+        10  STAT-ROWS-DELETED   PIC S9(9) COMP.
+    05  STAT-TRANSACTIONS.
+        10  STAT-COMMITS        PIC S9(9) COMP.
+        10  STAT-ROLLBACKS      PIC S9(9) COMP.
+    05  STAT-TIMING.
+        10  STAT-START-TIME     PIC X(26).
+        10  STAT-END-TIME       PIC X(26).
+        10  STAT-CPU-TIME       PIC S9(9)V99 COMP-3.
+        10  STAT-ELAPSED-TIME   PIC S9(9)V99 COMP-3.
+    05  STAT-FILLER             PIC X(50).
+```
+
+### STAT-KEY Group (Record Key)
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | STAT-KEY | - | Composite primary key |
+| 10 | STAT-PROGRAM-ID | X(8) | Program identifier |
+| 10 | STAT-TIMESTAMP | X(26) | Collection timestamp (ISO format) |
+
+### STAT-OPERATIONS Group
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | STAT-OPERATIONS | - | Row operation counts |
+| 10 | STAT-ROWS-READ | S9(9) COMP | Number of rows read (SELECT) |
+| 10 | STAT-ROWS-INSERTED | S9(9) COMP | Number of rows inserted |
+| 10 | STAT-ROWS-UPDATED | S9(9) COMP | Number of rows updated |
+| 10 | STAT-ROWS-DELETED | S9(9) COMP | Number of rows deleted |
+
+### STAT-TRANSACTIONS Group
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | STAT-TRANSACTIONS | - | Transaction counts |
+| 10 | STAT-COMMITS | S9(9) COMP | Number of commits |
+| 10 | STAT-ROLLBACKS | S9(9) COMP | Number of rollbacks |
+
+### STAT-TIMING Group
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | STAT-TIMING | - | Performance timing data |
+| 10 | STAT-START-TIME | X(26) | Processing start timestamp |
+| 10 | STAT-END-TIME | X(26) | Processing end timestamp |
+| 10 | STAT-CPU-TIME | S9(9)V99 COMP-3 | CPU time in seconds |
+| 10 | STAT-ELAPSED-TIME | S9(9)V99 COMP-3 | Elapsed time in seconds |
+
+### STAT-FILLER
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | STAT-FILLER | X(50) | Reserved for future use |
+
+## Record Layout
+
+```
++------------------------------------------------------------------+
+| DB2-STATS-RECORD                                                  |
++------------------------------------------------------------------+
+| STAT-KEY (34 bytes)                                              |
+|   STAT-PROGRAM-ID (8) | STAT-TIMESTAMP (26)                      |
++------------------------------------------------------------------+
+| STAT-OPERATIONS (16 bytes)                                       |
+|   ROWS-READ | ROWS-INSERTED | ROWS-UPDATED | ROWS-DELETED        |
+|   (4 bytes)   (4 bytes)       (4 bytes)      (4 bytes)           |
++------------------------------------------------------------------+
+| STAT-TRANSACTIONS (8 bytes)                                      |
+|   STAT-COMMITS (4) | STAT-ROLLBACKS (4)                          |
++------------------------------------------------------------------+
+| STAT-TIMING (64 bytes)                                           |
+|   START-TIME (26) | END-TIME (26) | CPU-TIME (6) | ELAPSED (6)   |
++------------------------------------------------------------------+
+| STAT-FILLER (50 bytes)                                           |
++------------------------------------------------------------------+
+Total: ~172 bytes
+```
+
+## Usage Examples
+
+### Reading Statistics for Reporting
+
+```cobol
+FILE SECTION.
+    COPY DB2STAT.
+
+WORKING-STORAGE SECTION.
+01  WS-DB2-STATUS     PIC XX.
+01  WS-TOTAL-READS    PIC S9(12) COMP VALUE 0.
+01  WS-TOTAL-WRITES   PIC S9(12) COMP VALUE 0.
+
+PROCEDURE DIVISION.
+    OPEN INPUT DB2-STATS
+    
+    PERFORM UNTIL WS-DB2-STATUS = '10'
+        READ DB2-STATS
+            AT END MOVE '10' TO WS-DB2-STATUS
+            NOT AT END
+                ADD STAT-ROWS-READ TO WS-TOTAL-READS
+                ADD STAT-ROWS-INSERTED TO WS-TOTAL-WRITES
+                ADD STAT-ROWS-UPDATED TO WS-TOTAL-WRITES
+                ADD STAT-ROWS-DELETED TO WS-TOTAL-WRITES
+        END-READ
+    END-PERFORM
+    
+    CLOSE DB2-STATS
+```
+
+### Calculating Performance Metrics
+
+```cobol
+* Calculate average response time
+COMPUTE WS-AVG-RESPONSE = 
+    WS-TOTAL-ELAPSED / WS-TOTAL-TRANSACTIONS
+
+* Calculate throughput (rows per second)
+IF STAT-ELAPSED-TIME > 0
+    COMPUTE WS-THROUGHPUT = 
+        (STAT-ROWS-READ + STAT-ROWS-INSERTED + 
+         STAT-ROWS-UPDATED + STAT-ROWS-DELETED) 
+        / STAT-ELAPSED-TIME
+END-IF
+
+* Calculate commit ratio
+IF STAT-COMMITS + STAT-ROLLBACKS > 0
+    COMPUTE WS-COMMIT-RATIO = 
+        STAT-COMMITS / (STAT-COMMITS + STAT-ROLLBACKS) * 100
+END-IF
+```
+
+### Writing Statistics from Collector
+
+```cobol
+* Initialize statistics record
+INITIALIZE DB2-STATS-RECORD
+
+MOVE 'MYPROG01' TO STAT-PROGRAM-ID
+ACCEPT WS-CURRENT-TS FROM TIME STAMP
+MOVE WS-CURRENT-TS TO STAT-TIMESTAMP
+MOVE WS-CURRENT-TS TO STAT-START-TIME
+
+* ... program execution ...
+
+* Capture final statistics
+MOVE WS-READ-COUNT TO STAT-ROWS-READ
+MOVE WS-INSERT-COUNT TO STAT-ROWS-INSERTED
+MOVE WS-UPDATE-COUNT TO STAT-ROWS-UPDATED
+MOVE WS-DELETE-COUNT TO STAT-ROWS-DELETED
+MOVE WS-COMMIT-COUNT TO STAT-COMMITS
+MOVE WS-ROLLBACK-COUNT TO STAT-ROLLBACKS
+
+ACCEPT WS-CURRENT-TS FROM TIME STAMP
+MOVE WS-CURRENT-TS TO STAT-END-TIME
+
+* Calculate timing
+COMPUTE STAT-ELAPSED-TIME = 
+    (end time - start time calculation)
+
+WRITE DB2-STATS-RECORD
+```
+
+## Programs Using This Copybook
+
+| Program | Usage | Description |
+|---------|-------|-------------|
+| RPTSTA00 | INPUT | System Statistics Report Generator - reads statistics for reporting |
+| UTLMON00 | INPUT | System Monitoring Utility - reads statistics for threshold checking |
+
+## Related Components
+
+| Component | Type | Relationship |
+|-----------|------|--------------|
+| DB2STAT | Program | Statistics collector that populates the file |
+| BCHCTL | Copybook | Batch control - often used with statistics for job tracking |
+| RTNCODE | Copybook | Return code management - used in statistics programs |
+
+## Technical Notes
+
+### File Organization
+
+The file uses VSAM KSDS (Key-Sequenced Data Set) organization:
+- **Primary Key**: STAT-PROGRAM-ID + STAT-TIMESTAMP
+- **Key Length**: 34 bytes
+- **Access**: Sequential for batch reporting, dynamic for real-time monitoring
+
+### Timestamp Format
+
+All timestamp fields use ISO 8601 format (26 characters):
+```
+YYYY-MM-DD-HH.MM.SS.FFFFFF
+```
+Example: `2024-03-20-14.30.45.123456`
+
+This format is compatible with DB2 TIMESTAMP data type and allows for chronological sorting.
+
+### Numeric Storage
+
+| Field Type | Storage | Range |
+|------------|---------|-------|
+| S9(9) COMP | 4 bytes binary | -999,999,999 to +999,999,999 |
+| S9(9)V99 COMP-3 | 6 bytes packed | -9,999,999.99 to +9,999,999.99 |
+
+### Performance Metrics Calculations
+
+Common metrics that can be derived from the statistics:
+
+| Metric | Formula |
+|--------|---------|
+| Total Operations | ROWS-READ + ROWS-INSERTED + ROWS-UPDATED + ROWS-DELETED |
+| Write Operations | ROWS-INSERTED + ROWS-UPDATED + ROWS-DELETED |
+| Throughput | Total Operations / ELAPSED-TIME |
+| CPU Efficiency | CPU-TIME / ELAPSED-TIME × 100 |
+| Commit Ratio | COMMITS / (COMMITS + ROLLBACKS) × 100 |
+| Avg Rows/Commit | Total Operations / COMMITS |
+
+### JCL Definition
+
+```jcl
+//DB2STATS DD DSN=SYS1.DB2.STATS,
+//            DISP=SHR,
+//            AMP=(AMORG)
+```
+
+Or for new file creation:
+```jcl
+//DB2STATS DD DSN=SYS1.DB2.STATS,
+//            DISP=(NEW,CATLG,DELETE),
+//            SPACE=(CYL,(10,5)),
+//            DCB=(RECFM=FB,LRECL=172,BLKSIZE=0),
+//            KEYLEN=34,
+//            KEYOFF=0
+```
+
+### Data Retention
+
+Statistics records are typically retained based on:
+- **Daily**: Detailed records for recent activity
+- **Weekly**: Aggregated summaries for trend analysis
+- **Monthly**: High-level metrics for capacity planning
+
+Programs using this copybook should implement appropriate archival and purge logic based on business requirements.
+
+### COBOL Features Used
+
+- **COMP (COMPUTATIONAL)**: Binary storage for integer counters (4 bytes for S9(9))
+- **COMP-3 (PACKED-DECIMAL)**: Packed decimal for timing values with decimal places
+- **Indexed file organization**: VSAM KSDS for keyed access
+- **Composite key**: Multiple fields combined for unique record identification

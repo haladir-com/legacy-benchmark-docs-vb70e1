@@ -1,318 +1,367 @@
 ---
 title: "INQCOM"
-description: "Online Inquiry Communication Area - Defines the standard communication structure for online inquiry transactions"
+description: "Online inquiry communication area copybook defining the interface structure for CICS inquiry transactions including function codes, account data, and response handling"
 ---
 
 ## Overview
 
-INQCOM is a copybook that defines the communication area (COMMAREA) structure used by online inquiry programs in the CICS environment. It provides a standardized interface for passing function codes, account information, and response data between inquiry programs.
+INQCOM is a CICS communication area copybook that defines the standard interface for online inquiry transactions in the portfolio management system. It provides the data structure passed between CICS programs via COMMAREA, enabling consistent communication across the inquiry subsystem.
 
-This copybook enables a suite of related inquiry transactions to share a common data format, supporting navigation between menu screens, portfolio inquiries, and history lookups while maintaining context across program invocations.
+This copybook serves as the contract between:
+- **INQONLN**: Main inquiry handler that receives user requests
+- **INQPORT**: Portfolio inquiry processor
+- **INQHIST**: Transaction history inquiry processor
 
-Key features:
-- **Function Routing**: 88-level conditions for menu navigation
-- **Account Context**: Carries account number across transactions
-- **Response Handling**: Standardized response code and error message fields
-- **CICS Compatible**: Designed for COMMAREA-based program linking
-
-## Record Layout
-
-```
-+------------------------------------------------------------------+
-| INQCOM-AREA (96 bytes total)                                      |
-+------------------------------------------------------------------+
-| INQCOM-FUNCTION (4)                                               |
-|   88 INQCOM-MENU      = 'MENU'                                    |
-|   88 INQCOM-PORTFOLIO = 'INQP'                                    |
-|   88 INQCOM-HISTORY   = 'INQH'                                    |
-|   88 INQCOM-EXIT      = 'EXIT'                                    |
-+------------------------------------------------------------------+
-| INQCOM-ACCOUNT-NO (10)                                            |
-+------------------------------------------------------------------+
-| INQCOM-RESPONSE-CODE (4 bytes, S9(8) COMP)                        |
-+------------------------------------------------------------------+
-| INQCOM-ERROR-MSG (80)                                             |
-+------------------------------------------------------------------+
-```
+The structure supports:
+- **Function routing**: Directing requests to appropriate handlers
+- **Data passing**: Account numbers and search criteria
+- **Response handling**: Return codes and error messages
+- **Session management**: Menu navigation and exit handling
 
 ## Data Structures
 
-### INQCOM-AREA (Level 01)
+### Complete Record Layout (INQCOM-AREA)
 
-Main communication area for inquiry programs:
+| Level | Name | Picture | Bytes | Description |
+|-------|------|---------|-------|-------------|
+| 01 | INQCOM-AREA | - | 98 | Complete communication area |
+| 05 | INQCOM-FUNCTION | X(4) | 4 | Function code |
+| 05 | INQCOM-ACCOUNT-NO | X(10) | 10 | Account number for inquiry |
+| 05 | INQCOM-RESPONSE-CODE | S9(8) COMP | 4 | Response/return code |
+| 05 | INQCOM-ERROR-MSG | X(80) | 80 | Error message text |
 
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 05 | INQCOM-FUNCTION | X(4) | Function code determining target action |
-| 05 | INQCOM-ACCOUNT-NO | X(10) | Account number for inquiry context |
-| 05 | INQCOM-RESPONSE-CODE | S9(8) COMP | Return code from operation |
-| 05 | INQCOM-ERROR-MSG | X(80) | Error or informational message |
-
-### INQCOM-FUNCTION Values (88-Level Conditions)
+### Function Codes (88-Level Conditions)
 
 | Condition Name | Value | Description |
 |----------------|-------|-------------|
-| INQCOM-MENU | 'MENU' | Return to or display main menu |
-| INQCOM-PORTFOLIO | 'INQP' | Portfolio inquiry function |
+| INQCOM-MENU | 'MENU' | Display main inquiry menu |
+| INQCOM-PORTFOLIO | 'INQP' | Portfolio inquiry request |
 | INQCOM-HISTORY | 'INQH' | Transaction history inquiry |
-| INQCOM-EXIT | 'EXIT' | Exit the inquiry system |
+| INQCOM-EXIT | 'EXIT' | Terminate inquiry session |
 
-## Function Flow
+## Field Specifications
 
-```mermaid
-graph TD
-    A[User Input] --> B{INQCOM-FUNCTION}
-    B -->|MENU| C[INQONLN - Main Menu]
-    B -->|INQP| D[INQPORT - Portfolio Inquiry]
-    B -->|INQH| E[INQHIST - History Inquiry]
-    B -->|EXIT| F[End Transaction]
-    
-    C -->|Select Portfolio| D
-    C -->|Select History| E
-    D -->|Back| C
-    D -->|View History| E
-    E -->|Back| C
-    E -->|View Portfolio| D
-```
+### INQCOM-FUNCTION
+
+- **Format**: 4 alphanumeric characters
+- **Purpose**: Identifies the requested operation
+- **Usage**: Set by the calling program or BMS map input
+- **Validation**: Should match one of the 88-level conditions
+
+| Code | Handler Program | Description |
+|------|-----------------|-------------|
+| `MENU` | INQONLN | Returns to main menu display |
+| `INQP` | INQPORT | Routes to portfolio inquiry |
+| `INQH` | INQHIST | Routes to history inquiry |
+| `EXIT` | INQONLN | Terminates the session |
+
+### INQCOM-ACCOUNT-NO
+
+- **Format**: 10 alphanumeric characters
+- **Purpose**: Identifies the account/portfolio to query
+- **Usage**: Populated from screen input before calling inquiry programs
+- **Example**: `1234567890`, `ACCT000001`
+
+### INQCOM-RESPONSE-CODE
+
+- **Format**: Signed 8-digit binary (COMP)
+- **Purpose**: Returns status from called programs
+- **Range**: -99999999 to +99999999
+- **Storage**: 4 bytes
+
+| Value | Meaning |
+|-------|---------|
+| 0 | Success |
+| > 0 | Warning or informational |
+| < 0 | Error condition |
+
+Common response codes:
+
+| Code | Description |
+|------|-------------|
+| 0 | Successful completion |
+| 4 | Record not found |
+| 8 | Invalid input |
+| 12 | Security violation |
+| 16 | System error |
+
+### INQCOM-ERROR-MSG
+
+- **Format**: 80 alphanumeric characters
+- **Purpose**: Contains descriptive error message text
+- **Usage**: Populated when INQCOM-RESPONSE-CODE is non-zero
+- **Display**: Shown to user on error screens
 
 ## Usage Examples
 
-### Navigating to Portfolio Inquiry
-
-```cobol
-* Set up COMMAREA to request portfolio inquiry
-SET INQCOM-PORTFOLIO TO TRUE
-MOVE WS-ACCOUNT-NUMBER TO INQCOM-ACCOUNT-NO
-MOVE ZEROS TO INQCOM-RESPONSE-CODE
-MOVE SPACES TO INQCOM-ERROR-MSG
-
-EXEC CICS XCTL
-    PROGRAM('INQPORT')
-    COMMAREA(INQCOM-AREA)
-    LENGTH(LENGTH OF INQCOM-AREA)
-END-EXEC
-```
-
-### Returning to Menu with Error
-
-```cobol
-* Return to menu with error message
-SET INQCOM-MENU TO TRUE
-MOVE 8 TO INQCOM-RESPONSE-CODE
-MOVE 'Account not found - please verify account number'
-    TO INQCOM-ERROR-MSG
-
-EXEC CICS XCTL
-    PROGRAM('INQONLN')
-    COMMAREA(INQCOM-AREA)
-    LENGTH(LENGTH OF INQCOM-AREA)
-END-EXEC
-```
-
-### Processing Incoming Request
+### Main Handler Dispatching (INQONLN)
 
 ```cobol
 WORKING-STORAGE SECTION.
+01  WS-COMMAREA.
     COPY INQCOM.
 
 LINKAGE SECTION.
 01  DFHCOMMAREA.
-    05  FILLER    PIC X(96).
+    COPY INQCOM.
 
 PROCEDURE DIVISION.
-    IF EIBCALEN > 0
-        MOVE DFHCOMMAREA TO INQCOM-AREA
-    ELSE
-        INITIALIZE INQCOM-AREA
-        SET INQCOM-MENU TO TRUE
-    END-IF
-    
     EVALUATE TRUE
         WHEN INQCOM-MENU
-            PERFORM DISPLAY-MENU
+            PERFORM P200-DISPLAY-MENU
         WHEN INQCOM-PORTFOLIO
-            PERFORM PROCESS-PORTFOLIO-INQUIRY
+            EXEC CICS LINK PROGRAM('INQPORT')
+                 COMMAREA(WS-COMMAREA)
+                 LENGTH(LENGTH OF WS-COMMAREA)
+            END-EXEC
         WHEN INQCOM-HISTORY
-            PERFORM PROCESS-HISTORY-INQUIRY
+            EXEC CICS LINK PROGRAM('INQHIST')
+                 COMMAREA(WS-COMMAREA)
+                 LENGTH(LENGTH OF WS-COMMAREA)
+            END-EXEC
         WHEN INQCOM-EXIT
-            PERFORM EXIT-TRANSACTION
+            SET SESSION-TERMINATED TO TRUE
     END-EVALUATE
     .
 ```
 
-### Handling Navigation with Context
+### Portfolio Inquiry Handler (INQPORT)
 
 ```cobol
-* User wants to see history for current portfolio
-PRESERVE-CONTEXT-FOR-HISTORY.
-    SET INQCOM-HISTORY TO TRUE
-*   Account number already in INQCOM-ACCOUNT-NO
-    MOVE ZEROS TO INQCOM-RESPONSE-CODE
-    MOVE SPACES TO INQCOM-ERROR-MSG
+WORKING-STORAGE SECTION.
+    COPY INQCOM.
+    COPY POSREC.
+
+LINKAGE SECTION.
+01  DFHCOMMAREA.
+    COPY INQCOM.
+
+PROCEDURE DIVISION.
+* Validate account number
+    IF INQCOM-ACCOUNT-NO = SPACES
+        MOVE 8 TO INQCOM-RESPONSE-CODE
+        MOVE 'Account number is required' 
+          TO INQCOM-ERROR-MSG
+        EXEC CICS RETURN END-EXEC
+    END-IF
     
-    EXEC CICS XCTL
-        PROGRAM('INQHIST')
-        COMMAREA(INQCOM-AREA)
-        LENGTH(LENGTH OF INQCOM-AREA)
+* Look up portfolio
+    MOVE INQCOM-ACCOUNT-NO TO POS-PORTFOLIO-ID
+    PERFORM 2000-READ-PORTFOLIO
+    
+    IF WS-PORTFOLIO-FOUND
+        MOVE 0 TO INQCOM-RESPONSE-CODE
+        MOVE SPACES TO INQCOM-ERROR-MSG
+    ELSE
+        MOVE 4 TO INQCOM-RESPONSE-CODE
+        MOVE 'Portfolio not found' TO INQCOM-ERROR-MSG
+    END-IF
+    
+    EXEC CICS RETURN END-EXEC
+    .
+```
+
+### Setting Function Code from Map
+
+```cobol
+P100-PROCESS-MAP-INPUT.
+    EXEC CICS RECEIVE MAP('INQMAP')
+              MAPSET('INQSET')
+              INTO(WS-MAP-DATA)
+    END-EXEC
+    
+    EVALUATE WS-MAP-SELECTION
+        WHEN '1'
+            MOVE 'INQP' TO INQCOM-FUNCTION
+        WHEN '2'
+            MOVE 'INQH' TO INQCOM-FUNCTION
+        WHEN 'X'
+            MOVE 'EXIT' TO INQCOM-FUNCTION
+        WHEN OTHER
+            MOVE 'MENU' TO INQCOM-FUNCTION
+    END-EVALUATE
+    
+    MOVE WS-MAP-ACCOUNT TO INQCOM-ACCOUNT-NO
+    .
+```
+
+### Error Response Handling
+
+```cobol
+P300-CHECK-RESPONSE.
+    IF INQCOM-RESPONSE-CODE NOT = 0
+        MOVE INQCOM-ERROR-MSG TO WS-SCREEN-MESSAGE
+        PERFORM P900-DISPLAY-ERROR
+    ELSE
+        PERFORM P400-DISPLAY-RESULTS
+    END-IF
+    .
+
+P900-DISPLAY-ERROR.
+    MOVE INQCOM-ERROR-MSG TO MAP-ERROR-MESSAGE
+    MOVE -1 TO MAP-ACCOUNT-L
+    
+    EXEC CICS SEND MAP('INQMAP')
+              MAPSET('INQSET')
+              CURSOR
     END-EXEC
     .
 ```
 
-### Validating Function and Displaying Errors
+### Initializing Communication Area
 
 ```cobol
-CHECK-RESPONSE-AND-DISPLAY.
-    IF INQCOM-RESPONSE-CODE NOT = 0
-        MOVE INQCOM-ERROR-MSG TO SCREEN-MESSAGE-FIELD
-        MOVE DFHRED TO MESSAGE-COLOR
-    ELSE
-        MOVE 'Ready' TO SCREEN-MESSAGE-FIELD
-        MOVE DFHGREEN TO MESSAGE-COLOR
-    END-IF
+P000-INITIALIZE-COMMAREA.
+    INITIALIZE INQCOM-AREA
+    MOVE 'MENU' TO INQCOM-FUNCTION
+    MOVE SPACES TO INQCOM-ACCOUNT-NO
+    MOVE 0 TO INQCOM-RESPONSE-CODE
+    MOVE SPACES TO INQCOM-ERROR-MSG
     .
 ```
 
 ## Programs Using This Copybook
 
-| Program | Purpose |
-|---------|---------|
-| INQONLN | Main online inquiry menu - dispatches to other inquiry functions |
-| INQPORT | Portfolio inquiry - displays portfolio details and positions |
-| INQHIST | History inquiry - displays transaction history |
+INQCOM is used by 3 programs in the online inquiry subsystem:
 
-## Program Interaction Pattern
+| Program | Role | Description |
+|---------|------|-------------|
+| INQONLN | Controller | Main inquiry handler - routes requests |
+| INQPORT | Handler | Portfolio inquiry processor |
+| INQHIST | Handler | Transaction history inquiry processor |
+
+### Program Interaction Flow
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      INQONLN (Menu)                         │
-│  - Receives initial transaction                             │
-│  - Displays menu options                                    │
-│  - Routes to INQPORT or INQHIST based on user selection    │
-└─────────────────────────────────────────────────────────────┘
-                    │                    │
-         INQP      │                    │      INQH
-                    ▼                    ▼
-┌─────────────────────────┐    ┌─────────────────────────┐
-│      INQPORT            │    │      INQHIST            │
-│  - Portfolio details    │◄──►│  - Transaction history  │
-│  - Position summary     │    │  - Date range filtering │
-│  - Can link to INQHIST  │    │  - Can link to INQPORT  │
-└─────────────────────────┘    └─────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│                        User                              │
+│                          │                               │
+│                          ▼                               │
+│                    ┌──────────┐                          │
+│                    │  INQONLN │  (Main Handler)          │
+│                    └────┬─────┘                          │
+│                         │                                │
+│         ┌───────────────┼───────────────┐                │
+│         │               │               │                │
+│         ▼               ▼               ▼                │
+│    ┌─────────┐    ┌──────────┐    ┌──────────┐          │
+│    │ INQPORT │    │ INQHIST  │    │   EXIT   │          │
+│    │(Portfolio)   │(History) │    │          │          │
+│    └─────────┘    └──────────┘    └──────────┘          │
+│                                                          │
+│    All programs share INQCOM-AREA via COMMAREA           │
+└─────────────────────────────────────────────────────────┘
 ```
 
 ## Related Copybooks
 
 | Copybook | Relationship |
 |----------|--------------|
-| ERRHND | Error handling for online programs - used with INQCOM-ERROR-MSG |
-| POSREC | Position record - data displayed by INQPORT |
-| PORTFLIO | Portfolio record - data displayed by INQPORT |
-
-## Response Codes
-
-| Code | Meaning |
-|------|---------|
-| 0 | Success - operation completed normally |
-| 4 | Warning - operation completed with informational message |
-| 8 | Error - operation failed, see INQCOM-ERROR-MSG |
-| 12 | Severe - unrecoverable error occurred |
-
-## Best Practices
-
-### 1. Always Initialize on First Entry
-
-```cobol
-* Check EIBCALEN to detect first entry vs. return
-IF EIBCALEN = 0
-    INITIALIZE INQCOM-AREA
-    SET INQCOM-MENU TO TRUE
-ELSE
-    MOVE DFHCOMMAREA TO INQCOM-AREA
-END-IF
-```
-
-### 2. Use 88-Level Conditions for Readability
-
-```cobol
-* Use SET for clear, self-documenting code
-SET INQCOM-PORTFOLIO TO TRUE
-
-* NOT this:
-MOVE 'INQP' TO INQCOM-FUNCTION
-```
-
-### 3. Clear Error Fields Before New Operations
-
-```cobol
-PREPARE-FOR-NEW-REQUEST.
-    MOVE ZEROS TO INQCOM-RESPONSE-CODE
-    MOVE SPACES TO INQCOM-ERROR-MSG
-    .
-```
-
-### 4. Preserve Account Context During Navigation
-
-```cobol
-* Keep account number when switching functions
-* Only clear when explicitly requested
-IF NOT INQCOM-EXIT
-    CONTINUE  *> Preserve INQCOM-ACCOUNT-NO
-END-IF
-```
-
-### 5. Validate Account Before Inquiry
-
-```cobol
-VALIDATE-BEFORE-INQUIRY.
-    IF INQCOM-ACCOUNT-NO = SPACES
-        MOVE 8 TO INQCOM-RESPONSE-CODE
-        MOVE 'Please enter an account number'
-            TO INQCOM-ERROR-MSG
-        SET INQCOM-MENU TO TRUE
-    END-IF
-    .
-```
+| ERRHND | Online error handling - complements INQCOM for error management |
+| POSREC | Position record - data retrieved by INQPORT |
+| HISTREC | History record - data retrieved by INQHIST |
 
 ## Technical Notes
 
-1. **COMMAREA Size**: The structure is 96 bytes (4 + 10 + 4 + 80), small enough for efficient CICS COMMAREA passing.
+### CICS COMMAREA Usage
 
-2. **S9(8) COMP for Response Code**: Uses 4-byte binary for efficient comparison and arithmetic, compatible with CICS RESP values.
-
-3. **80-Byte Error Message**: Sized to fit standard terminal display width and BMS map fields.
-
-4. **XCTL vs LINK**: Programs typically use XCTL (transfer control) rather than LINK for navigation, as each inquiry is a separate logical unit.
-
-5. **Pseudo-Conversational Design**: This COMMAREA supports pseudo-conversational programming where each user interaction is a separate task, with context preserved in COMMAREA.
-
-6. **Function Code Length**: The 4-character function code allows for expansion (e.g., 'INQ1', 'INQ2') while maintaining readability.
-
-## CICS Transaction Flow
-
-```
-1. User enters transaction code (e.g., INQ1)
-2. CICS starts INQONLN with empty COMMAREA
-3. INQONLN displays menu, user selects Portfolio
-4. User presses ENTER, CICS starts new task
-5. INQONLN receives COMMAREA, XCTLs to INQPORT
-6. INQPORT displays portfolio, user requests history
-7. User presses PF key, CICS starts new task
-8. INQPORT receives COMMAREA, XCTLs to INQHIST
-9. Process continues until INQCOM-EXIT
-```
-
-## Extending the Copybook
-
-To add new inquiry functions:
+The INQCOM-AREA is designed for CICS COMMAREA passing:
 
 ```cobol
-* Add new 88-level condition
-       05 INQCOM-FUNCTION         PIC X(4).
-          88 INQCOM-MENU               VALUE 'MENU'.
-          88 INQCOM-PORTFOLIO          VALUE 'INQP'.
-          88 INQCOM-HISTORY            VALUE 'INQH'.
-          88 INQCOM-POSITIONS          VALUE 'INQS'.  *> New
-          88 INQCOM-EXIT               VALUE 'EXIT'.
+* Calling program
+EXEC CICS LINK PROGRAM('INQPORT')
+          COMMAREA(WS-COMMAREA)
+          LENGTH(LENGTH OF WS-COMMAREA)
+END-EXEC
+
+* Called program receives via DFHCOMMAREA
+LINKAGE SECTION.
+01  DFHCOMMAREA.
+    COPY INQCOM.
+
+PROCEDURE DIVISION.
+    IF EIBCALEN > 0
+        MOVE DFHCOMMAREA TO WS-COMMAREA
+    END-IF
 ```
 
-Then update the routing logic in INQONLN to handle the new function.
+### Storage Considerations
+
+| Field | Storage | Notes |
+|-------|---------|-------|
+| INQCOM-FUNCTION | 4 bytes | Character |
+| INQCOM-ACCOUNT-NO | 10 bytes | Character |
+| INQCOM-RESPONSE-CODE | 4 bytes | Binary (COMP) |
+| INQCOM-ERROR-MSG | 80 bytes | Character |
+| **Total** | **98 bytes** | Compact for COMMAREA |
+
+### Response Code Standards
+
+Follow these conventions for consistency:
+
+| Range | Category | Action |
+|-------|----------|--------|
+| 0 | Success | Display results |
+| 1-7 | Warning | Display results with message |
+| 8-15 | User Error | Display error, allow retry |
+| 16+ | System Error | Display error, may need to exit |
+
+### Pseudo-Conversational Considerations
+
+In CICS pseudo-conversational programming:
+
+1. **First Entry** (EIBCALEN = 0):
+   - Initialize INQCOM-AREA
+   - Set default function (MENU)
+   - Display initial screen
+
+2. **Subsequent Entries** (EIBCALEN > 0):
+   - Restore from DFHCOMMAREA
+   - Process based on INQCOM-FUNCTION
+   - Update response fields
+   - Return with updated COMMAREA
+
+```cobol
+PROCEDURE DIVISION.
+    EVALUATE TRUE
+        WHEN EIBCALEN = 0
+            PERFORM P000-FIRST-TIME
+        WHEN OTHER
+            MOVE DFHCOMMAREA TO WS-COMMAREA
+            PERFORM P100-PROCESS-REQUEST
+    END-EVALUATE
+    
+    EXEC CICS RETURN TRANSID('INQ1')
+              COMMAREA(WS-COMMAREA)
+              LENGTH(LENGTH OF WS-COMMAREA)
+    END-EXEC
+    .
+```
+
+### Error Message Guidelines
+
+When populating INQCOM-ERROR-MSG:
+
+1. **Be specific**: "Account 1234567890 not found" vs "Not found"
+2. **Be actionable**: "Enter a valid 10-digit account number"
+3. **Avoid technical jargon**: "Unable to retrieve data" vs "VSAM status 23"
+4. **Keep it brief**: Maximum 80 characters
+
+### Extending the Structure
+
+To add fields without breaking existing programs:
+
+1. Add new fields at the end of INQCOM-AREA
+2. Use EIBCALEN to detect old vs new callers
+3. Initialize new fields to defaults for old callers
+
+```cobol
+01  INQCOM-AREA.
+    05 INQCOM-FUNCTION         PIC X(4).
+    05 INQCOM-ACCOUNT-NO       PIC X(10).
+    05 INQCOM-RESPONSE-CODE    PIC S9(8) COMP.
+    05 INQCOM-ERROR-MSG        PIC X(80).
+*   New fields added below
+    05 INQCOM-DATE-FROM        PIC X(10).
+    05 INQCOM-DATE-TO          PIC X(10).
+```

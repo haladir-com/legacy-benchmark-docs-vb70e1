@@ -1,196 +1,120 @@
 ---
 title: "TRNREC"
-description: "Transaction Record Structure - defines the standard layout for investment transaction records including buy, sell, transfer, and fee transactions"
+description: "Transaction Record Structure - defines the layout for investment transactions including buys, sells, transfers, and fees"
 ---
 
 ## Overview
 
-TRNREC is a copybook that defines the standard record layout for investment transaction records. It provides the data structure used throughout the portfolio management system for recording and processing financial transactions such as purchases, sales, transfers, and fees.
+TRNREC (Transaction Record) is a copybook that defines the standard record structure for investment transactions in the portfolio management system. It provides a comprehensive layout for capturing all aspects of a financial transaction including identification, pricing, amounts, and processing status.
 
-This copybook is essential to the transaction processing infrastructure, containing:
-- **Transaction Identification** - Composite key with date, time, portfolio, and sequence
-- **Transaction Details** - Type, investment, quantity, price, and amount
-- **Status Tracking** - Processing status for workflow management
-- **Audit Information** - Processing timestamp and user identification
+The copybook supports four transaction types: Buy, Sell, Transfer, and Fee. Each transaction is uniquely identified by a composite key of date, time, portfolio ID, and sequence number, allowing multiple transactions per portfolio on the same day.
+
+This record structure is used across multiple programs for transaction processing, position reporting, test data generation, and data validation.
+
+## Data Structures
+
+### TRANSACTION-RECORD (Main Structure)
+
+```cobol
+01  TRANSACTION-RECORD.
+    05  TRN-KEY.
+        10  TRN-DATE           PIC X(08).
+        10  TRN-TIME           PIC X(06).
+        10  TRN-PORTFOLIO-ID   PIC X(08).
+        10  TRN-SEQUENCE-NO    PIC X(06).
+    05  TRN-DATA.
+        10  TRN-INVESTMENT-ID  PIC X(10).
+        10  TRN-TYPE           PIC X(02).
+        10  TRN-QUANTITY       PIC S9(11)V9(4) COMP-3.
+        10  TRN-PRICE          PIC S9(11)V9(4) COMP-3.
+        10  TRN-AMOUNT         PIC S9(13)V9(2) COMP-3.
+        10  TRN-CURRENCY       PIC X(03).
+        10  TRN-STATUS         PIC X(01).
+    05  TRN-AUDIT.
+        10  TRN-PROCESS-DATE   PIC X(26).
+        10  TRN-PROCESS-USER   PIC X(08).
+    05  TRN-FILLER             PIC X(50).
+```
+
+### TRN-KEY Group (Record Key)
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | TRN-KEY | - | Composite primary key (28 bytes) |
+| 10 | TRN-DATE | X(08) | Transaction date (YYYYMMDD) |
+| 10 | TRN-TIME | X(06) | Transaction time (HHMMSS) |
+| 10 | TRN-PORTFOLIO-ID | X(08) | Portfolio identifier |
+| 10 | TRN-SEQUENCE-NO | X(06) | Sequence number for same-day transactions |
+
+### TRN-DATA Group (Transaction Details)
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | TRN-DATA | - | Core transaction data |
+| 10 | TRN-INVESTMENT-ID | X(10) | Security/investment identifier |
+| 10 | TRN-TYPE | X(02) | Transaction type code |
+| 10 | TRN-QUANTITY | S9(11)V9(4) COMP-3 | Number of units/shares |
+| 10 | TRN-PRICE | S9(11)V9(4) COMP-3 | Price per unit |
+| 10 | TRN-AMOUNT | S9(13)V9(2) COMP-3 | Total transaction amount |
+| 10 | TRN-CURRENCY | X(03) | ISO currency code (e.g., USD, EUR) |
+| 10 | TRN-STATUS | X(01) | Processing status |
+
+### Transaction Type Values (88-level conditions)
+
+| Value | Condition Name | Description |
+|-------|----------------|-------------|
+| 'BU' | TRN-TYPE-BUY | Purchase of securities |
+| 'SL' | TRN-TYPE-SELL | Sale of securities |
+| 'TR' | TRN-TYPE-TRANS | Transfer between portfolios |
+| 'FE' | TRN-TYPE-FEE | Fee or expense charge |
+
+### Transaction Status Values (88-level conditions)
+
+| Value | Condition Name | Description |
+|-------|----------------|-------------|
+| 'P' | TRN-STATUS-PEND | Pending - awaiting processing |
+| 'D' | TRN-STATUS-DONE | Done - successfully completed |
+| 'F' | TRN-STATUS-FAIL | Failed - error during processing |
+| 'R' | TRN-STATUS-REV | Reversed - transaction was reversed |
+
+### TRN-AUDIT Group (Audit Trail)
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | TRN-AUDIT | - | Processing audit information |
+| 10 | TRN-PROCESS-DATE | X(26) | Timestamp when processed (ISO format) |
+| 10 | TRN-PROCESS-USER | X(08) | User ID who processed transaction |
+
+### TRN-FILLER
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | TRN-FILLER | X(50) | Reserved for future use |
 
 ## Record Layout
 
 ```
 +------------------------------------------------------------------+
-|                      TRANSACTION-RECORD                           |
+| TRANSACTION-RECORD                                                |
 +------------------------------------------------------------------+
-| TRN-KEY (28 bytes)                                                |
-|   +-- TRN-DATE (8) + TRN-TIME (6) + TRN-PORTFOLIO-ID (8)         |
-|   +-- TRN-SEQUENCE-NO (6)                                         |
+| TRN-KEY (28 bytes)                                               |
+|   TRN-DATE (8) | TRN-TIME (6) | TRN-PORTFOLIO-ID (8) |           |
+|   TRN-SEQUENCE-NO (6)                                            |
 +------------------------------------------------------------------+
-| TRN-DATA (~40 bytes)                                              |
-|   +-- TRN-INVESTMENT-ID (10) + TRN-TYPE (2)                      |
-|   +-- TRN-QUANTITY (8) + TRN-PRICE (8) + TRN-AMOUNT (8)          |
-|   +-- TRN-CURRENCY (3) + TRN-STATUS (1)                          |
+| TRN-DATA (~40 bytes)                                             |
+|   TRN-INVESTMENT-ID (10) | TRN-TYPE (2)                          |
+|   TRN-QUANTITY (8 packed) | TRN-PRICE (8 packed)                 |
+|   TRN-AMOUNT (8 packed) | TRN-CURRENCY (3) | TRN-STATUS (1)      |
 +------------------------------------------------------------------+
-| TRN-AUDIT (34 bytes)                                              |
-|   +-- TRN-PROCESS-DATE (26) + TRN-PROCESS-USER (8)               |
+| TRN-AUDIT (34 bytes)                                             |
+|   TRN-PROCESS-DATE (26) | TRN-PROCESS-USER (8)                   |
 +------------------------------------------------------------------+
-| TRN-FILLER (50 bytes)                                             |
+| TRN-FILLER (50 bytes)                                            |
 +------------------------------------------------------------------+
-| Total: ~152 bytes                                                 |
-+------------------------------------------------------------------+
+Total: ~152 bytes
 ```
 
-## Data Structures
-
-### Transaction Record (TRANSACTION-RECORD)
-
-The top-level record structure:
-
-| Level | Name | Description |
-|-------|------|-------------|
-| 01 | TRANSACTION-RECORD | Complete transaction record |
-
-### Record Key (TRN-KEY)
-
-The composite primary key uniquely identifies each transaction:
-
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 05 | TRN-KEY | - | Composite primary key (28 bytes) |
-| 10 | TRN-DATE | X(8) | Transaction date (YYYYMMDD) |
-| 10 | TRN-TIME | X(6) | Transaction time (HHMMSS) |
-| 10 | TRN-PORTFOLIO-ID | X(8) | Portfolio identifier |
-| 10 | TRN-SEQUENCE-NO | X(6) | Sequence number for same-second transactions |
-
-**Key Design:**
-- Date + Time provides temporal ordering
-- Portfolio ID groups transactions by account
-- Sequence number handles multiple transactions in the same second
-- Supports both random access and sequential processing by date
-
-### Transaction Data (TRN-DATA)
-
-Core transaction information:
-
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 05 | TRN-DATA | - | Transaction details group |
-| 10 | TRN-INVESTMENT-ID | X(10) | Security/investment identifier |
-| 10 | TRN-TYPE | X(2) | Transaction type code |
-| 88 | TRN-TYPE-BUY | VALUE 'BU' | Purchase transaction |
-| 88 | TRN-TYPE-SELL | VALUE 'SL' | Sale transaction |
-| 88 | TRN-TYPE-TRANS | VALUE 'TR' | Transfer between portfolios |
-| 88 | TRN-TYPE-FEE | VALUE 'FE' | Fee or charge |
-
-#### Numeric Fields (COMP-3 Packed Decimal)
-
-| Level | Name | Picture | Bytes | Description |
-|-------|------|---------|-------|-------------|
-| 10 | TRN-QUANTITY | S9(11)V9(4) COMP-3 | 8 | Number of units/shares |
-| 10 | TRN-PRICE | S9(11)V9(4) COMP-3 | 8 | Price per unit |
-| 10 | TRN-AMOUNT | S9(13)V9(2) COMP-3 | 8 | Total transaction amount |
-
-#### Additional Fields
-
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 10 | TRN-CURRENCY | X(3) | ISO currency code (e.g., USD, EUR, GBP) |
-| 10 | TRN-STATUS | X(1) | Transaction processing status |
-| 88 | TRN-STATUS-PEND | VALUE 'P' | Pending - awaiting processing |
-| 88 | TRN-STATUS-DONE | VALUE 'D' | Done - successfully processed |
-| 88 | TRN-STATUS-FAIL | VALUE 'F' | Failed - processing error |
-| 88 | TRN-STATUS-REV | VALUE 'R' | Reversed - transaction reversed |
-
-### Transaction Types
-
-| Code | Condition Name | Description | Typical Use |
-|------|----------------|-------------|-------------|
-| BU | TRN-TYPE-BUY | Purchase | Buying securities, adding to positions |
-| SL | TRN-TYPE-SELL | Sale | Selling securities, reducing positions |
-| TR | TRN-TYPE-TRANS | Transfer | Moving assets between portfolios |
-| FE | TRN-TYPE-FEE | Fee | Management fees, service charges |
-
-### Status Values
-
-| Code | Condition Name | Description | Next Actions |
-|------|----------------|-------------|--------------|
-| P | TRN-STATUS-PEND | Pending | Validate and process |
-| D | TRN-STATUS-DONE | Done | No action required |
-| F | TRN-STATUS-FAIL | Failed | Review and retry or reverse |
-| R | TRN-STATUS-REV | Reversed | Audit trail only |
-
-### Audit Information (TRN-AUDIT)
-
-Processing audit trail:
-
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 05 | TRN-AUDIT | - | Audit information group |
-| 10 | TRN-PROCESS-DATE | X(26) | Processing timestamp (ISO format) |
-| 10 | TRN-PROCESS-USER | X(8) | User ID who processed transaction |
-
-### Reserved Space (TRN-FILLER)
-
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 05 | TRN-FILLER | X(50) | Reserved for future expansion |
-
-## Numeric Field Details
-
-### COMP-3 (Packed Decimal) Format
-
-All monetary and quantity fields use COMP-3 for efficient storage and accurate decimal arithmetic:
-
-| Field | Picture | Integer Digits | Decimal Places | Storage |
-|-------|---------|----------------|----------------|---------|
-| TRN-QUANTITY | S9(11)V9(4) | 11 | 4 | 8 bytes |
-| TRN-PRICE | S9(11)V9(4) | 11 | 4 | 8 bytes |
-| TRN-AMOUNT | S9(13)V9(2) | 13 | 2 | 8 bytes |
-
-**Capacity:**
-- TRN-QUANTITY: ±99,999,999,999.9999 (supports fractional shares)
-- TRN-PRICE: ±99,999,999,999.9999 (4 decimal places for precision)
-- TRN-AMOUNT: ±9,999,999,999,999.99 (large transaction support)
-
-### Calculation Example
-
-```cobol
-* Calculate amount from quantity and price
-COMPUTE TRN-AMOUNT = TRN-QUANTITY * TRN-PRICE
-```
-
-## Usage
-
-### File Definition (Indexed File)
-
-```cobol
-FILE-CONTROL.
-    SELECT TRANSACTION-FILE
-        ASSIGN TO TRANFILE
-        ORGANIZATION IS INDEXED
-        ACCESS MODE IS DYNAMIC
-        RECORD KEY IS TRN-KEY
-        FILE STATUS IS WS-TRAN-STATUS.
-
-FILE SECTION.
-FD  TRANSACTION-FILE
-    RECORDING MODE IS F
-    BLOCK CONTAINS 0 RECORDS.
-    COPY TRNREC.
-```
-
-### File Definition (Sequential File)
-
-```cobol
-FILE-CONTROL.
-    SELECT TRANSACTION-FILE
-        ASSIGN TO TRANFILE
-        ORGANIZATION IS SEQUENTIAL
-        FILE STATUS IS WS-TRAN-STATUS.
-
-FILE SECTION.
-FD  TRANSACTION-FILE
-    RECORDING MODE IS F
-    BLOCK CONTAINS 0 RECORDS.
-    COPY TRNREC.
-```
+## Usage Examples
 
 ### Creating a Buy Transaction
 
@@ -198,241 +122,207 @@ FD  TRANSACTION-FILE
 INITIALIZE TRANSACTION-RECORD
 
 * Set key fields
-ACCEPT WS-DATE FROM DATE YYYYMMDD
-ACCEPT WS-TIME FROM TIME
-MOVE WS-DATE TO TRN-DATE
-MOVE WS-TIME(1:6) TO TRN-TIME
-MOVE 'PORT0001' TO TRN-PORTFOLIO-ID
-MOVE '000001' TO TRN-SEQUENCE-NO
+MOVE FUNCTION CURRENT-DATE(1:8) TO TRN-DATE
+MOVE FUNCTION CURRENT-DATE(9:6) TO TRN-TIME
+MOVE WS-PORTFOLIO-ID TO TRN-PORTFOLIO-ID
+MOVE WS-NEXT-SEQUENCE TO TRN-SEQUENCE-NO
 
 * Set transaction details
-MOVE 'AAPL123456' TO TRN-INVESTMENT-ID
+MOVE WS-SECURITY-ID TO TRN-INVESTMENT-ID
 SET TRN-TYPE-BUY TO TRUE
-MOVE 100.0000 TO TRN-QUANTITY
-MOVE 150.5000 TO TRN-PRICE
+MOVE WS-SHARES TO TRN-QUANTITY
+MOVE WS-SHARE-PRICE TO TRN-PRICE
 COMPUTE TRN-AMOUNT = TRN-QUANTITY * TRN-PRICE
 MOVE 'USD' TO TRN-CURRENCY
 SET TRN-STATUS-PEND TO TRUE
 
 * Set audit fields
 MOVE FUNCTION CURRENT-DATE TO TRN-PROCESS-DATE
-MOVE 'TRADER01' TO TRN-PROCESS-USER
-
-WRITE TRANSACTION-RECORD
+ACCEPT TRN-PROCESS-USER FROM ENVIRONMENT 'USER'
 ```
 
-### Processing by Transaction Type
+### Validating a Transaction
 
 ```cobol
-READ TRANSACTION-FILE
-
+* Check transaction type
 EVALUATE TRUE
     WHEN TRN-TYPE-BUY
-        PERFORM PROCESS-PURCHASE
     WHEN TRN-TYPE-SELL
-        PERFORM PROCESS-SALE
     WHEN TRN-TYPE-TRANS
-        PERFORM PROCESS-TRANSFER
     WHEN TRN-TYPE-FEE
-        PERFORM PROCESS-FEE
+        CONTINUE
     WHEN OTHER
-        MOVE 'Invalid transaction type' TO ERR-TEXT
+        MOVE 'Invalid transaction type' TO WS-ERROR-MSG
         PERFORM ERROR-ROUTINE
 END-EVALUATE
+
+* Validate amounts
+IF TRN-QUANTITY <= ZERO
+    MOVE 'Quantity must be positive' TO WS-ERROR-MSG
+    PERFORM ERROR-ROUTINE
+END-IF
+
+IF TRN-PRICE <= ZERO AND NOT TRN-TYPE-TRANS
+    MOVE 'Price must be positive' TO WS-ERROR-MSG
+    PERFORM ERROR-ROUTINE
+END-IF
+
+IF TRN-AMOUNT <= ZERO AND NOT TRN-TYPE-TRANS
+    MOVE 'Amount must be positive' TO WS-ERROR-MSG
+    PERFORM ERROR-ROUTINE
+END-IF
 ```
 
-### Checking Transaction Status
+### Processing Transaction Status Updates
 
 ```cobol
-EVALUATE TRUE
-    WHEN TRN-STATUS-PEND
-        PERFORM VALIDATE-AND-PROCESS
-    WHEN TRN-STATUS-DONE
-        DISPLAY 'Transaction already processed'
-    WHEN TRN-STATUS-FAIL
-        PERFORM REVIEW-FAILED-TRANSACTION
-    WHEN TRN-STATUS-REV
-        DISPLAY 'Transaction has been reversed'
-END-EVALUATE
+* Mark transaction as completed
+SET TRN-STATUS-DONE TO TRUE
+MOVE FUNCTION CURRENT-DATE TO TRN-PROCESS-DATE
+
+* Or mark as failed
+SET TRN-STATUS-FAIL TO TRUE
+MOVE FUNCTION CURRENT-DATE TO TRN-PROCESS-DATE
+
+* Or mark as reversed
+SET TRN-STATUS-REV TO TRUE
+MOVE FUNCTION CURRENT-DATE TO TRN-PROCESS-DATE
 ```
 
-### Sequential Processing by Date
+### Reading Transactions for Reporting
 
 ```cobol
-* Position to start of date range
-MOVE '20240101' TO TRN-DATE
-MOVE LOW-VALUES TO TRN-TIME
-                   TRN-PORTFOLIO-ID
-                   TRN-SEQUENCE-NO
-
-START TRANSACTION-FILE KEY >= TRN-KEY
-    INVALID KEY
-        DISPLAY 'No transactions found'
-END-START
-
-PERFORM UNTIL WS-EOF OR TRN-DATE > '20241231'
-    READ TRANSACTION-FILE NEXT
-        AT END SET WS-EOF TO TRUE
-        NOT AT END PERFORM PROCESS-TRANSACTION
-    END-READ
-END-PERFORM
+* Read transaction file
+READ TRANSACTION-FILE INTO TRANSACTION-RECORD
+    AT END
+        SET END-OF-FILE TO TRUE
+    NOT AT END
+        EVALUATE TRUE
+            WHEN TRN-STATUS-DONE
+                ADD TRN-AMOUNT TO WS-COMPLETED-TOTAL
+            WHEN TRN-STATUS-PEND
+                ADD TRN-AMOUNT TO WS-PENDING-TOTAL
+            WHEN TRN-STATUS-FAIL
+                ADD 1 TO WS-FAILED-COUNT
+        END-EVALUATE
+END-READ
 ```
 
 ## Programs Using This Copybook
 
-### PORTTRAN - Portfolio Transaction Processing
-
-**Purpose:** Processes transaction files and updates portfolio positions
-
-**Usage:**
-- Reads transactions sequentially from TRANSACTION-FILE
-- Validates TRN-PORTFOLIO-ID against portfolio master
-- Validates TRN-TYPE using EVALUATE against valid codes
-- Validates TRN-QUANTITY, TRN-PRICE, TRN-AMOUNT for positive values
-- Processes buy/sell/transfer/fee transactions to update positions
-- Creates audit trail for each processed transaction
-
-**Key Operations:**
-```cobol
-* Buy processing
-ADD TRN-QUANTITY TO PORT-TOTAL-UNITS
-ADD TRN-AMOUNT TO PORT-TOTAL-COST
-
-* Sell processing  
-SUBTRACT TRN-QUANTITY FROM PORT-TOTAL-UNITS
-SUBTRACT TRN-AMOUNT FROM PORT-TOTAL-COST
-```
-
-### RPTPOS00 - Daily Position Report Generator
-
-**Purpose:** Generates daily position and transaction activity reports
-
-**Usage:**
-- Reads TRANSACTION-HISTORY file sequentially
-- Summarizes transaction activity by portfolio
-- Includes transaction data in position reports
-- Uses TRN-KEY for record ordering
-
-### TSTGEN00 - Test Data Generator
-
-**Purpose:** Generates test transaction data for system testing
-
-**Usage:**
-- Uses `COPY TRNREC REPLACING ==:PREFIX:== BY ==TRAN==`
-- Generates transaction records with varied types and amounts
-- Creates test scenarios for all transaction types
-- Outputs to sequential file for batch loading
-
-### UTLVAL00 - Data Validation Utility
-
-**Purpose:** Validates transaction data integrity
-
-**Usage:**
-- Opens TRANSACTION-HISTORY with dynamic access
-- Performs integrity checks on TRN-KEY components
-- Validates cross-references between transactions and positions
-- Checks TRN-TYPE, TRN-STATUS for valid values
-- Verifies TRN-AMOUNT calculation against TRN-QUANTITY × TRN-PRICE
-
-## Validation Rules
-
-### Key Field Validation
-
-| Field | Rule | Example Valid |
-|-------|------|---------------|
-| TRN-DATE | YYYYMMDD format, valid date | 20240315 |
-| TRN-TIME | HHMMSS format, 000000-235959 | 143052 |
-| TRN-PORTFOLIO-ID | Non-blank, exists in portfolio master | PORT0001 |
-| TRN-SEQUENCE-NO | Numeric, unique within date/time/portfolio | 000001 |
-
-### Data Field Validation
-
-| Field | Rule |
-|-------|------|
-| TRN-INVESTMENT-ID | Non-blank for BU, SL types |
-| TRN-TYPE | Must be BU, SL, TR, or FE |
-| TRN-QUANTITY | Greater than zero |
-| TRN-PRICE | Greater than zero (except TR type) |
-| TRN-AMOUNT | Greater than zero (except TR type) |
-| TRN-CURRENCY | Valid ISO currency code |
-| TRN-STATUS | Must be P, D, F, or R |
-
-### Business Rule Validation
-
-```cobol
-* Verify amount calculation
-COMPUTE WS-CALC-AMOUNT = TRN-QUANTITY * TRN-PRICE
-IF TRN-AMOUNT NOT = WS-CALC-AMOUNT
-    MOVE 'Amount does not match qty * price' TO ERR-TEXT
-    PERFORM ERROR-ROUTINE
-END-IF
-
-* Verify sufficient balance for sell
-IF TRN-TYPE-SELL
-    IF PORT-TOTAL-UNITS < TRN-QUANTITY
-        MOVE 'Insufficient units for sale' TO ERR-TEXT
-        PERFORM ERROR-ROUTINE
-    END-IF
-END-IF
-```
-
-## File Status Codes
-
-| Status | Meaning | Typical Cause |
-|--------|---------|---------------|
-| 00 | Success | Operation completed normally |
-| 10 | End of file | Sequential read past last record |
-| 22 | Duplicate key | TRN-KEY already exists |
-| 23 | Record not found | TRN-KEY doesn't exist for READ |
-| 35 | File not found | TRANFILE DD not defined |
-
-## VSAM Considerations
-
-When used with VSAM KSDS:
-
-- **Primary Key**: TRN-KEY (28 bytes)
-- **Record Length**: Fixed, approximately 152 bytes
-- **Alternate Index**: Consider on TRN-PORTFOLIO-ID for portfolio-based access
-
-**Sample VSAM Definition:**
-```jcl
-DEFINE CLUSTER (NAME(your.transaction.file) -
-                INDEXED -
-                KEYS(28 0) -
-                RECORDSIZE(152 152) -
-                CISZ(4096) -
-                SHAREOPTIONS(2,3))
-
-DEFINE ALTERNATEINDEX (NAME(your.transaction.file.portix) -
-                       RELATE(your.transaction.file) -
-                       KEYS(8 14) -
-                       NONUNIQUEKEY -
-                       UPGRADE)
-```
-
-## Best Practices
-
-1. **Sequence Number Management**: Generate TRN-SEQUENCE-NO using a counter that resets each second or use a globally unique sequence
-
-2. **Amount Verification**: Always verify that TRN-AMOUNT = TRN-QUANTITY × TRN-PRICE before processing
-
-3. **Status Transitions**: Follow valid status transitions:
-   - P → D (successful processing)
-   - P → F (processing failure)
-   - D → R (reversal)
-   - F → P (retry after fix)
-
-4. **Currency Handling**: Store all amounts in the transaction's native currency; perform conversions separately
-
-5. **Audit Trail**: Always populate TRN-PROCESS-DATE and TRN-PROCESS-USER for compliance
-
-6. **Idempotency**: Check TRN-STATUS before processing to avoid duplicate processing
+| Program | Usage | Description |
+|---------|-------|-------------|
+| PORTTRAN | INPUT | Portfolio Transaction Processing - validates and applies transactions |
+| RPTPOS00 | INPUT | Position Report - reads transactions for reporting |
+| TSTGEN00 | OUTPUT | Test Data Generator - creates test transaction records |
+| UTLVAL00 | INPUT | Validation Utility - validates transaction data integrity |
 
 ## Related Copybooks
 
 | Copybook | Relationship |
 |----------|--------------|
-| PORTFLIO | Portfolio records updated by transactions |
-| POSREC | Position records affected by transaction processing |
-| HISTREC | Historical records may archive transaction data |
-| AUDITLOG | Audit records created during transaction processing |
+| POSREC | Position record - updated by transactions |
+| PORTREC | Portfolio record - updated by transactions |
+| PORTFLIO | Portfolio master - contains account information |
+| AUDITLOG | Audit log - records transaction processing events |
+
+## Technical Notes
+
+### Composite Key Design
+
+The TRN-KEY is designed for uniqueness and efficient sorting:
+
+```
+TRN-DATE (8) + TRN-TIME (6) + TRN-PORTFOLIO-ID (8) + TRN-SEQUENCE-NO (6) = 28 bytes
+```
+
+This design ensures:
+- Chronological ordering by date/time
+- Grouping by portfolio for efficient position processing
+- Sequence numbers handle multiple simultaneous transactions
+
+### Numeric Precision
+
+| Field | Picture | Bytes | Range | Decimal Places |
+|-------|---------|-------|-------|----------------|
+| TRN-QUANTITY | S9(11)V9(4) COMP-3 | 8 | ±99,999,999,999.9999 | 4 |
+| TRN-PRICE | S9(11)V9(4) COMP-3 | 8 | ±99,999,999,999.9999 | 4 |
+| TRN-AMOUNT | S9(13)V9(2) COMP-3 | 8 | ±9,999,999,999,999.99 | 2 |
+
+The 4-decimal precision for quantity and price supports fractional shares and precise pricing, while the amount field uses 2 decimals for currency representation.
+
+### COMP-3 Storage
+
+Packed decimal (COMP-3) format:
+- Stores two digits per byte plus a half-byte sign
+- S9(11)V9(4) = 16 digits = 8 bytes
+- S9(13)V9(2) = 16 digits = 8 bytes
+- Efficient for financial calculations
+
+### Date/Time Formats
+
+| Field | Format | Example |
+|-------|--------|---------|
+| TRN-DATE | YYYYMMDD | 20240320 |
+| TRN-TIME | HHMMSS | 143052 |
+| TRN-PROCESS-DATE | ISO 8601 (26 chars) | 2024-03-20-14.30.52.123456 |
+
+### Transaction Type Processing
+
+| Type | Position Effect | Amount Sign | Notes |
+|------|-----------------|-------------|-------|
+| BU (Buy) | Add units | Positive | Adds to cost basis |
+| SL (Sell) | Subtract units | Positive | Reduces cost basis |
+| TR (Transfer) | Move units | Zero | Between portfolios |
+| FE (Fee) | No change | Positive | Reduces value |
+
+### Status Workflow
+
+```mermaid
+stateDiagram-v2
+    [*] --> Pending: Transaction Created
+    Pending --> Done: Processing Success
+    Pending --> Failed: Processing Error
+    Done --> Reversed: Reversal Request
+    Failed --> Pending: Retry
+```
+
+### Currency Codes
+
+TRN-CURRENCY uses ISO 4217 three-letter codes:
+
+| Code | Currency |
+|------|----------|
+| USD | US Dollar |
+| EUR | Euro |
+| GBP | British Pound |
+| JPY | Japanese Yen |
+| CAD | Canadian Dollar |
+
+### File Organization Options
+
+The TRNREC copybook can be used with various file organizations:
+
+| Organization | Key | Use Case |
+|--------------|-----|----------|
+| Sequential | N/A | Batch input processing |
+| Indexed (KSDS) | TRN-KEY | Random access, updates |
+| ESDS | N/A | Append-only logging |
+
+### Validation Rules
+
+Standard validation checks for transactions:
+
+1. **Required Fields**: TRN-DATE, TRN-PORTFOLIO-ID, TRN-TYPE must be non-empty
+2. **Date Validity**: TRN-DATE must be valid YYYYMMDD format
+3. **Type Validity**: TRN-TYPE must be BU, SL, TR, or FE
+4. **Amount Consistency**: TRN-AMOUNT ≈ TRN-QUANTITY × TRN-PRICE (for BU/SL)
+5. **Currency**: TRN-CURRENCY must be valid ISO code
+6. **Status**: TRN-STATUS must be P, D, F, or R
+
+### COBOL Features Used
+
+- **88-level condition names**: For transaction types (TRN-TYPE-BUY, etc.) and status values (TRN-STATUS-PEND, etc.)
+- **COMP-3 (PACKED-DECIMAL)**: Efficient storage for numeric financial fields
+- **Implied decimal (V)**: Defines decimal position without storing decimal point
+- **FILLER**: Reserved space for future enhancements

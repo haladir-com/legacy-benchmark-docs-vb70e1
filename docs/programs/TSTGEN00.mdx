@@ -1,178 +1,120 @@
 ---
 title: "TSTGEN00"
-description: "Test Data Generator - creates portfolio, transaction, error condition, and volume test data based on configuration specifications"
+description: "Test Data Generator - Creates portfolio and transaction test data for system testing, error scenarios, and volume testing"
 ---
 
 ## Overview
 
-TSTGEN00 is a batch COBOL program that generates test data for system testing purposes. It reads configuration records that specify what type of test data to create and in what volume, then produces output files containing the generated data.
+TSTGEN00 is a batch utility program that generates test data for the Investment Portfolio Management System. It creates realistic portfolio and transaction records based on configuration parameters, supporting various testing scenarios including functional testing, error condition testing, and performance/volume testing.
 
-The program supports four types of test data generation:
+The program is a critical component of the test infrastructure, providing:
+- Configurable portfolio test data generation
+- Transaction test scenario creation
+- Intentional error data for error handling validation
+- High-volume data for performance testing
+- Reproducible results through seeded random number generation
 
-| Test Type | Purpose |
-|-----------|---------|
-| **PORTFOLIO** | Generate portfolio master records for functional testing |
-| **TRANSACTN** | Generate transaction records for processing tests |
-| **ERROR** | Generate data with intentional errors to test error handling |
-| **VOLUME** | Generate large data sets for performance and stress testing |
-
-This utility is essential for:
-- **Development Testing** - Creating realistic test data sets
-- **Regression Testing** - Producing consistent, repeatable test inputs
-- **Performance Testing** - Generating high-volume data for stress tests
-- **Error Path Testing** - Creating malformed data to verify error handling
-
-The program uses a configurable random seed to allow reproducible test data generation.
+TSTGEN00 reads a configuration file specifying the types and volumes of test data required, then generates output files that can be loaded into test environments for system validation.
 
 ## Program Structure
 
 ```mermaid
 graph TD
-    A[0000-MAIN] --> B[1000-INITIALIZE]
-    A --> C[2000-PROCESS]
-    A --> D[3000-CLEANUP]
+    subgraph "0000-MAIN"
+        MAIN[0000-MAIN] --> INIT[1000-INITIALIZE]
+        INIT --> PROC[2000-PROCESS]
+        PROC --> CLEAN[3000-CLEANUP]
+        CLEAN --> GOBACK[GOBACK]
+    end
     
-    B --> B1[1100-OPEN-FILES]
-    B --> B2[1200-INIT-RANDOM]
-    B --> B3[1300-INIT-COUNTERS]
+    subgraph "1000-INITIALIZE"
+        INIT --> OPEN[1100-OPEN-FILES]
+        OPEN --> |Error| ERR[9999-ERROR-HANDLER]
+        INIT --> RAND[1200-INIT-RANDOM]
+        INIT --> COUNT[1300-INIT-COUNTERS]
+    end
     
-    B1 -.->|Error| E[9999-ERROR-HANDLER]
+    subgraph "2000-PROCESS"
+        PROC --> LOOP{Read Config<br/>UNTIL EOF}
+        LOOP --> GEN[2100-GENERATE-TEST-DATA]
+        GEN --> EVAL{Evaluate<br/>Test Type}
+        EVAL --> |PORTFOLIO| PORT[2200-GEN-PORTFOLIO]
+        EVAL --> |TRANSACTN| TRAN[2300-GEN-TRANSACTION]
+        EVAL --> |ERROR| ERRG[2400-GEN-ERROR-DATA]
+        EVAL --> |VOLUME| VOL[2500-GEN-VOLUME-DATA]
+        EVAL --> |OTHER| ERR
+    end
     
-    C --> C1[READ TEST-CONFIG Loop]
-    C1 --> C2[2100-GENERATE-TEST-DATA]
+    subgraph "Portfolio Generation"
+        PORT --> PORTLOOP{Generate<br/>CFG-VOLUME<br/>Records}
+        PORTLOOP --> PORTDATA[2210-GEN-PORT-DATA]
+        PORTDATA --> PORTWRITE[2220-WRITE-PORT-RECORD]
+    end
     
-    C2 --> C3{CFG-TEST-TYPE?}
-    C3 -->|PORTFOLIO| C4[2200-GEN-PORTFOLIO]
-    C3 -->|TRANSACTN| C5[2300-GEN-TRANSACTION]
-    C3 -->|ERROR| C6[2400-GEN-ERROR-DATA]
-    C3 -->|VOLUME| C7[2500-GEN-VOLUME-DATA]
-    C3 -->|OTHER| E
+    subgraph "Transaction Generation"
+        TRAN --> TRANLOOP{Generate<br/>CFG-VOLUME<br/>Records}
+        TRANLOOP --> TRANDATA[2310-GEN-TRAN-DATA]
+        TRANDATA --> TRANWRITE[2320-WRITE-TRAN-RECORD]
+    end
     
-    C4 --> C4A[2210-GEN-PORT-DATA]
-    C4 --> C4B[2220-WRITE-PORT-RECORD]
+    subgraph "Error Data Generation"
+        ERRG --> DATAERR[2410-GEN-DATA-ERRORS]
+        ERRG --> PROCERR[2420-GEN-PROCESS-ERRORS]
+    end
     
-    C5 --> C5A[2310-GEN-TRAN-DATA]
-    C5 --> C5B[2320-WRITE-TRAN-RECORD]
-    
-    C6 --> C6A[2410-GEN-DATA-ERRORS]
-    C6 --> C6B[2420-GEN-PROCESS-ERRORS]
-    
-    C7 --> C7A[2510-GEN-LARGE-PORTFOLIO]
-    C7 --> C7B[2520-GEN-LARGE-TRANSACTION]
+    subgraph "Volume Testing"
+        VOL --> VOLPORT[2510-GEN-LARGE-PORTFOLIO]
+        VOL --> VOLTRAN[2520-GEN-LARGE-TRANSACTION]
+    end
 ```
 
 ## Data Structures
 
-### File Section
+### Working Storage
 
-#### Configuration Record (CONFIG-RECORD)
-
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 01 | CONFIG-RECORD | - | Test configuration input |
-| 05 | CFG-TEST-TYPE | X(10) | Type of test data to generate |
-| 05 | CFG-VOLUME | 9(6) | Number of records to generate |
-| 05 | CFG-PARAMETERS | X(64) | Additional parameters for generation |
-
-#### Portfolio Record (PORTFOLIO-RECORD)
-
-Uses PORTFLIO copybook with REPLACING clause:
-
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 01 | PORT-RECORD | - | Portfolio master record |
-| 05 | PORT-KEY | - | Composite primary key |
-| 10 | PORT-ID | X(8) | Portfolio identifier |
-| 10 | PORT-ACCOUNT-NO | X(10) | Account number |
-| 05 | PORT-CLIENT-INFO | - | Client information |
-| 10 | PORT-CLIENT-NAME | X(30) | Client name |
-| 10 | PORT-CLIENT-TYPE | X(1) | I=Individual, C=Corporate, T=Trust |
-| 05 | PORT-PORTFOLIO-INFO | - | Portfolio details |
-| 10 | PORT-CREATE-DATE | 9(8) | Creation date (YYYYMMDD) |
-| 10 | PORT-LAST-MAINT | 9(8) | Last maintenance date |
-| 10 | PORT-STATUS | X(1) | A=Active, C=Closed, S=Suspended |
-| 05 | PORT-FINANCIAL-INFO | - | Financial data |
-| 10 | PORT-TOTAL-VALUE | S9(13)V99 COMP-3 | Total portfolio value |
-| 10 | PORT-CASH-BALANCE | S9(13)V99 COMP-3 | Cash balance |
-| 05 | PORT-AUDIT-INFO | - | Audit information |
-
-#### Transaction Record (TRANSACTION-RECORD)
-
-Uses TRNREC copybook with REPLACING clause:
-
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 01 | TRANSACTION-RECORD | - | Transaction record |
-| 05 | TRN-KEY | - | Composite key |
-| 10 | TRN-DATE | X(8) | Transaction date (YYYYMMDD) |
-| 10 | TRN-TIME | X(6) | Transaction time (HHMMSS) |
-| 10 | TRN-PORTFOLIO-ID | X(8) | Portfolio identifier |
-| 10 | TRN-SEQUENCE-NO | X(6) | Sequence number |
-| 05 | TRN-DATA | - | Transaction details |
-| 10 | TRN-INVESTMENT-ID | X(10) | Investment identifier |
-| 10 | TRN-TYPE | X(2) | BU=Buy, SL=Sell, TR=Transfer, FE=Fee |
-| 10 | TRN-QUANTITY | S9(11)V9(4) COMP-3 | Transaction quantity |
-| 10 | TRN-PRICE | S9(11)V9(4) COMP-3 | Unit price |
-| 10 | TRN-AMOUNT | S9(13)V9(2) COMP-3 | Total amount |
-| 10 | TRN-CURRENCY | X(3) | Currency code |
-| 10 | TRN-STATUS | X(1) | P=Pending, D=Done, F=Failed, R=Reversed |
-
-#### Random Seed Record
-
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 01 | SEED-RECORD | 9(9) | Random number seed value |
-
-### Working-Storage Section
-
-#### File Status Indicators (WS-FILE-STATUS)
+#### File Status Variables (WS-FILE-STATUS)
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
 | 01 | WS-FILE-STATUS | - | File status group |
-| 05 | WS-CFG-STATUS | XX | Config file status |
-| 05 | WS-PORT-STATUS | XX | Portfolio output status |
-| 05 | WS-TRAN-STATUS | XX | Transaction output status |
+| 05 | WS-CFG-STATUS | XX | Configuration file status |
+| 05 | WS-PORT-STATUS | XX | Portfolio output file status |
+| 05 | WS-TRAN-STATUS | XX | Transaction output file status |
 | 05 | WS-RAND-STATUS | XX | Random seed file status |
 
-#### Test Type Constants (WS-TEST-TYPES)
+#### Test Types (WS-TEST-TYPES)
 
 | Level | Name | Picture | Value | Description |
 |-------|------|---------|-------|-------------|
 | 01 | WS-TEST-TYPES | - | - | Test type constants |
-| 05 | WS-PORTFOLIO | X(10) | 'PORTFOLIO' | Portfolio test type |
-| 05 | WS-TRANSACTION | X(10) | 'TRANSACTN' | Transaction test type |
-| 05 | WS-ERROR-TEST | X(10) | 'ERROR' | Error test type |
-| 05 | WS-VOLUME-TEST | X(10) | 'VOLUME' | Volume test type |
+| 05 | WS-PORTFOLIO | X(10) | 'PORTFOLIO' | Portfolio data generation |
+| 05 | WS-TRANSACTION | X(10) | 'TRANSACTN' | Transaction data generation |
+| 05 | WS-ERROR-TEST | X(10) | 'ERROR' | Error scenario generation |
+| 05 | WS-VOLUME-TEST | X(10) | 'VOLUME' | Volume/performance testing |
 
 #### Processing Flags (WS-PROCESSING-FLAGS)
 
 | Level | Name | Picture | Value | Description |
 |-------|------|---------|-------|-------------|
-| 01 | WS-PROCESSING-FLAGS | - | - | Control flags |
-| 05 | WS-END-OF-CONFIG | X | 'N' | End-of-file indicator |
-| 88 | END-OF-CONFIG | VALUE 'Y' | - | Config file exhausted |
+| 05 | WS-END-OF-CONFIG | X | 'N' | End of config file flag |
+| 88 | END-OF-CONFIG | VALUE 'Y' | - | EOF condition |
 
 #### Counters (WS-COUNTERS)
 
 | Level | Name | Picture | Value | Description |
 |-------|------|---------|-------|-------------|
-| 01 | WS-COUNTERS | - | - | Processing counters |
 | 05 | WS-RECORDS-WRITTEN | 9(9) | ZERO | Records generated count |
-| 05 | WS-ERROR-COUNT | 9(9) | ZERO | Error counter |
+| 05 | WS-ERROR-COUNT | 9(9) | ZERO | Error count threshold |
 
-#### Random Values (WS-RANDOM-VALUES)
+#### Random Number Generation (WS-RANDOM-VALUES)
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | WS-RANDOM-VALUES | - | Random number generation |
 | 05 | WS-RANDOM-SEED | 9(9) | Seed for reproducibility |
 | 05 | WS-RANDOM-NUM | 9(9) | Generated random integer |
 | 05 | WS-RANDOM-DECIMAL | 9(9)V99 | Generated random decimal |
 
-#### Work Areas
-
-**WS-PORTFOLIO-DATA** - Working area for building portfolio records:
+#### Portfolio Work Area (WS-PORTFOLIO-DATA)
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
@@ -182,37 +124,54 @@ Uses TRNREC copybook with REPLACING clause:
 | 05 | WS-PORT-STATUS | X(1) | Portfolio status |
 | 05 | WS-PORT-BALANCE | 9(15)V99 | Portfolio balance |
 
-**WS-TRANSACTION-DATA** - Working area for building transaction records:
+#### Transaction Work Area (WS-TRANSACTION-DATA)
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
 | 05 | WS-TRAN-ID | X(12) | Generated transaction ID |
-| 05 | WS-TRAN-TYPE | X(2) | Transaction type |
+| 05 | WS-TRAN-TYPE | X(2) | Transaction type (BU/SL/TR/FE) |
 | 05 | WS-TRAN-AMOUNT | 9(15)V99 | Transaction amount |
 | 05 | WS-TRAN-DATE | X(8) | Transaction date |
 | 05 | WS-TRAN-STATUS | X(1) | Transaction status |
+
+### File Section
+
+#### Configuration Record (CONFIG-RECORD)
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 01 | CONFIG-RECORD | - | Test configuration record |
+| 05 | CFG-TEST-TYPE | X(10) | Type of test data to generate |
+| 05 | CFG-VOLUME | 9(6) | Number of records to generate |
+| 05 | CFG-PARAMETERS | X(64) | Additional parameters |
+
+#### Output Records
+
+- **PORTFOLIO-RECORD**: Uses PORTFLIO copybook for portfolio master layout
+- **TRANSACTION-RECORD**: Uses TRNREC copybook for transaction layout
+- **SEED-RECORD**: PIC 9(9) for random seed value
 
 ## File I/O
 
 ### File Definitions
 
-| File Name | DD Name | Mode | Organization | Description |
-|-----------|---------|------|--------------|-------------|
-| TEST-CONFIG | TSTCFG | Input | Sequential | Configuration specifying test data to generate |
-| PORTFOLIO-OUT | PORTOUT | Output | Sequential | Generated portfolio records |
-| TRANSACTION-OUT | TRANOUT | Output | Sequential | Generated transaction records |
-| RANDOM-SEED | RANDSEED | Input | Sequential | Random seed for reproducible generation |
+| File Name | DD Name | Organization | Mode | Description |
+|-----------|---------|--------------|------|-------------|
+| TEST-CONFIG | TSTCFG | Sequential | Input | Test configuration file |
+| PORTFOLIO-OUT | PORTOUT | Sequential | Output | Generated portfolio data |
+| TRANSACTION-OUT | TRANOUT | Sequential | Output | Generated transaction data |
+| RANDOM-SEED | RANDSEED | Sequential | Input | Random seed for reproducibility |
 
-### I/O Operations
+### File Operations by Paragraph
 
-| Paragraph | File | Operation | Purpose |
-|-----------|------|-----------|---------|
-| 1100-OPEN-FILES | TEST-CONFIG | OPEN INPUT | Read configuration |
-| 1100-OPEN-FILES | PORTFOLIO-OUT | OPEN OUTPUT | Write portfolios |
-| 1100-OPEN-FILES | TRANSACTION-OUT | OPEN OUTPUT | Write transactions |
-| 1100-OPEN-FILES | RANDOM-SEED | OPEN INPUT | Read seed value |
-| 1200-INIT-RANDOM | RANDOM-SEED | READ | Load seed value |
-| 2000-PROCESS | TEST-CONFIG | READ | Read each config record |
+| Paragraph | File | Operation | Description |
+|-----------|------|-----------|-------------|
+| 1100-OPEN-FILES | TEST-CONFIG | OPEN INPUT | Open configuration |
+| 1100-OPEN-FILES | PORTFOLIO-OUT | OPEN OUTPUT | Open portfolio output |
+| 1100-OPEN-FILES | TRANSACTION-OUT | OPEN OUTPUT | Open transaction output |
+| 1100-OPEN-FILES | RANDOM-SEED | OPEN INPUT | Open seed file |
+| 1200-INIT-RANDOM | RANDOM-SEED | READ | Read seed value |
+| 2000-PROCESS | TEST-CONFIG | READ | Read config records |
 | 3000-CLEANUP | All files | CLOSE | Close all files |
 
 ## Control Flow
@@ -228,45 +187,48 @@ GOBACK
 
 ### Initialization (1000-INITIALIZE)
 
-1. **Open Files (1100-OPEN-FILES)**
-   - Opens all four files with file status checking
-   - Triggers error handler if any open fails
-
-2. **Initialize Random (1200-INIT-RANDOM)**
-   - Reads seed value from RANDOM-SEED file
-   - Stores in WS-RANDOM-SEED for generation use
-
-3. **Initialize Counters (1300-INIT-COUNTERS)**
-   - Clears WS-COUNTERS using INITIALIZE
+1. **Open Files**: Opens all input and output files with error checking
+2. **Initialize Random**: Reads seed value for reproducible random generation
+3. **Initialize Counters**: Resets record and error counters
 
 ### Processing Loop (2000-PROCESS)
 
-Reads configuration records until end-of-file:
+Reads configuration file until EOF, generating test data based on each config record:
 
 ```cobol
 PERFORM UNTIL END-OF-CONFIG
     READ TEST-CONFIG
-        AT END SET END-OF-CONFIG TO TRUE
-        NOT AT END PERFORM 2100-GENERATE-TEST-DATA
+        AT END
+            SET END-OF-CONFIG TO TRUE
+        NOT AT END
+            PERFORM 2100-GENERATE-TEST-DATA
     END-READ
 END-PERFORM
 ```
 
-### Data Generation Dispatch (2100-GENERATE-TEST-DATA)
+### Test Data Dispatch (2100-GENERATE-TEST-DATA)
 
-Uses EVALUATE to dispatch based on CFG-TEST-TYPE:
+Evaluates test type and dispatches to appropriate generator:
 
-| Test Type | Handler | Description |
-|-----------|---------|-------------|
-| PORTFOLIO | 2200-GEN-PORTFOLIO | Generate portfolio records |
-| TRANSACTN | 2300-GEN-TRANSACTION | Generate transaction records |
-| ERROR | 2400-GEN-ERROR-DATA | Generate error test data |
-| VOLUME | 2500-GEN-VOLUME-DATA | Generate high-volume data |
-| OTHER | 9999-ERROR-HANDLER | Invalid type error |
+```cobol
+EVALUATE CFG-TEST-TYPE
+    WHEN WS-PORTFOLIO
+        PERFORM 2200-GEN-PORTFOLIO
+    WHEN WS-TRANSACTION
+        PERFORM 2300-GEN-TRANSACTION
+    WHEN WS-ERROR-TEST
+        PERFORM 2400-GEN-ERROR-DATA
+    WHEN WS-VOLUME-TEST
+        PERFORM 2500-GEN-VOLUME-DATA
+    WHEN OTHER
+        MOVE 'INVALID TEST TYPE' TO WS-ERROR-MESSAGE
+        PERFORM 9999-ERROR-HANDLER
+END-EVALUATE
+```
 
 ### Portfolio Generation (2200-GEN-PORTFOLIO)
 
-Generates the number of records specified in CFG-VOLUME:
+Generates the specified volume of portfolio records:
 
 ```cobol
 PERFORM VARYING WS-RECORDS-WRITTEN FROM 1 BY 1
@@ -276,31 +238,35 @@ PERFORM VARYING WS-RECORDS-WRITTEN FROM 1 BY 1
 END-PERFORM
 ```
 
-- **2210-GEN-PORT-DATA**: Populates WS-PORTFOLIO-DATA with generated values
-- **2220-WRITE-PORT-RECORD**: Writes PORTFOLIO-RECORD to output file
-
 ### Transaction Generation (2300-GEN-TRANSACTION)
 
-Similar pattern to portfolio generation:
+Generates the specified volume of transaction records:
 
-- **2310-GEN-TRAN-DATA**: Generates transaction field values
-- **2320-WRITE-TRAN-RECORD**: Writes to TRANSACTION-OUT
+```cobol
+PERFORM VARYING WS-RECORDS-WRITTEN FROM 1 BY 1
+        UNTIL WS-RECORDS-WRITTEN > CFG-VOLUME
+    PERFORM 2310-GEN-TRAN-DATA
+    PERFORM 2320-WRITE-TRAN-RECORD
+END-PERFORM
+```
 
 ### Error Data Generation (2400-GEN-ERROR-DATA)
 
-Creates intentionally malformed data:
+Generates intentional error scenarios for testing error handling:
 
-- **2410-GEN-DATA-ERRORS**: Records with invalid field values
-- **2420-GEN-PROCESS-ERRORS**: Records that will cause processing errors
+- **2410-GEN-DATA-ERRORS**: Creates records with invalid data values
+- **2420-GEN-PROCESS-ERRORS**: Creates scenarios that trigger processing errors
 
-### Volume Data Generation (2500-GEN-VOLUME-DATA)
+### Volume Testing (2500-GEN-VOLUME-DATA)
 
-Creates large data sets for performance testing:
+Generates high-volume data for performance testing:
 
-- **2510-GEN-LARGE-PORTFOLIO**: High-volume portfolio data
-- **2520-GEN-LARGE-TRANSACTION**: High-volume transaction data
+- **2510-GEN-LARGE-PORTFOLIO**: Creates large portfolio dataset
+- **2520-GEN-LARGE-TRANSACTION**: Creates large transaction dataset
 
 ### Error Handler (9999-ERROR-HANDLER)
+
+Centralized error handling with threshold:
 
 ```cobol
 ADD 1 TO WS-ERROR-COUNT
@@ -311,9 +277,73 @@ IF WS-ERROR-COUNT > 100
 END-IF
 ```
 
-- Increments error counter
-- Displays error message to console
-- Terminates with RC=12 if errors exceed 100
+The program tolerates up to 100 errors before terminating with return code 12.
+
+## Configuration File Format
+
+The TEST-CONFIG file contains records specifying test data requirements:
+
+| Field | Position | Length | Description |
+|-------|----------|--------|-------------|
+| CFG-TEST-TYPE | 1-10 | 10 | Test type keyword |
+| CFG-VOLUME | 11-16 | 6 | Number of records to generate |
+| CFG-PARAMETERS | 17-80 | 64 | Additional parameters (type-specific) |
+
+### Test Type Values
+
+| Type | Value | Description |
+|------|-------|-------------|
+| Portfolio | `PORTFOLIO ` | Generate portfolio master records |
+| Transaction | `TRANSACTN ` | Generate transaction records |
+| Error | `ERROR     ` | Generate error test scenarios |
+| Volume | `VOLUME    ` | Generate high-volume test data |
+
+### Sample Configuration File
+
+```
+PORTFOLIO 001000                                                        
+TRANSACTN 005000                                                        
+ERROR     000100                                                        
+VOLUME    100000                                                        
+```
+
+## JCL Requirements
+
+### Sample JCL
+
+```jcl
+//TSTGEN00 JOB (ACCT#),'TEST DATA GEN',
+//             CLASS=A,MSGCLASS=X,MSGLEVEL=(1,1)
+//*
+//* Test Data Generator
+//*
+//STEP01   EXEC PGM=TSTGEN00
+//STEPLIB  DD   DSN=TEST.LOAD.LIBRARY,DISP=SHR
+//TSTCFG   DD   DSN=TEST.CONFIG.FILE,DISP=SHR
+//PORTOUT  DD   DSN=TEST.PORTFOLIO.DATA,
+//             DISP=(NEW,CATLG,DELETE),
+//             SPACE=(CYL,(100,50),RLSE),
+//             DCB=(RECFM=FB,LRECL=100,BLKSIZE=0)
+//TRANOUT  DD   DSN=TEST.TRANSACTION.DATA,
+//             DISP=(NEW,CATLG,DELETE),
+//             SPACE=(CYL,(100,50),RLSE),
+//             DCB=(RECFM=FB,LRECL=100,BLKSIZE=0)
+//RANDSEED DD   DSN=TEST.RANDOM.SEED,DISP=SHR
+//SYSOUT   DD   SYSOUT=*
+//SYSUDUMP DD   SYSOUT=*
+//SYSPRINT DD   SYSOUT=*
+```
+
+### DD Statement Requirements
+
+| DD Name | Type | Description |
+|---------|------|-------------|
+| STEPLIB | Input | Load library containing TSTGEN00 |
+| TSTCFG | Input | Test configuration file |
+| PORTOUT | Output | Generated portfolio test data |
+| TRANOUT | Output | Generated transaction test data |
+| RANDSEED | Input | Random number seed file |
+| SYSOUT | Output | Console messages |
 
 ## Dependencies
 
@@ -321,130 +351,115 @@ END-IF
 
 | Copybook | Location | Description |
 |----------|----------|-------------|
-| PORTFLIO | File Section (PORTFOLIO-OUT FD) | Portfolio master record layout |
-| TRNREC | File Section (TRANSACTION-OUT FD) | Transaction record layout |
-| RTNCODE | Working-Storage | Return code management structures |
-| ERRHAND | Working-Storage | Error handling definitions (WS-ERROR-MESSAGE) |
-
-### Called Programs
-
-This program does not call any external programs.
+| PORTFLIO | common/ | Portfolio master record layout |
+| TRNREC | common/ | Transaction record layout |
+| RTNCODE | common/ | Return code management |
+| ERRHAND | common/ | Error handling definitions |
 
 ### Related Programs
 
-**Programs sharing PORTFLIO copybook:**
-- PORTADD - Add portfolio records
-- PORTDEL - Delete portfolio records
-- PORTREAD - Read portfolio records
-- PORTTEST - Portfolio testing
-- PORTUPDT - Update portfolio records
+| Program | Relationship | Description |
+|---------|--------------|-------------|
+| TSTVAL00 | Consumer | Test validation - validates generated data |
+| PORTADD | Consumer | Portfolio add - can load generated portfolios |
+| PORTREAD | Consumer | Portfolio read - can read generated files |
+| PORTTEST | Related | Portfolio test - uses PORTFLIO copybook |
+| PORTTRAN | Consumer | Transaction processor - uses generated transactions |
+| RPTPOS00 | Consumer | Position report - uses TRNREC for reporting |
 
-**Programs sharing TRNREC copybook:**
-- RPTPOS00 - Position report generator
-- PORTTRAN - Portfolio transaction processor
-- UTLVAL00 - Validation utility
+## Generated Data Records
 
-**Programs sharing RTNCODE copybook:**
-- RPTAUD00, RPTPOS00, RPTSTA00 - Report generators
-- RTNCDE00 - Return code handler
-- TSTVAL00 - Test validation program
-- UTLMNT00, UTLMON00, UTLVAL00 - Utility programs
+### Portfolio Record (PORTFLIO Layout)
 
-**Test suite companion:**
-- TSTVAL00 - Test validation program
+| Field | Description | Sample Values |
+|-------|-------------|---------------|
+| PORT-ID | Portfolio identifier | PORT0001, PORT0002 |
+| PORT-ACCOUNT-NO | Account number | ACCT000001 |
+| PORT-CLIENT-NAME | Client name | TEST CLIENT 001 |
+| PORT-CLIENT-TYPE | Client type | I=Individual, C=Corporate, T=Trust |
+| PORT-STATUS | Status | A=Active, C=Closed, S=Suspended |
+| PORT-TOTAL-VALUE | Portfolio value | 125000.50 |
+| PORT-CASH-BALANCE | Cash balance | 5000.00 |
 
-## Configuration File Format
+### Transaction Record (TRNREC Layout)
 
-The TEST-CONFIG file contains records specifying what data to generate:
+| Field | Description | Sample Values |
+|-------|-------------|---------------|
+| TRN-DATE | Transaction date | 20240409 |
+| TRN-TIME | Transaction time | 143052 |
+| TRN-PORTFOLIO-ID | Portfolio ID | PORT0001 |
+| TRN-SEQUENCE-NO | Sequence number | 000001 |
+| TRN-TYPE | Transaction type | BU=Buy, SL=Sell, TR=Transfer, FE=Fee |
+| TRN-QUANTITY | Quantity | 100.0000 |
+| TRN-PRICE | Unit price | 52.2500 |
+| TRN-AMOUNT | Total amount | 5225.00 |
+| TRN-STATUS | Status | P=Pending, D=Done, F=Failed |
 
-```
-PORTFOLIO 001000                                                    
-TRANSACTN 005000                                                    
-ERROR     000100                                                    
-VOLUME    100000                                                    
-```
+## COBOL Concepts
 
-| Column | Length | Description |
-|--------|--------|-------------|
-| 1-10 | 10 | Test type (PORTFOLIO, TRANSACTN, ERROR, VOLUME) |
-| 11-16 | 6 | Volume (number of records to generate) |
-| 17-80 | 64 | Additional parameters (type-specific) |
+### PERFORM VARYING
 
-## Return Codes
+The program uses `PERFORM VARYING` for controlled iteration:
 
-| Code | Meaning |
-|------|---------|
-| 0 | Successful completion |
-| 12 | Excessive errors (> 100 errors encountered) |
-
-## JCL Requirements
-
-```jcl
-//TSTGEN00 EXEC PGM=TSTGEN00
-//STEPLIB  DD  DSN=your.loadlib,DISP=SHR
-//TSTCFG   DD  DSN=your.test.config,DISP=SHR
-//PORTOUT  DD  DSN=your.portfolio.output,DISP=(NEW,CATLG),
-//             DCB=(RECFM=FB,LRECL=150,BLKSIZE=0),
-//             SPACE=(CYL,(10,5))
-//TRANOUT  DD  DSN=your.transaction.output,DISP=(NEW,CATLG),
-//             DCB=(RECFM=FB,LRECL=150,BLKSIZE=0),
-//             SPACE=(CYL,(10,5))
-//RANDSEED DD  DSN=your.random.seed,DISP=SHR
-//SYSOUT   DD  SYSOUT=*
+```cobol
+PERFORM VARYING WS-RECORDS-WRITTEN FROM 1 BY 1
+        UNTIL WS-RECORDS-WRITTEN > CFG-VOLUME
+    PERFORM 2210-GEN-PORT-DATA
+    PERFORM 2220-WRITE-PORT-RECORD
+END-PERFORM
 ```
 
-## Technical Notes
+This generates exactly `CFG-VOLUME` records per configuration entry.
 
-### COPY REPLACING Clause
-The program uses COPY with REPLACING to prefix copybook fields:
+### COPY REPLACING
+
+The program uses COPY with REPLACING for copybook customization:
 
 ```cobol
 COPY PORTFLIO REPLACING ==:PREFIX:== BY ==PORT==.
 COPY TRNREC REPLACING ==:PREFIX:== BY ==TRAN==.
 ```
 
-This technique allows the same copybook to be used multiple times with different prefixes, preventing name collisions.
+This allows the same copybook to be used with different prefixes in different contexts.
 
-### Reproducible Random Generation
-By reading a seed value from the RANDSEED file, the program can generate the same test data set repeatedly. This is essential for:
-- Regression testing (same input produces same output)
-- Debugging (reproduce issues with identical data)
-- Comparison testing (before/after code changes)
+### SPECIAL-NAMES
 
-### PERFORM VARYING Loop
-The generation loops use PERFORM VARYING:
+The SPECIAL-NAMES paragraph maps CONSOLE for DISPLAY output:
 
 ```cobol
-PERFORM VARYING WS-RECORDS-WRITTEN FROM 1 BY 1
-        UNTIL WS-RECORDS-WRITTEN > CFG-VOLUME
+SPECIAL-NAMES.
+    CONSOLE IS CONS.
 ```
 
-This increments WS-RECORDS-WRITTEN from 1 until it exceeds the requested volume.
+This allows `DISPLAY ... UPON CONS` for console output.
 
-### Error Threshold
-The error handler allows up to 100 errors before terminating. This prevents infinite loops or runaway error conditions while allowing minor issues to be logged without stopping the entire generation process.
+### EVALUATE Statement
 
-### SPECIAL-NAMES CONSOLE
-The program uses `CONSOLE IS CONS` in SPECIAL-NAMES, allowing error messages to be displayed with `DISPLAY ... UPON CONS`.
+The EVALUATE statement provides clean multi-way branching:
 
-## Sample Test Scenario
-
-**Configuration file (TSTCFG):**
+```cobol
+EVALUATE CFG-TEST-TYPE
+    WHEN WS-PORTFOLIO
+        PERFORM 2200-GEN-PORTFOLIO
+    WHEN WS-TRANSACTION
+        PERFORM 2300-GEN-TRANSACTION
+    WHEN OTHER
+        PERFORM 9999-ERROR-HANDLER
+END-EVALUATE
 ```
-PORTFOLIO 000010
-TRANSACTN 000050
-ERROR     000005
-```
 
-**Expected output:**
-- 10 portfolio records in PORTOUT
-- 50 transaction records in TRANOUT
-- 5 error test records (distributed across output files)
+## Return Codes
 
-**Console output:**
-```
-TSTGEN00: Processing PORTFOLIO, volume 000010
-TSTGEN00: Processing TRANSACTN, volume 000050
-TSTGEN00: Processing ERROR, volume 000005
-TSTGEN00: Generation complete. Total records: 65
-```
+| Code | Meaning | Condition |
+|------|---------|-----------|
+| 0 | Success | All test data generated successfully |
+| 12 | Error | Error count exceeded threshold (100) |
+
+## Issues
+
+:::note Implementation Notes
+- The sub-paragraphs for data generation (2210, 2220, 2310, 2320, 2410, 2420, 2510, 2520) are declared but their implementation details are not shown in the source. These would contain the actual data generation logic using the random seed.
+- The random seed file enables reproducible test runs - using the same seed produces identical test data.
+- The error threshold of 100 allows the program to continue through minor issues while preventing runaway error conditions.
+- CFG-PARAMETERS field (64 bytes) is available for test-type-specific customization but usage is not defined in the current implementation.
+:::

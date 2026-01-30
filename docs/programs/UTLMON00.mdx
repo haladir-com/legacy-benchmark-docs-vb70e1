@@ -1,67 +1,66 @@
 ---
 title: "UTLMON00"
-description: "System Monitoring Utility - collects metrics, monitors thresholds, and generates alerts"
+description: "System monitoring utility that collects performance metrics, checks thresholds, and generates alerts"
 ---
 
 ## Overview
 
-UTLMON00 is a system monitoring utility program that provides comprehensive health and performance monitoring for mainframe systems. It continuously collects metrics, checks thresholds, logs status information, and generates alerts when conditions warrant attention.
+UTLMON00 is a system monitoring utility program that provides continuous health and performance monitoring for the mainframe environment. It collects metrics from multiple resource types (CPU, memory, DASD, and DB2), compares them against configurable thresholds, logs status information, and generates alerts when thresholds are exceeded.
 
-Key features:
-- **Resource Utilization Tracking**: Monitors CPU, memory, DASD, and DB2 utilization
-- **Performance Metrics Collection**: Gathers response times, queue depths, and error counts
-- **Threshold Monitoring**: Compares metrics against configurable thresholds
-- **Alert Generation**: Creates alerts when thresholds are exceeded
-- **Continuous Operation**: Runs in a loop until end-of-day (hour 23)
+The program operates as a long-running batch job that runs continuously until a specified end time (hour 23). It reads monitoring configuration from a parameter file, periodically collects system metrics, and writes both status logs and alert records based on the collected data.
 
-This program is typically run as a long-running batch job or started task to provide ongoing system monitoring throughout the business day.
+UTLMON00 is designed to support operations teams by providing early warning of potential resource constraints or performance issues. The alert file can be used to trigger automated responses or notifications to system administrators.
 
 ## Program Structure
 
 ```mermaid
 graph TD
     A[0000-MAIN] --> B[1000-INITIALIZE]
-    A --> C[2000-PROCESS<br/>UNTIL WS-HOUR = 23]
+    A --> C[2000-PROCESS]
     A --> D[3000-CLEANUP]
-    A --> E[GOBACK]
     
-    B --> B1[1100-OPEN-FILES]
-    B --> B2[1200-INIT-PROCESSING]
-    B --> B3[1300-READ-CONFIG]
+    B --> E[1100-OPEN-FILES]
+    B --> F[1200-INIT-PROCESSING]
+    B --> G[1300-READ-CONFIG]
     
-    B1 -->|Error| ERR[9999-ERROR-HANDLER]
-    B3 --> B3A[1310-STORE-CONFIG]
+    E -->|Error| H[9999-ERROR-HANDLER]
     
-    C --> C1[2100-COLLECT-METRICS]
-    C --> C2[2200-CHECK-THRESHOLDS]
-    C --> C3[2300-LOG-STATUS]
-    C --> C4[2400-GENERATE-ALERTS]
-    C --> C5[CALL ILBOABN0 - Wait]
-    C --> C6[1200-INIT-PROCESSING]
+    G --> I[1310-STORE-CONFIG]
     
-    C1 --> C1A[2110-GET-CPU-METRICS]
-    C1 --> C1B[2120-GET-MEMORY-METRICS]
-    C1 --> C1C[2130-GET-DASD-METRICS]
-    C1 --> C1D[2140-GET-DB2-METRICS]
+    C --> J[2100-COLLECT-METRICS]
+    C --> K[2200-CHECK-THRESHOLDS]
+    C --> L[2300-LOG-STATUS]
+    C --> M[2400-GENERATE-ALERTS]
+    C --> N[CALL ILBOABN0]
+    C --> F
     
-    C2 --> C2A[2210-CHECK-UTILIZATION]
-    C2 --> C2B[2220-CHECK-RESPONSE]
-    C2 --> C2C[2230-CHECK-QUEUES]
-    C2 --> C2D[2240-CHECK-ERRORS]
+    J --> O[2110-GET-CPU-METRICS]
+    J --> P[2120-GET-MEMORY-METRICS]
+    J --> Q[2130-GET-DASD-METRICS]
+    J --> R[2140-GET-DB2-METRICS]
     
-    C3 --> C3A[2310-LOG-RESOURCES]
-    C3 --> C3B[2320-LOG-PERFORMANCE]
+    K --> S[2210-CHECK-UTILIZATION]
+    K --> T[2220-CHECK-RESPONSE]
+    K --> U[2230-CHECK-QUEUES]
+    K --> V[2240-CHECK-ERRORS]
     
-    C4 -->|THRESHOLD-MET| C4A[2410-FORMAT-ALERT]
-    C4A --> C4B[2420-WRITE-ALERT]
+    L --> W[2310-LOG-RESOURCES]
+    L --> X[2320-LOG-PERFORMANCE]
     
-    D --> D1[CLOSE All Files]
+    M --> Y{Threshold Met?}
+    Y -->|Yes| Z[2410-FORMAT-ALERT]
+    Z --> AA[2420-WRITE-ALERT]
     
-    subgraph "Files"
-        F1[MONITOR-CONFIG<br/>Sequential Input]
-        F2[MONITOR-LOG<br/>Sequential Output]
-        F3[ALERT-FILE<br/>Sequential Output]
-        F4[DB2-STATS<br/>Indexed Input]
+    D --> AB[CLOSE All Files]
+    
+    subgraph "Input Files"
+        AC[MONITOR-CONFIG]
+        AD[(DB2-STATS)]
+    end
+    
+    subgraph "Output Files"
+        AE[MONITOR-LOG]
+        AF[ALERT-FILE]
     end
 ```
 
@@ -69,128 +68,117 @@ graph TD
 
 ### File Section
 
-#### CONFIG-RECORD (MONITOR-CONFIG)
+#### MONITOR-CONFIG (CONFIG-RECORD)
+
+Configuration file defining monitoring thresholds:
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | CONFIG-RECORD | - | Configuration record |
-| 05 | CFG-RESOURCE-TYPE | X(10) | Resource type (CPU, MEMORY, DASD, DB2) |
-| 05 | CFG-THRESHOLD-TYPE | X(10) | Threshold type (UTIL, RESPONSE, QUEUE, ERROR) |
+| 01 | CONFIG-RECORD | | Threshold configuration record |
+| 05 | CFG-RESOURCE-TYPE | X(10) | Resource to monitor (CPU, MEMORY, DASD, DB2) |
+| 05 | CFG-THRESHOLD-TYPE | X(10) | Type of threshold (UTIL, RESPONSE, QUEUE, ERROR) |
 | 05 | CFG-THRESHOLD-VALUE | 9(9)V99 | Threshold value |
 | 05 | CFG-ALERT-LEVEL | X(10) | Alert severity (INFO, WARNING, CRITICAL) |
 | 05 | CFG-ALERT-ACTION | X(50) | Action to take when threshold exceeded |
 
-#### LOG-RECORD (MONITOR-LOG)
+#### MONITOR-LOG (LOG-RECORD)
+
+Status log file for performance metrics:
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | LOG-RECORD | - | Monitor log record |
-| 05 | LOG-TIMESTAMP | X(26) | Log entry timestamp |
-| 05 | LOG-RESOURCE-TYPE | X(10) | Resource being logged |
-| 05 | LOG-METRIC-NAME | X(20) | Metric name |
-| 05 | LOG-METRIC-VALUE | 9(9)V99 | Metric value |
+| 01 | LOG-RECORD | | Performance log record |
+| 05 | LOG-TIMESTAMP | X(26) | When the metric was collected |
+| 05 | LOG-RESOURCE-TYPE | X(10) | Resource type |
+| 05 | LOG-METRIC-NAME | X(20) | Name of the metric |
+| 05 | LOG-METRIC-VALUE | 9(9)V99 | Current metric value |
 | 05 | LOG-STATUS | X(10) | Status indicator |
 
-#### ALERT-RECORD (ALERT-FILE)
+#### ALERT-FILE (ALERT-RECORD)
+
+Alert output file for threshold violations:
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | ALERT-RECORD | - | Alert record |
-| 05 | ALERT-TIMESTAMP | X(26) | Alert timestamp |
+| 01 | ALERT-RECORD | | Alert notification record |
+| 05 | ALERT-TIMESTAMP | X(26) | When the alert was generated |
 | 05 | ALERT-LEVEL | X(10) | Alert severity level |
 | 05 | ALERT-RESOURCE | X(10) | Resource that triggered alert |
 | 05 | ALERT-MESSAGE | X(80) | Alert message text |
 
-#### DB2-STATS (Indexed File)
+#### DB2-STATS
 
-Uses the DB2STAT copybook for DB2 statistics record structure. The file is accessed by STAT-KEY.
+Indexed file containing DB2 statistics (from DB2STAT copybook). Used for reading DB2 performance data.
 
 ### Working Storage
 
-#### File Status Variables
+#### File Status (WS-FILE-STATUS)
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | WS-FILE-STATUS | - | File status group |
 | 05 | WS-CFG-STATUS | XX | Config file status |
 | 05 | WS-LOG-STATUS | XX | Log file status |
 | 05 | WS-ALERT-STATUS | XX | Alert file status |
 | 05 | WS-DB2-STATUS | XX | DB2 stats file status |
 
-#### Resource Type Constants
+#### Resource Types (WS-RESOURCE-TYPES)
 
 | Level | Name | Picture | Value | Description |
 |-------|------|---------|-------|-------------|
-| 01 | WS-RESOURCE-TYPES | - | - | Resource identifiers |
-| 05 | WS-CPU | X(10) | `'CPU'` | CPU resource |
-| 05 | WS-MEMORY | X(10) | `'MEMORY'` | Memory resource |
-| 05 | WS-DASD | X(10) | `'DASD'` | Disk storage |
-| 05 | WS-DB2 | X(10) | `'DB2'` | Database |
+| 05 | WS-CPU | X(10) | 'CPU' | CPU resource identifier |
+| 05 | WS-MEMORY | X(10) | 'MEMORY' | Memory resource identifier |
+| 05 | WS-DASD | X(10) | 'DASD' | DASD resource identifier |
+| 05 | WS-DB2 | X(10) | 'DB2' | DB2 resource identifier |
 
-#### Threshold Type Constants
-
-| Level | Name | Picture | Value | Description |
-|-------|------|---------|-------|-------------|
-| 01 | WS-THRESHOLD-TYPES | - | - | Threshold identifiers |
-| 05 | WS-UTILIZATION | X(10) | `'UTIL'` | Utilization threshold |
-| 05 | WS-RESPONSE | X(10) | `'RESPONSE'` | Response time threshold |
-| 05 | WS-QUEUE | X(10) | `'QUEUE'` | Queue depth threshold |
-| 05 | WS-ERROR | X(10) | `'ERROR'` | Error count threshold |
-
-#### Alert Level Constants
+#### Threshold Types (WS-THRESHOLD-TYPES)
 
 | Level | Name | Picture | Value | Description |
 |-------|------|---------|-------|-------------|
-| 01 | WS-ALERT-LEVELS | - | - | Alert severity levels |
-| 05 | WS-INFO | X(10) | `'INFO'` | Informational alert |
-| 05 | WS-WARNING | X(10) | `'WARNING'` | Warning alert |
-| 05 | WS-CRITICAL | X(10) | `'CRITICAL'` | Critical alert |
+| 05 | WS-UTILIZATION | X(10) | 'UTIL' | Utilization threshold |
+| 05 | WS-RESPONSE | X(10) | 'RESPONSE' | Response time threshold |
+| 05 | WS-QUEUE | X(10) | 'QUEUE' | Queue depth threshold |
+| 05 | WS-ERROR | X(10) | 'ERROR' | Error count threshold |
 
-#### Processing Flags
+#### Alert Levels (WS-ALERT-LEVELS)
 
 | Level | Name | Picture | Value | Description |
 |-------|------|---------|-------|-------------|
-| 01 | WS-PROCESSING-FLAGS | - | - | Processing flags |
-| 05 | WS-END-OF-CONFIG | X | `'N'` | Config EOF indicator |
-| 05 | WS-THRESHOLD-MET | X | `'N'` | Threshold exceeded flag |
+| 05 | WS-INFO | X(10) | 'INFO' | Informational alert |
+| 05 | WS-WARNING | X(10) | 'WARNING' | Warning alert |
+| 05 | WS-CRITICAL | X(10) | 'CRITICAL' | Critical alert |
 
-##### End of Config (WS-END-OF-CONFIG)
+#### Processing Flags (WS-PROCESSING-FLAGS)
 
-| Value | 88-Level Name | Meaning |
-|-------|---------------|---------|
-| `'Y'` | END-OF-CONFIG | All config records read |
-| `'N'` | - | More config records |
+| Level | Name | Picture | Initial | Description |
+|-------|------|---------|---------|-------------|
+| 05 | WS-END-OF-CONFIG | X | 'N' | End of config file flag |
+| 05 | WS-THRESHOLD-MET | X | 'N' | Threshold exceeded flag |
 
-##### Threshold Met (WS-THRESHOLD-MET)
+**88-level Conditions:**
+- END-OF-CONFIG - Value 'Y'
+- THRESHOLD-MET - Value 'Y'
 
-| Value | 88-Level Name | Meaning |
-|-------|---------------|---------|
-| `'Y'` | THRESHOLD-MET | Threshold was exceeded |
-| `'N'` | - | Within normal range |
-
-#### Current Metrics
+#### Current Metrics (WS-CURRENT-METRICS)
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | WS-CURRENT-METRICS | - | Current metric values |
-| 05 | WS-CPU-UTIL | 9(3)V99 | CPU utilization % |
-| 05 | WS-MEMORY-UTIL | 9(3)V99 | Memory utilization % |
-| 05 | WS-DASD-UTIL | 9(3)V99 | DASD utilization % |
-| 05 | WS-DB2-UTIL | 9(3)V99 | DB2 utilization % |
+| 05 | WS-CPU-UTIL | 9(3)V99 | Current CPU utilization % |
+| 05 | WS-MEMORY-UTIL | 9(3)V99 | Current memory utilization % |
+| 05 | WS-DASD-UTIL | 9(3)V99 | Current DASD utilization % |
+| 05 | WS-DB2-UTIL | 9(3)V99 | Current DB2 utilization % |
 | 05 | WS-DB2-RESP | 9(5)V99 | DB2 response time (ms) |
 | 05 | WS-DB2-QUEUE | 9(5) | DB2 queue depth |
 | 05 | WS-DB2-ERRORS | 9(5) | DB2 error count |
 
-#### Timestamp Structure
+#### Timestamp (WS-TIMESTAMP)
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | WS-TIMESTAMP | - | Current timestamp |
-| 05 | WS-DATE | - | Date portion |
+| 05 | WS-DATE | | Date component |
 | 10 | WS-YEAR | 9(4) | Year (YYYY) |
 | 10 | WS-MONTH | 9(2) | Month (MM) |
 | 10 | WS-DAY | 9(2) | Day (DD) |
-| 05 | WS-TIME | - | Time portion |
+| 05 | WS-TIME | | Time component |
 | 10 | WS-HOUR | 9(2) | Hour (HH) |
 | 10 | WS-MINUTE | 9(2) | Minute (MM) |
 | 10 | WS-SECOND | 9(2) | Second (SS) |
@@ -202,293 +190,231 @@ Uses the DB2STAT copybook for DB2 statistics record structure. The file is acces
 
 | Property | Value |
 |----------|-------|
-| DD Name | MONCFG |
-| Organization | SEQUENTIAL |
-| Recording Mode | F (Fixed) |
+| Logical Name | MONITOR-CONFIG |
+| Physical Assignment | MONCFG |
+| Organization | Sequential |
+| Recording Mode | Fixed (F) |
+| Access Mode | Sequential |
 | File Status | WS-CFG-STATUS |
-| Open Mode | INPUT |
+| Open Mode | Input |
 
-Configuration file containing threshold definitions and alert rules.
+Configuration file containing threshold definitions read at startup.
 
 ### MONITOR-LOG
 
 | Property | Value |
 |----------|-------|
-| DD Name | MONLOG |
-| Organization | SEQUENTIAL |
-| Recording Mode | F (Fixed) |
+| Logical Name | MONITOR-LOG |
+| Physical Assignment | MONLOG |
+| Organization | Sequential |
+| Recording Mode | Fixed (F) |
+| Access Mode | Sequential |
 | File Status | WS-LOG-STATUS |
-| Open Mode | OUTPUT |
+| Open Mode | Output |
 
-Log file for recording metric snapshots and status information.
+Status log file written with periodic metric snapshots.
 
 ### ALERT-FILE
 
 | Property | Value |
 |----------|-------|
-| DD Name | ALERTS |
-| Organization | SEQUENTIAL |
-| Recording Mode | F (Fixed) |
+| Logical Name | ALERT-FILE |
+| Physical Assignment | ALERTS |
+| Organization | Sequential |
+| Recording Mode | Fixed (F) |
 | File Status | WS-ALERT-STATUS |
-| Open Mode | OUTPUT |
+| Open Mode | Output |
 
-Output file for generated alerts when thresholds are exceeded.
+Alert file written when thresholds are exceeded.
 
 ### DB2-STATS
 
 | Property | Value |
 |----------|-------|
-| DD Name | DB2STATS |
-| Organization | INDEXED (VSAM KSDS) |
-| Access Mode | DYNAMIC |
+| Logical Name | DB2-STATS |
+| Physical Assignment | DB2STATS |
+| Organization | Indexed (VSAM KSDS) |
+| Access Mode | Dynamic |
 | Record Key | STAT-KEY |
 | File Status | WS-DB2-STATUS |
-| Open Mode | INPUT |
+| Open Mode | Input |
 
-DB2 statistics file providing database performance metrics.
-
-### File Operations Summary
-
-| Paragraph | File | Operation |
-|-----------|------|-----------|
-| 1100-OPEN-FILES | MONITOR-CONFIG | OPEN INPUT |
-| 1100-OPEN-FILES | MONITOR-LOG | OPEN OUTPUT |
-| 1100-OPEN-FILES | ALERT-FILE | OPEN OUTPUT |
-| 1100-OPEN-FILES | DB2-STATS | OPEN INPUT |
-| 1300-READ-CONFIG | MONITOR-CONFIG | READ |
-| 2300-LOG-STATUS | MONITOR-LOG | WRITE (implied) |
-| 2420-WRITE-ALERT | ALERT-FILE | WRITE (implied) |
-| 2140-GET-DB2-METRICS | DB2-STATS | READ (implied) |
-| 3000-CLEANUP | All files | CLOSE |
+DB2 statistics file for retrieving database performance metrics.
 
 ## Control Flow
 
-### 0000-MAIN
+### Main Processing (0000-MAIN)
 
-The main entry point that orchestrates continuous monitoring:
-1. **PERFORM 1000-INITIALIZE**: Set up files and load configuration
-2. **PERFORM 2000-PROCESS UNTIL WS-HOUR = 23**: Monitor loop until 11 PM
-3. **PERFORM 3000-CLEANUP**: Close files
-4. **GOBACK**: Return to caller
+The program runs as a continuous monitoring loop:
 
-### 1000-INITIALIZE
+1. **Initialize** - Open files, get initial timestamp, read configuration
+2. **Process Loop** - Execute until WS-HOUR = 23 (11 PM)
+3. **Cleanup** - Close all files
+4. **GOBACK** - Return to operating system
 
-Performs program initialization:
-1. **1100-OPEN-FILES**: Opens all four files with error checking
-2. **1200-INIT-PROCESSING**: Gets current timestamp
-3. **1300-READ-CONFIG**: Loads threshold configuration
+### Initialization (1000-INITIALIZE)
 
-### 1100-OPEN-FILES
+1. **1100-OPEN-FILES**: Opens all four files
+   - MONITOR-CONFIG for input
+   - MONITOR-LOG for output
+   - ALERT-FILE for output
+   - DB2-STATS for input
+   - If any file fails to open, calls 9999-ERROR-HANDLER
 
-Opens all files and checks status:
-- MONITOR-CONFIG (INPUT)
-- MONITOR-LOG (OUTPUT)
-- ALERT-FILE (OUTPUT)
-- DB2-STATS (INPUT)
+2. **1200-INIT-PROCESSING**: Accepts current time from system
 
-If any file fails to open, displays error message to console and terminates with return code 12.
+3. **1300-READ-CONFIG**: Reads all configuration records
+   - Loops until END-OF-CONFIG
+   - Calls 1310-STORE-CONFIG for each record
 
-### 1200-INIT-PROCESSING
+### Processing Loop (2000-PROCESS)
 
-Accepts the current timestamp from the system using `ACCEPT WS-TIMESTAMP FROM TIME`.
+Executed repeatedly until hour 23:
 
-### 1300-READ-CONFIG
+1. **2100-COLLECT-METRICS**: Gathers current system metrics
+   - 2110-GET-CPU-METRICS: CPU utilization
+   - 2120-GET-MEMORY-METRICS: Memory utilization
+   - 2130-GET-DASD-METRICS: DASD utilization
+   - 2140-GET-DB2-METRICS: DB2 statistics
 
-Reads all configuration records in a loop:
-1. **READ MONITOR-CONFIG**: Reads next config record
-   - AT END: Sets END-OF-CONFIG flag
-   - NOT AT END: Performs 1310-STORE-CONFIG
+2. **2200-CHECK-THRESHOLDS**: Compares metrics against thresholds
+   - 2210-CHECK-UTILIZATION: Resource utilization thresholds
+   - 2220-CHECK-RESPONSE: Response time thresholds
+   - 2230-CHECK-QUEUES: Queue depth thresholds
+   - 2240-CHECK-ERRORS: Error count thresholds
 
-### 2000-PROCESS
+3. **2300-LOG-STATUS**: Writes status to log file
+   - 2310-LOG-RESOURCES: Resource utilization data
+   - 2320-LOG-PERFORMANCE: Performance metrics
 
-Main monitoring cycle (repeated each interval):
-1. **2100-COLLECT-METRICS**: Gather current metrics
-2. **2200-CHECK-THRESHOLDS**: Compare against thresholds
-3. **2300-LOG-STATUS**: Write to monitor log
-4. **2400-GENERATE-ALERTS**: Create alerts if needed
-5. **CALL 'ILBOABN0'**: Wait for next interval
-6. **1200-INIT-PROCESSING**: Refresh timestamp
+4. **2400-GENERATE-ALERTS**: Creates alerts if needed
+   - If THRESHOLD-MET is true:
+     - 2410-FORMAT-ALERT: Formats alert message
+     - 2420-WRITE-ALERT: Writes alert record
 
-### 2100-COLLECT-METRICS
+5. **CALL ILBOABN0**: Pauses execution (delay)
 
-Collects metrics from all monitored resources:
-- **2110-GET-CPU-METRICS**: CPU utilization
-- **2120-GET-MEMORY-METRICS**: Memory utilization
-- **2130-GET-DASD-METRICS**: DASD utilization
-- **2140-GET-DB2-METRICS**: DB2 utilization, response time, queue depth, errors
+6. **1200-INIT-PROCESSING**: Refreshes timestamp for next iteration
 
-### 2200-CHECK-THRESHOLDS
+### Cleanup (3000-CLEANUP)
 
-Compares current metrics against configured thresholds:
-- **2210-CHECK-UTILIZATION**: Resource utilization checks
-- **2220-CHECK-RESPONSE**: Response time checks
-- **2230-CHECK-QUEUES**: Queue depth checks
-- **2240-CHECK-ERRORS**: Error count checks
+Closes all four files in a single CLOSE statement.
 
-Sets THRESHOLD-MET flag when any threshold is exceeded.
+### Error Handler (9999-ERROR-HANDLER)
 
-### 2300-LOG-STATUS
-
-Logs current status to the monitor log:
-1. Moves timestamp to LOG-TIMESTAMP
-2. **2310-LOG-RESOURCES**: Logs resource utilization
-3. **2320-LOG-PERFORMANCE**: Logs performance metrics
-
-### 2400-GENERATE-ALERTS
-
-Generates alerts when thresholds are exceeded:
-1. Checks if THRESHOLD-MET is true
-2. **2410-FORMAT-ALERT**: Formats the alert message
-3. **2420-WRITE-ALERT**: Writes to alert file
-
-### 3000-CLEANUP
-
-Closes all files in a single CLOSE statement.
-
-### 9999-ERROR-HANDLER
-
-Error handling routine:
 1. Displays error message to console (CONS)
-2. Sets RETURN-CODE to 12
-3. Terminates via GOBACK
-
-## Monitoring Cycle
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                  UTLMON00 Monitoring Cycle                   │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │                    2000-PROCESS                       │   │
-│  │  (Repeats until WS-HOUR = 23)                        │   │
-│  │                                                       │   │
-│  │  ┌─────────────┐    ┌─────────────┐                  │   │
-│  │  │  Collect    │───►│   Check     │                  │   │
-│  │  │  Metrics    │    │ Thresholds  │                  │   │
-│  │  └─────────────┘    └──────┬──────┘                  │   │
-│  │                            │                          │   │
-│  │  ┌─────────────┐    ┌──────▼──────┐                  │   │
-│  │  │   Log       │◄───│  Generate   │                  │   │
-│  │  │   Status    │    │   Alerts    │                  │   │
-│  │  └─────────────┘    └─────────────┘                  │   │
-│  │                            │                          │   │
-│  │                     ┌──────▼──────┐                  │   │
-│  │                     │    Wait     │                  │   │
-│  │                     │  (ILBOABN0) │                  │   │
-│  │                     └──────┬──────┘                  │   │
-│  │                            │                          │   │
-│  └────────────────────────────┴──────────────────────────┘   │
-│                                                              │
-│  Output Files:                                              │
-│  ├── MONITOR-LOG: Periodic status snapshots                 │
-│  └── ALERT-FILE: Threshold violation alerts                 │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-```
-
-## Sample Configuration File
-
-```
-CPU       UTIL      00000085.00WARNING   NOTIFY OPERATIONS                         
-CPU       UTIL      00000095.00CRITICAL  PAGE SYSADMIN                             
-MEMORY    UTIL      00000080.00WARNING   NOTIFY OPERATIONS                         
-MEMORY    UTIL      00000090.00CRITICAL  PAGE SYSADMIN                             
-DASD      UTIL      00000075.00WARNING   NOTIFY STORAGE ADMIN                      
-DB2       RESPONSE  00000500.00WARNING   NOTIFY DBA                                
-DB2       RESPONSE  00001000.00CRITICAL  PAGE DBA                                  
-DB2       QUEUE     00000050.00WARNING   NOTIFY DBA                                
-DB2       ERROR     00000010.00CRITICAL  PAGE DBA AND SYSADMIN                     
-```
-
-## Sample JCL
-
-```jcl
-//UTLMON00 EXEC PGM=UTLMON00,TIME=1440
-//STEPLIB  DD DSN=your.loadlib,DISP=SHR
-//MONCFG   DD DSN=your.monitor.config,DISP=SHR
-//MONLOG   DD DSN=your.monitor.log,
-//            DISP=(NEW,CATLG,DELETE),
-//            DCB=(RECFM=FB,LRECL=77,BLKSIZE=0),
-//            SPACE=(TRK,(50,25),RLSE)
-//ALERTS   DD DSN=your.alert.file,
-//            DISP=(NEW,CATLG,DELETE),
-//            DCB=(RECFM=FB,LRECL=126,BLKSIZE=0),
-//            SPACE=(TRK,(10,5),RLSE)
-//DB2STATS DD DSN=your.db2.stats.vsam,DISP=SHR
-//SYSOUT   DD SYSOUT=*
-```
-
-Note: `TIME=1440` allows the job to run for a full day (1440 minutes).
+2. Sets RETURN-CODE to 12 (severe error)
+3. Terminates with GOBACK
 
 ## Dependencies
 
 ### Copybooks
-
-- **DB2STAT** - DB2 statistics record layout
-- **RTNCODE** - Return code management structure
-- **ERRHAND** - Error handling definitions
+- DB2STAT - DB2 statistics record layout
+- RTNCODE - Return code management structure
+- ERRHAND - Standard error handling definitions
 
 ### Called Programs
 
 | Program | Purpose |
 |---------|---------|
-| **ILBOABN0** | IBM Language Environment service for delay/wait |
+| ILBOABN0 | IBM Language Environment delay routine |
 
 ### Related Programs
 
-Programs that consume the output files:
-- Alert processing systems that read ALERT-FILE
-- Reporting programs that analyze MONITOR-LOG
-- Automation tools that respond to alerts
+**DB2STAT copybook:**
+- RPTSTA00 - Status report generator
+
+**RTNCODE copybook:**
+- RPTAUD00, RPTPOS00, RPTSTA00 - Report programs
+- RTNCDE00 - Return code analyzer
+- TSTGEN00, TSTVAL00 - Test programs
+- UTLMNT00, UTLVAL00 - Other utility programs
+
+**ERRHAND copybook:**
+- Multiple batch, DB2, and utility programs
+
+## JCL Requirements
+
+Example JCL for executing UTLMON00:
+
+```jcl
+//UTLMON00 EXEC PGM=UTLMON00
+//STEPLIB  DD DSN=your.loadlib,DISP=SHR
+//MONCFG   DD DSN=your.monitor.config,DISP=SHR
+//MONLOG   DD DSN=your.monitor.log,
+//            DISP=(NEW,CATLG,DELETE),
+//            DCB=(RECFM=FB,LRECL=76,BLKSIZE=0),
+//            SPACE=(CYL,(5,5),RLSE)
+//ALERTS   DD DSN=your.alert.file,
+//            DISP=(NEW,CATLG,DELETE),
+//            DCB=(RECFM=FB,LRECL=126,BLKSIZE=0),
+//            SPACE=(CYL,(1,1),RLSE)
+//DB2STATS DD DSN=your.db2.stats.vsam,DISP=SHR
+//SYSOUT   DD SYSOUT=*
+```
+
+### Configuration File Format (MONCFG)
+
+Fixed-length 91-byte records:
+- Positions 1-10: Resource Type (CPU, MEMORY, DASD, DB2)
+- Positions 11-20: Threshold Type (UTIL, RESPONSE, QUEUE, ERROR)
+- Positions 21-31: Threshold Value (9(9)V99)
+- Positions 32-41: Alert Level (INFO, WARNING, CRITICAL)
+- Positions 42-91: Alert Action (description/command)
+
+**Example Configuration:**
+
+```
+CPU       UTIL      000000090.00WARNING   Notify operations team
+MEMORY    UTIL      000000085.00WARNING   Notify operations team
+DB2       RESPONSE  000001000.00CRITICAL  Page DBA on-call
+DB2       QUEUE     000000050.00WARNING   Monitor closely
+```
 
 ## Return Codes
 
 | Code | Meaning |
 |------|---------|
-| 0 | Successful completion (normal end at hour 23) |
-| 12 | Error during processing (file open failure) |
+| 0 | Successful completion |
+| 12 | Severe error (file open failure) |
+
+## Monitored Metrics
+
+### Resource Utilization
+
+| Resource | Metric | Description |
+|----------|--------|-------------|
+| CPU | WS-CPU-UTIL | Processor utilization percentage |
+| MEMORY | WS-MEMORY-UTIL | Real storage utilization percentage |
+| DASD | WS-DASD-UTIL | DASD I/O utilization percentage |
+| DB2 | WS-DB2-UTIL | DB2 subsystem utilization |
+
+### DB2 Performance
+
+| Metric | Field | Description |
+|--------|-------|-------------|
+| Response Time | WS-DB2-RESP | Average SQL response time (ms) |
+| Queue Depth | WS-DB2-QUEUE | Number of requests waiting |
+| Error Count | WS-DB2-ERRORS | Cumulative SQL errors |
 
 ## Technical Notes
 
-### COBOL Constructs Used
+### SPECIAL-NAMES CONSOLE
 
-- **SPECIAL-NAMES CONSOLE IS CONS**: Defines CONS as an alias for the system console, allowing `DISPLAY ... UPON CONS` to write directly to the operator console.
+The program uses `SPECIAL-NAMES. CONSOLE IS CONS.` to define CONS as the system console. This allows `DISPLAY ... UPON CONS` to write messages directly to the operator console.
 
-- **ACCEPT FROM TIME**: Retrieves the current system time into WS-TIMESTAMP in the format HHMMSSCC (hour, minute, second, hundredths).
+### ILBOABN0 Delay
 
-- **PERFORM UNTIL**: The main processing loop continues until WS-HOUR equals 23 (11 PM), providing continuous monitoring throughout the business day.
+The program calls `ILBOABN0` (IBM Language Environment abnormal termination routine) with WS-MINUTE to introduce a delay between monitoring iterations. This prevents the program from consuming excessive CPU cycles while polling for metrics.
 
-- **CALL 'ILBOABN0'**: Calls the IBM Language Environment abnormal termination routine. In this context, it's being used with WS-MINUTE to create a wait/delay between monitoring cycles. Note: This is an unusual usage; typically a wait service like CEE3DLY would be used.
+### Continuous Operation
 
-- **DYNAMIC Access Mode**: The DB2-STATS file uses dynamic access, allowing both sequential and random access to statistics records.
+The program runs until WS-HOUR equals 23 (11 PM), providing nearly 24-hour monitoring coverage when started at midnight. For true 24/7 monitoring, the job would need to be scheduled to restart daily.
 
-### Monitoring Interval
+### Dynamic File Access
 
-The program waits between monitoring cycles using ILBOABN0 with WS-MINUTE as a parameter. The exact wait behavior depends on the system configuration.
+The DB2-STATS file uses dynamic access mode, allowing both sequential and random access to statistics records. This enables efficient retrieval of specific statistics by key or sequential scanning for comprehensive data collection.
 
-### Threshold Configuration
+### Threshold-Based Alerting
 
-The configuration file allows flexible definition of:
-- Which resources to monitor
-- What types of thresholds to apply
-- Threshold values
-- Alert severity levels
-- Actions to take when thresholds are exceeded
-
-### Resource Metrics
-
-| Resource | Metrics Collected |
-|----------|-------------------|
-| CPU | Utilization percentage |
-| Memory | Utilization percentage |
-| DASD | Utilization percentage |
-| DB2 | Utilization %, response time, queue depth, error count |
-
-### Alert Severity Levels
-
-| Level | Usage |
-|-------|-------|
-| INFO | Informational, no action required |
-| WARNING | Attention needed, but not urgent |
-| CRITICAL | Immediate action required |
+Alerts are only generated when THRESHOLD-MET is true, preventing alert flooding. The program sets this flag in the 2200-CHECK-THRESHOLDS routine when any metric exceeds its configured threshold.

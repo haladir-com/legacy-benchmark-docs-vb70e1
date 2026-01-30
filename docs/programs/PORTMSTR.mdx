@@ -1,32 +1,27 @@
 ---
 title: "PORTMSTR"
-description: "Portfolio Master File Maintenance Program - Callable subprogram for CRUD operations on portfolio records in a VSAM indexed file"
+description: "Portfolio master file maintenance program providing CRUD operations (Create, Read, Update, Delete) for portfolio records in a VSAM indexed file"
 ---
 
 ## Overview
 
-PORTMSTR is a callable subprogram that provides complete CRUD (Create, Read, Update, Delete) operations for portfolio master records stored in a VSAM KSDS (Key-Sequenced Data Set) file. It serves as a centralized data access layer for portfolio management, ensuring consistent validation, error handling, and audit logging across all portfolio operations.
+PORTMSTR is a COBOL subprogram that provides centralized master file maintenance operations for the portfolio management system. It implements the four fundamental CRUD operations (Create, Read, Update, Delete) for portfolio records stored in a VSAM KSDS (Key-Sequenced Data Set) file.
 
-The program is designed to be called by other programs (batch or online) that need to maintain portfolio data, providing:
-- **Create** - Add new portfolio records with validation
-- **Read** - Retrieve portfolio records by ID
-- **Update** - Modify existing portfolio records with validation and audit logging
-- **Delete** - Remove portfolio records
+The program is designed to be called by other programs rather than executed standalone, receiving commands and data through its linkage section. This modular approach ensures:
 
-Key features include:
-- Standardized validation of portfolio ID format (PORTnnnnn)
-- Required field validation (name, status)
-- Status code validation (A=Active, I=Inactive, C=Closed)
-- VSAM file status handling with descriptive error messages
-- Audit trail logging for updates via AUDPROC
-- Error logging via ERRPROC
+- **Consistent Data Access**: All portfolio file operations go through a single program
+- **Centralized Validation**: Portfolio data is validated using the same rules regardless of the caller
+- **Audit Trail**: Update operations are logged for compliance and tracking
+- **Error Handling**: Standardized error handling and return codes
+
+The program validates portfolio IDs (must start with 'PORT' followed by 5 numeric digits), requires portfolio names, and enforces valid status codes (Active, Inactive, Closed).
 
 ## Program Structure
 
 ```mermaid
 graph TD
     A[0000-MAIN] --> B[1000-INITIALIZE]
-    B --> C{EVALUATE Command}
+    B --> C{Command?}
     
     C -->|C - Create| D[2000-CREATE-PORTFOLIO]
     C -->|R - Read| E[3000-READ-PORTFOLIO]
@@ -35,34 +30,45 @@ graph TD
     C -->|Other| H[9000-ERROR]
     
     D --> D1[2100-VALIDATE-PORTFOLIO]
-    D --> D2[WRITE Record]
-    D1 -.->|Invalid| H
-    D2 -.->|Error| H
+    D --> D2[WRITE]
     
-    E --> E1[READ Record]
-    E1 -.->|Not Found| H
+    E --> E1[READ]
     
     F --> F1[2100-VALIDATE-PORTFOLIO]
-    F --> F2[REWRITE Record]
+    F --> F2[REWRITE]
     F --> F3[2100-LOG-PORTFOLIO-UPDATE]
-    F1 -.->|Invalid| H
-    F2 -.->|Error| H
     
-    G --> G1[DELETE Record]
-    G1 -.->|Not Found| H
+    G --> G1[DELETE]
     
-    A --> I[6000-TERMINATE]
-    H --> I
+    D1 --> H
+    F1 --> H
     
-    F3 --> J[AUDPROC]
+    H --> I[6000-TERMINATE]
     
-    subgraph "Error Handling"
-        H --> K[2100-HANDLE-VSAM-ERROR]
-        K --> L[ERRPROC]
-    end
+    B --> I
+    D --> I
+    E --> I
+    F --> I
+    G --> I
+    
+    I --> J[GOBACK]
+    
+    F3 --> K[AUDPROC]
 ```
 
 ## Data Structures
+
+### File Section - Portfolio Record
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 01 | PORTFOLIO-RECORD | - | 100-byte portfolio record |
+| 05 | PORT-ID | X(10) | Portfolio identifier (key field) |
+| 05 | PORT-NAME | X(50) | Portfolio name |
+| 05 | PORT-CREATE-DATE | X(10) | Creation date |
+| 05 | PORT-STATUS | X(01) | Status: `A`=Active, `I`=Inactive, `C`=Closed |
+| 05 | PORT-TOTAL-VALUE | S9(13)V99 COMP-3 | Total portfolio value (packed decimal) |
+| 05 | FILLER | X(24) | Reserved space |
 
 ### Working Storage
 
@@ -70,325 +76,274 @@ graph TD
 
 | Level | Name | Picture | Value | Description |
 |-------|------|---------|-------|-------------|
-| 01 | WS-CONSTANTS | | | Program constants |
-| 05 | WS-PROGRAM-NAME | X(8) | 'PORTMSTR' | Program identifier |
+| 05 | WS-PROGRAM-NAME | X(08) | 'PORTMSTR' | Program identifier |
 | 05 | WS-SUCCESS | S9(4) | +0 | Success return code |
 | 05 | WS-ERROR | S9(4) | +8 | Error return code |
 | 05 | WS-ERROR-TEXT | X(50) | SPACES | Error message text |
 
-#### Switches and Flags
+#### Switches and Status
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | WS-SWITCHES | | Program switches |
-| 05 | WS-PORT-STATUS | X(2) | VSAM file status |
-| 05 | WS-VALID-STATUS | X(1) | Portfolio status validator |
-| 05 | WS-END-OF-FILE-SW | X | EOF indicator |
+| 05 | WS-PORT-STATUS | X(02) | VSAM file status |
+| - | PORT-SUCCESS | 88 | Value '00' - Operation successful |
+| - | PORT-EOF | 88 | Value '10' - End of file |
+| - | PORT-NOT-FOUND | 88 | Value '23' - Record not found |
+| - | PORT-DUP-KEY | 88 | Value '22' - Duplicate key |
+| 05 | WS-VALID-STATUS | X(01) | Portfolio status validation |
+| - | VALID-STATUS | 88 | Values 'A', 'I', 'C' |
+| 05 | WS-END-OF-FILE-SW | X | End of file switch |
 
-#### VSAM File Status Codes
-
-| Value | 88-Level Name | Description |
-|-------|---------------|-------------|
-| 00 | PORT-SUCCESS | Operation successful |
-| 10 | PORT-EOF | End of file reached |
-| 22 | PORT-DUP-KEY | Duplicate key on write |
-| 23 | PORT-NOT-FOUND | Record not found |
-
-#### Valid Portfolio Status Codes
-
-| Value | Description |
-|-------|-------------|
-| A | Active portfolio |
-| I | Inactive portfolio |
-| C | Closed portfolio |
-
-### File Section - Portfolio Record
+#### Work Areas
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | PORTFOLIO-RECORD | | 100-byte portfolio record |
-| 05 | PORT-ID | X(10) | Portfolio ID (key) - format PORTnnnnn |
-| 05 | PORT-NAME | X(50) | Portfolio name |
-| 05 | PORT-CREATE-DATE | X(10) | Creation date |
-| 05 | PORT-STATUS | X(1) | Status (A/I/C) |
-| 05 | PORT-TOTAL-VALUE | S9(13)V99 COMP-3 | Total portfolio value |
-| 05 | FILLER | X(24) | Reserved space |
+| 05 | WS-CURRENT-DATE | X(10) | Current date (YYYYMMDD format) |
+| 05 | WS-RETURN-CODE | S9(4) COMP | Return code for caller |
 
 ### Linkage Section (Calling Interface)
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | LS-COMMAND-AREA | | Main request structure |
-| 05 | LS-COMMAND | X(1) | Operation code (C/R/U/D) |
-| 05 | LS-PORTFOLIO | X(100) | Portfolio record buffer |
-| 05 | LS-RETURN-CODE | S9(4) COMP | Return code |
+| 01 | LS-COMMAND-AREA | - | Main parameter structure |
+| 05 | LS-COMMAND | X(01) | Command code (see table below) |
+| 05 | LS-PORTFOLIO | X(100) | Portfolio record data |
+| 05 | LS-RETURN-CODE | S9(4) COMP | Return code to caller |
 
 ### Command Codes
 
 | Code | 88-Level Name | Description |
 |------|---------------|-------------|
-| C | CREATE-PORT | Create new portfolio |
-| R | READ-PORT | Read existing portfolio |
-| U | UPDATE-PORT | Update existing portfolio |
-| D | DELETE-PORT | Delete existing portfolio |
-
-## Calling Interface
-
-### COBOL Call Example
-
-```cobol
-       01  WS-PORT-REQUEST.
-           05  WS-COMMAND          PIC X(1).
-           05  WS-PORTFOLIO-DATA   PIC X(100).
-           05  WS-RETURN-CODE      PIC S9(4) COMP.
-       
-       01  WS-PORTFOLIO-RECORD.
-           05  WS-PORT-ID          PIC X(10).
-           05  WS-PORT-NAME        PIC X(50).
-           05  WS-PORT-CREATE-DATE PIC X(10).
-           05  WS-PORT-STATUS      PIC X(1).
-           05  WS-PORT-TOTAL-VALUE PIC S9(13)V99 COMP-3.
-           05  FILLER              PIC X(24).
-       
-       * Create a new portfolio
-           MOVE 'C' TO WS-COMMAND
-           MOVE 'PORT00001' TO WS-PORT-ID
-           MOVE 'Investment Portfolio A' TO WS-PORT-NAME
-           MOVE '2024-03-20' TO WS-PORT-CREATE-DATE
-           MOVE 'A' TO WS-PORT-STATUS
-           MOVE 0 TO WS-PORT-TOTAL-VALUE
-           MOVE WS-PORTFOLIO-RECORD TO WS-PORTFOLIO-DATA
-           CALL 'PORTMSTR' USING WS-PORT-REQUEST
-           IF WS-RETURN-CODE NOT = 0
-               DISPLAY 'Create failed: ' WS-RETURN-CODE
-           END-IF
-       
-       * Read a portfolio
-           MOVE 'R' TO WS-COMMAND
-           MOVE 'PORT00001' TO WS-PORT-ID
-           MOVE WS-PORTFOLIO-RECORD TO WS-PORTFOLIO-DATA
-           CALL 'PORTMSTR' USING WS-PORT-REQUEST
-           IF WS-RETURN-CODE = 0
-               MOVE WS-PORTFOLIO-DATA TO WS-PORTFOLIO-RECORD
-               DISPLAY 'Portfolio: ' WS-PORT-NAME
-           END-IF
-       
-       * Update a portfolio
-           MOVE 'U' TO WS-COMMAND
-           MOVE 'I' TO WS-PORT-STATUS
-           MOVE WS-PORTFOLIO-RECORD TO WS-PORTFOLIO-DATA
-           CALL 'PORTMSTR' USING WS-PORT-REQUEST
-       
-       * Delete a portfolio
-           MOVE 'D' TO WS-COMMAND
-           MOVE 'PORT00001' TO WS-PORT-ID
-           MOVE WS-PORTFOLIO-RECORD TO WS-PORTFOLIO-DATA
-           CALL 'PORTMSTR' USING WS-PORT-REQUEST
-```
-
-## Control Flow
-
-### 1000-INITIALIZE
-
-Initialization paragraph:
-1. Initializes work areas
-2. Opens PORTFOLIO-FILE in I-O mode (allows read and write)
-3. If open fails, sets error message and performs error routine
-4. Accepts current date in YYYYMMDD format
-
-### 2000-CREATE-PORTFOLIO
-
-Creates a new portfolio record:
-1. Moves input data from linkage section to file record
-2. Validates portfolio data via 2100-VALIDATE-PORTFOLIO
-3. If validation fails, performs error routine
-4. Writes record to VSAM file
-5. If duplicate key (status '22'), sets appropriate error message
-6. If other write error, sets error message and performs error routine
-
-### 2100-VALIDATE-PORTFOLIO
-
-Validates portfolio data fields:
-
-1. **Portfolio ID Format**: Must be 'PORT' followed by 5 numeric characters
-   - Example valid IDs: PORT00001, PORT12345
-   - Rejects: ACCT00001, PORT1234A
-
-2. **Portfolio Name**: Cannot be all spaces (required field)
-
-3. **Portfolio Status**: Must be 'A' (Active), 'I' (Inactive), or 'C' (Closed)
-
-If any validation fails:
-- Sets descriptive error message in WS-ERROR-TEXT
-- Sets WS-RETURN-CODE to WS-ERROR (+8)
-- Exits paragraph
-
-### 3000-READ-PORTFOLIO
-
-Reads a portfolio record by key:
-1. Moves input data to file record (extracts PORT-ID key)
-2. Reads record from VSAM file
-3. If successful, copies record back to linkage section
-4. If not found (status '23'), sets error message
-5. If other error, sets generic read error message
-
-### 4000-UPDATE-PORTFOLIO
-
-Updates an existing portfolio record:
-1. Moves input data to file record
-2. Validates data via 2100-VALIDATE-PORTFOLIO
-3. If validation fails, performs error routine
-4. Rewrites record to VSAM file
-5. If not found, sets error message
-6. If successful, calls 2100-LOG-PORTFOLIO-UPDATE for audit trail
-
-### 5000-DELETE-PORTFOLIO
-
-Deletes a portfolio record:
-1. Moves input data to file record (extracts PORT-ID key)
-2. Deletes record from VSAM file
-3. If not found (status '23'), sets appropriate error message
-4. If other error, sets generic delete error message
-
-### 6000-TERMINATE
-
-Cleanup and termination:
-1. Closes PORTFOLIO-FILE
-2. Copies WS-RETURN-CODE to LS-RETURN-CODE for caller
-
-### 9000-ERROR
-
-Error handling paragraph:
-1. Sets WS-RETURN-CODE to WS-ERROR (+8)
-2. Performs 6000-TERMINATE to close file
-3. Returns to caller via GOBACK
-
-### 2100-HANDLE-VSAM-ERROR
-
-VSAM-specific error handling (example code):
-1. Sets program ID and error category
-2. Evaluates file status for specific error messages:
-   - '22' (Duplicate key) → Warning severity
-   - '23' (Not found) → Warning severity
-   - Other → Error severity
-3. Calls ERRPROC for centralized error logging
-
-### 2100-LOG-PORTFOLIO-UPDATE
-
-Audit logging for updates (example code):
-1. Initializes audit request structure
-2. Populates audit fields:
-   - System ID: 'PORTFOLIO'
-   - User ID, Program, Terminal
-   - Action: 'UPDATE'
-   - Status: 'SUCC'
-   - Before/After images
-3. Calls AUDPROC for audit trail recording
+| `C` | CREATE-PORT | Create new portfolio record |
+| `R` | READ-PORT | Read existing portfolio record |
+| `U` | UPDATE-PORT | Update existing portfolio record |
+| `D` | DELETE-PORT | Delete portfolio record |
 
 ## File I/O
 
 ### File Definition
 
-| Attribute | Value |
-|-----------|-------|
-| Logical Name | PORTFOLIO-FILE |
-| DD Name | PORTFILE |
-| Organization | Indexed (VSAM KSDS) |
-| Access Mode | Dynamic |
-| Record Key | PORT-ID |
-| Record Length | 100 bytes |
-| File Status | WS-PORT-STATUS |
+| Logical Name | DD Name | Organization | Access Mode | Record Key | Record Length |
+|--------------|---------|--------------|-------------|------------|---------------|
+| PORTFOLIO-FILE | PORTFILE | Indexed (VSAM KSDS) | Dynamic | PORT-ID | 100 bytes |
 
-### VSAM Operations
+### File Operations by Function
 
-| Operation | Paragraph | Description |
-|-----------|-----------|-------------|
-| OPEN I-O | 1000-INITIALIZE | Opens file for read/write |
-| WRITE | 2000-CREATE-PORTFOLIO | Adds new record |
-| READ | 3000-READ-PORTFOLIO | Retrieves by key |
-| REWRITE | 4000-UPDATE-PORTFOLIO | Modifies existing record |
-| DELETE | 5000-DELETE-PORTFOLIO | Removes record |
-| CLOSE | 6000-TERMINATE | Closes file |
+| Function | Operation | Description |
+|----------|-----------|-------------|
+| Initialize | OPEN I-O | Open file for input/output |
+| Create | WRITE | Write new record |
+| Read | READ | Read record by key |
+| Update | REWRITE | Update existing record |
+| Delete | DELETE | Delete record by key |
+| Terminate | CLOSE | Close file |
+
+### VSAM Status Codes
+
+| Status | Meaning | Handling |
+|--------|---------|----------|
+| 00 | Success | Continue processing |
+| 10 | End of file | Set EOF flag |
+| 22 | Duplicate key | Error on create |
+| 23 | Record not found | Error on read/update/delete |
+
+## Control Flow
+
+### Initialize (1000-INITIALIZE)
+
+1. Initializes work areas
+2. Opens PORTFOLIO-FILE for I-O (input-output) access
+3. If open fails, invokes error routine
+4. Accepts current date in YYYYMMDD format
+
+### Create Portfolio (2000-CREATE-PORTFOLIO)
+
+Creates a new portfolio record:
+
+1. Moves input data from LS-PORTFOLIO to PORTFOLIO-RECORD
+2. Calls 2100-VALIDATE-PORTFOLIO to validate data
+3. If validation fails, invokes error routine
+4. Writes the record to the file
+5. If duplicate key (status 22), reports "Portfolio ID already exists"
+6. If other error, reports "Error writing Portfolio record"
+
+### Validate Portfolio (2100-VALIDATE-PORTFOLIO)
+
+Validates portfolio data against business rules:
+
+1. **Portfolio ID Format**: Must start with 'PORT' followed by 5 numeric digits
+   - Example valid: `PORT12345`
+   - Error: "Invalid Portfolio ID format"
+
+2. **Portfolio Name**: Must not be spaces
+   - Error: "Portfolio Name is required"
+
+3. **Portfolio Status**: Must be one of: `A` (Active), `I` (Inactive), `C` (Closed)
+   - Error: "Invalid Portfolio Status"
+
+Returns WS-ERROR in WS-RETURN-CODE if validation fails.
+
+### Read Portfolio (3000-READ-PORTFOLIO)
+
+Reads a portfolio record by key:
+
+1. Moves input key from LS-PORTFOLIO to PORTFOLIO-RECORD
+2. Reads the record using the key
+3. On success (status 00): Returns record in LS-PORTFOLIO
+4. On not found (status 23): Reports "Portfolio not found"
+5. On other error: Reports "Error reading Portfolio"
+
+### Update Portfolio (4000-UPDATE-PORTFOLIO)
+
+Updates an existing portfolio record:
+
+1. Moves input data from LS-PORTFOLIO to PORTFOLIO-RECORD
+2. Calls 2100-VALIDATE-PORTFOLIO to validate data
+3. If validation fails, invokes error routine
+4. Rewrites the record
+5. On not found: Reports "Portfolio not found for update"
+6. On other error: Reports "Error updating Portfolio"
+7. Calls 2100-LOG-PORTFOLIO-UPDATE for audit logging
+
+### Delete Portfolio (5000-DELETE-PORTFOLIO)
+
+Deletes a portfolio record:
+
+1. Moves input key from LS-PORTFOLIO to PORTFOLIO-RECORD
+2. Deletes the record by key
+3. On not found: Reports "Portfolio not found for deletion"
+4. On other error: Reports "Error deleting Portfolio"
+
+### Terminate (6000-TERMINATE)
+
+1. Closes PORTFOLIO-FILE
+2. Moves WS-RETURN-CODE to LS-RETURN-CODE for caller
+
+### Error Routine (9000-ERROR)
+
+1. Sets WS-RETURN-CODE to WS-ERROR (+8)
+2. Calls 6000-TERMINATE to close file
+3. Returns to caller via GOBACK
+
+### Audit Logging (2100-LOG-PORTFOLIO-UPDATE)
+
+Logs portfolio updates for audit compliance:
+
+1. Initializes audit request structure
+2. Populates audit fields:
+   - System ID: 'PORTFOLIO'
+   - Program: 'PORTMSTR'
+   - Action: 'UPDATE'
+   - Status: 'SUCC'
+   - Before/after images of the record
+3. Calls AUDPROC for audit processing
 
 ## Dependencies
 
 ### Copybooks
 
-This program does not explicitly COPY any copybooks, but it references structures and constants that align with:
-- **ERRHAND** - Error handling constants (ERR-CAT-VSAM, ERR-WARNING, ERR-ERROR, ERR-VSAM-22, ERR-VSAM-23)
-- **PORTFLIO** - Portfolio record layout (referenced in audit logging section)
+This program defines its data structures inline rather than using copybooks. However, it references structures that align with:
+
+- **PORTFLIO** - Standard portfolio record layout (similar structure)
+- **ERRHAND** - Error handling patterns (referenced in error routine)
 
 ### Called Programs
 
-| Program | Purpose | Parameters |
-|---------|---------|------------|
-| ERRPROC | Error processing and logging | LS-ERROR-REQUEST |
-| AUDPROC | Audit trail recording | LS-AUDIT-REQUEST |
+| Program | Purpose |
+|---------|---------|
+| ERRPROC | Error processing and logging |
+| AUDPROC | Audit trail logging |
 
 ### Related Programs
 
-Programs that may call PORTMSTR for portfolio maintenance:
-- Portfolio management batch programs
-- Online portfolio inquiry/update transactions
-- Portfolio valuation programs
-- Account maintenance utilities
+Other programs in the portfolio subsystem:
+
+| Program | Description |
+|---------|-------------|
+| PORTADD | Portfolio addition |
+| PORTDEL | Portfolio deletion |
+| PORTREAD | Portfolio read operations |
+| PORTUPDT | Portfolio updates |
+| PORTTRAN | Portfolio transactions |
+| PORTVALD | Portfolio validation |
+| PORTTEST | Portfolio testing |
 
 ## Technical Notes
 
-### VSAM Dynamic Access Mode
+### Calling Convention
 
-The file is opened with `ACCESS MODE IS DYNAMIC`, which allows both:
-- **Sequential access** - Reading records in key order
-- **Random access** - Direct access by key for READ, REWRITE, DELETE
+To call PORTMSTR from another COBOL program:
 
-This provides flexibility for different operation types within a single file open.
+```cobol
+WORKING-STORAGE SECTION.
+01  WS-COMMAND-AREA.
+    05  WS-COMMAND          PIC X(01).
+    05  WS-PORTFOLIO-DATA   PIC X(100).
+    05  WS-RETURN-CODE      PIC S9(4) COMP.
 
-### Portfolio ID Validation
-
-The validation ensures portfolio IDs follow the format `PORTnnnnn`:
-- Positions 1-4 must be 'PORT'
-- Positions 5-10 must be numeric (checked via `IS NOT NUMERIC`)
-
-This standardized format helps prevent data integrity issues and makes records easily identifiable.
-
-### COMP-3 (Packed Decimal) for Financial Values
-
-The `PORT-TOTAL-VALUE` field uses COMP-3 (packed decimal) format with picture `S9(13)V99`:
-- 13 integer digits + 2 decimal places
-- Maximum value: ±9,999,999,999,999.99
-- Stored in approximately 8 bytes
-- Ideal for financial calculations requiring decimal precision
+PROCEDURE DIVISION.
+* Create a new portfolio
+    MOVE 'C' TO WS-COMMAND
+    MOVE 'PORT00001' TO WS-PORTFOLIO-DATA(1:10)
+    MOVE 'My Portfolio' TO WS-PORTFOLIO-DATA(11:50)
+    MOVE 'A' TO WS-PORTFOLIO-DATA(71:1)
+    
+    CALL 'PORTMSTR' USING WS-COMMAND-AREA
+    
+    IF WS-RETURN-CODE NOT = 0
+        ... handle error ...
+    END-IF
+    
+* Read a portfolio
+    MOVE 'R' TO WS-COMMAND
+    MOVE 'PORT00001' TO WS-PORTFOLIO-DATA(1:10)
+    
+    CALL 'PORTMSTR' USING WS-COMMAND-AREA
+    
+    IF WS-RETURN-CODE = 0
+        ... process WS-PORTFOLIO-DATA ...
+    END-IF
+```
 
 ### Return Codes
 
-| Code | Constant | Meaning |
-|------|----------|---------|
-| 0 | WS-SUCCESS | Operation completed successfully |
-| 8 | WS-ERROR | Operation failed (see WS-ERROR-TEXT) |
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 8 | Error (check WS-ERROR-TEXT for details) |
 
-### Error Messages
+### Portfolio ID Validation Rules
 
-| Message | Cause |
-|---------|-------|
-| Error opening Portfolio file | OPEN I-O failed |
-| Invalid command | Command not C, R, U, or D |
-| Invalid Portfolio ID format | ID not PORTnnnnn |
-| Portfolio Name is required | Name is spaces |
-| Invalid Portfolio Status | Status not A, I, or C |
-| Portfolio ID already exists | Duplicate key on CREATE |
-| Error writing Portfolio record | WRITE failed |
-| Portfolio not found | Record doesn't exist (READ) |
-| Error reading Portfolio | READ failed |
-| Portfolio not found for update | Record doesn't exist (UPDATE) |
-| Error updating Portfolio | REWRITE failed |
-| Portfolio not found for deletion | Record doesn't exist (DELETE) |
-| Error deleting Portfolio | DELETE failed |
+The portfolio ID must follow this format:
+- Positions 1-4: Literal 'PORT'
+- Positions 5-9: Numeric digits (00000-99999)
 
-### Audit Trail
+Examples:
+- ✓ `PORT00001` - Valid
+- ✓ `PORT99999` - Valid
+- ✗ `ACCT00001` - Invalid prefix
+- ✗ `PORTABCDE` - Non-numeric suffix
 
-The 2100-LOG-PORTFOLIO-UPDATE paragraph demonstrates audit logging for UPDATE operations:
-- Records before and after images
-- Captures user ID, terminal, and program name
-- Logs success status with descriptive message
+### Portfolio Status Values
 
-This audit trail supports compliance requirements and debugging.
+| Code | Meaning | Description |
+|------|---------|-------------|
+| `A` | Active | Portfolio is active and can be traded |
+| `I` | Inactive | Portfolio is inactive but preserved |
+| `C` | Closed | Portfolio is closed permanently |
+
+### COMP-3 (Packed Decimal)
+
+The PORT-TOTAL-VALUE field uses COMP-3 (packed decimal) format:
+- Picture: S9(13)V99
+- Stores up to 13 digits before decimal, 2 after
+- Maximum value: 9,999,999,999,999.99
+- Efficient storage: 8 bytes for 15-digit precision
+
+### Dynamic Access Mode
+
+The file is opened with ACCESS MODE IS DYNAMIC, allowing:
+- Sequential reads (READ NEXT)
+- Random reads by key (READ with key)
+- Updates and deletes by key
+- This provides flexibility for different operation types

@@ -1,280 +1,102 @@
 ---
 title: "DB2REQ"
-description: "DB2 Request Area Copybook - Structure for managing DB2 connection requests, status checks, and error information in online CICS programs"
+description: "DB2 Request Area copybook for online CICS programs"
 ---
+
+# DB2REQ Copybook
 
 ## Overview
 
-DB2REQ is a copybook that defines a standardized request/response structure for DB2 database operations in online CICS programs. It provides a compact interface for requesting database connections, disconnections, and status checks, along with capturing error information when operations fail.
+**DB2REQ** (DB2 Request Area) is an online copybook that defines the communication interface for DB2 connection management in CICS programs. It provides a standardized structure for requesting connections, disconnections, and status checks through programs like [DB2ONLN](/docs/programs/DB2ONLN).
 
-The copybook is designed for use as a COMMAREA when linking to DB2 service programs, enabling:
-- **Connection management** - Request DB2 connect/disconnect operations
-- **Status monitoring** - Check current DB2 connection status
-- **Error capture** - Retrieve SQLCODE and error messages on failure
-- **Token tracking** - Maintain connection tokens for session management
-
-## Record Layout
-
-### DB2-REQUEST-AREA (01 Level)
+## Data Structure
 
 ```
-01  DB2-REQUEST-AREA.
-    05  DB2-REQUEST-TYPE.
-    05  DB2-RESPONSE-CODE.
-    05  DB2-CONNECTION-TOKEN.
-    05  DB2-ERROR-INFO.
+DB2-REQUEST-AREA (109 bytes total)
+├── DB2-REQUEST-TYPE     (1 byte)   - Operation code
+├── DB2-RESPONSE-CODE    (4 bytes)  - Response status
+├── DB2-CONNECTION-TOKEN (16 bytes) - Connection identifier
+└── DB2-ERROR-INFO       (88 bytes) - Error details
+    ├── DB2-SQLCODE      (4 bytes)  - SQL error code
+    └── DB2-ERROR-MSG    (80 bytes) - Error message text
 ```
 
-**Total Length:** Approximately 108 bytes
+### Field Definitions
 
-## Data Structures
+| Field | Picture | Description |
+|-------|---------|-------------|
+| DB2-REQUEST-TYPE | X | Operation type code |
+| DB2-RESPONSE-CODE | S9(8) COMP | Return status from service |
+| DB2-CONNECTION-TOKEN | X(16) | Unique connection identifier |
+| DB2-SQLCODE | S9(9) COMP | DB2 SQLCODE if error occurred |
+| DB2-ERROR-MSG | X(80) | Descriptive error message |
 
-### DB2-REQUEST-TYPE - Operation Selector
+### Request Type Codes (88-Level Conditions)
 
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 05 | DB2-REQUEST-TYPE | X | Operation type code |
+| Condition | Value | Description |
+|-----------|-------|-------------|
+| DB2-CONNECT | `'C'` | Request a DB2 connection |
+| DB2-DISCONNECT | `'D'` | Release a DB2 connection |
+| DB2-STATUS | `'S'` | Check connection status |
 
-#### Request Type Values
+## Usage Example
 
-| Value | 88-Level Name | Description |
-|-------|---------------|-------------|
-| C | DB2-CONNECT | Request DB2 connection |
-| D | DB2-DISCONNECT | Request DB2 disconnection |
-| S | DB2-STATUS | Check connection status |
+```cobol
+       WORKING-STORAGE SECTION.
+           COPY DB2REQ.
+       
+       PROCEDURE DIVISION.
+      *    Request a DB2 connection
+           SET DB2-CONNECT TO TRUE
+           INITIALIZE DB2-CONNECTION-TOKEN
+           
+           EXEC CICS LINK
+               PROGRAM('DB2ONLN')
+               COMMAREA(DB2-REQUEST-AREA)
+               LENGTH(LENGTH OF DB2-REQUEST-AREA)
+           END-EXEC
+           
+           IF DB2-RESPONSE-CODE = 0
+               DISPLAY 'Connected with token: ' 
+                       DB2-CONNECTION-TOKEN
+           ELSE
+               DISPLAY 'Connection failed: '
+                       DB2-ERROR-MSG
+               DISPLAY 'SQLCODE: ' DB2-SQLCODE
+           END-IF.
+           
+      *    Later, disconnect
+           SET DB2-DISCONNECT TO TRUE
+           
+           EXEC CICS LINK
+               PROGRAM('DB2ONLN')
+               COMMAREA(DB2-REQUEST-AREA)
+               LENGTH(LENGTH OF DB2-REQUEST-AREA)
+           END-EXEC.
+```
 
-### DB2-RESPONSE-CODE - Operation Result
+## Response Codes
 
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 05 | DB2-RESPONSE-CODE | S9(8) COMP | Response code from operation |
-
-#### Response Code Values
-
-| Value | Meaning |
-|-------|---------|
-| 0 | Operation successful |
-| Non-zero | Operation failed (check DB2-ERROR-INFO) |
-
-### DB2-CONNECTION-TOKEN - Session Token
-
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 05 | DB2-CONNECTION-TOKEN | X(16) | Connection token/identifier |
-
-The connection token uniquely identifies a DB2 connection session and can be used for:
-- Tracking active connections
-- Reconnection after failure
-- Audit and logging purposes
-
-### DB2-ERROR-INFO - Error Details
-
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 05 | DB2-ERROR-INFO | | Error information group |
-| 10 | DB2-SQLCODE | S9(9) COMP | DB2 SQLCODE from failed operation |
-| 10 | DB2-ERROR-MSG | X(80) | Descriptive error message |
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| -1 | Connection pool exhausted |
+| Other | SQLCODE from failed operation |
 
 ## Programs Using This Copybook
 
-| Program | Usage | Description |
-|---------|-------|-------------|
-| DB2RECV | Working Storage | DB2 Recovery Manager - uses DB2REQ to communicate with DB2ONLN for connection recovery |
-
-## Usage in DB2RECV
-
-The DB2RECV program uses the DB2REQ copybook in working storage to communicate with the DB2ONLN connection manager:
-
-```cobol
-WORKING-STORAGE SECTION.
-01  WS-DB2-REQUEST.
-    COPY DB2REQ.
-
-PROCEDURE DIVISION.
-    * Attempt to reconnect to DB2
-    MOVE 'C' TO DB2-REQUEST-TYPE OF WS-DB2-REQUEST.
-    
-    EXEC CICS LINK PROGRAM('DB2ONLN')
-              COMMAREA(WS-DB2-REQUEST)
-              LENGTH(LENGTH OF WS-DB2-REQUEST)
-    END-EXEC.
-    
-    IF DB2-RESPONSE-CODE OF WS-DB2-REQUEST = 0
-       SET RECV-SUCCESS TO TRUE
-    ELSE
-       MOVE DB2-SQLCODE OF WS-DB2-REQUEST TO error-field
-    END-IF.
-```
-
-## Usage Examples
-
-### Requesting a DB2 Connection
-
-```cobol
-WORKING-STORAGE SECTION.
-    COPY DB2REQ.
-
-PROCEDURE DIVISION.
-    * Initialize request
-    INITIALIZE DB2-REQUEST-AREA
-    
-    * Request connection
-    SET DB2-CONNECT TO TRUE
-    
-    * Call DB2 connection manager
-    EXEC CICS LINK PROGRAM('DB2ONLN')
-              COMMAREA(DB2-REQUEST-AREA)
-              LENGTH(LENGTH OF DB2-REQUEST-AREA)
-    END-EXEC
-    
-    * Check result
-    IF DB2-RESPONSE-CODE = 0
-        DISPLAY 'Connected successfully'
-        DISPLAY 'Token: ' DB2-CONNECTION-TOKEN
-    ELSE
-        DISPLAY 'Connection failed'
-        DISPLAY 'SQLCODE: ' DB2-SQLCODE
-        DISPLAY 'Error: ' DB2-ERROR-MSG
-    END-IF
-```
-
-### Checking Connection Status
-
-```cobol
-    * Check if DB2 is connected
-    SET DB2-STATUS TO TRUE
-    
-    EXEC CICS LINK PROGRAM('DB2ONLN')
-              COMMAREA(DB2-REQUEST-AREA)
-              LENGTH(LENGTH OF DB2-REQUEST-AREA)
-    END-EXEC
-    
-    IF DB2-RESPONSE-CODE = 0
-        DISPLAY 'DB2 connection is active'
-    ELSE
-        DISPLAY 'DB2 connection is not active'
-    END-IF
-```
-
-### Disconnecting from DB2
-
-```cobol
-    * Request disconnection
-    SET DB2-DISCONNECT TO TRUE
-    
-    EXEC CICS LINK PROGRAM('DB2ONLN')
-              COMMAREA(DB2-REQUEST-AREA)
-              LENGTH(LENGTH OF DB2-REQUEST-AREA)
-    END-EXEC
-    
-    IF DB2-RESPONSE-CODE = 0
-        DISPLAY 'Disconnected successfully'
-        INITIALIZE DB2-CONNECTION-TOKEN
-    ELSE
-        DISPLAY 'Disconnect failed: ' DB2-ERROR-MSG
-    END-IF
-```
-
-### Connection Recovery with Retry Logic
-
-```cobol
-01  WS-RETRY-COUNT    PIC S9(4) COMP VALUE 0.
-01  WS-MAX-RETRIES    PIC S9(4) COMP VALUE 3.
-
-RECOVER-CONNECTION.
-    MOVE 0 TO WS-RETRY-COUNT
-    
-    PERFORM UNTIL WS-RETRY-COUNT >= WS-MAX-RETRIES
-        * Attempt connection
-        SET DB2-CONNECT TO TRUE
-        
-        EXEC CICS LINK PROGRAM('DB2ONLN')
-                  COMMAREA(DB2-REQUEST-AREA)
-                  LENGTH(LENGTH OF DB2-REQUEST-AREA)
-        END-EXEC
-        
-        IF DB2-RESPONSE-CODE = 0
-            EXIT PERFORM
-        ELSE
-            * Wait before retry
-            EXEC CICS DELAY INTERVAL(2) END-EXEC
-            ADD 1 TO WS-RETRY-COUNT
-        END-IF
-    END-PERFORM
-    
-    IF WS-RETRY-COUNT >= WS-MAX-RETRIES
-        DISPLAY 'Connection recovery failed after '
-                WS-MAX-RETRIES ' attempts'
-    END-IF
-    .
-```
+| Program | Description |
+|---------|-------------|
+| [DB2RECV](/docs/programs/DB2RECV) | DB2 Recovery Manager |
 
 ## Related Copybooks
 
-| Copybook | Relationship |
-|----------|--------------|
-| ERRHND | Online error handling - used with DB2REQ for comprehensive error management |
-| SQLCA | SQL Communication Area - provides detailed DB2 diagnostic information |
-| DBPROC | DB2 procedures - batch-oriented DB2 connection handling |
+- [ERRHND](/docs/copybooks/ERRHND) - Online error handling
+- [SQLCA](/docs/copybooks/SQLCA) - SQL Communication Area
 
 ## Technical Notes
 
-### CICS COMMAREA Usage
-
-The DB2-REQUEST-AREA is designed to be passed as a CICS COMMAREA:
-- Compact size (≈108 bytes) suitable for COMMAREA transfer
-- Self-contained request and response in single structure
-- Suitable for EXEC CICS LINK operations
-
-### SQLCODE Capture
-
-The `DB2-SQLCODE` field captures the DB2 SQLCODE when operations fail:
-
-| SQLCODE | Meaning |
-|---------|---------|
-| 0 | Successful execution |
-| +100 | No data found |
-| -803 | Duplicate key |
-| -805 | Program not found in plan |
-| -818 | Timestamp mismatch |
-| -904 | Resource unavailable |
-| -911 | Deadlock or timeout |
-| -913 | Deadlock |
-
-### Connection Token Format
-
-The 16-byte `DB2-CONNECTION-TOKEN` typically contains:
-- CICS task identifier
-- Timestamp component
-- Unique sequence number
-
-This token can be used to:
-- Identify connections in monitoring tools
-- Correlate log entries
-- Support connection pooling strategies
-
-### Error Message Population
-
-The `DB2-ERROR-MSG` field should be populated by the service program (e.g., DB2ONLN) with a human-readable error description. Common formats include:
-```
-DB2 CONNECT FAILED - SUBSYSTEM UNAVAILABLE
-DB2 DISCONNECT FAILED - TRANSACTION ACTIVE
-DB2 STATUS CHECK - CONNECTION NOT ESTABLISHED
-```
-
-### Thread Safety
-
-In CICS, each task has its own working storage copy, making this structure thread-safe. However, when using in a shared context:
-- Initialize before each use
-- Don't cache connection tokens across transactions
-- Clear sensitive data after use
-
-### Integration with DB2RECV
-
-The DB2RECV program demonstrates a recovery pattern using DB2REQ:
-
-1. **Connection Recovery**: Retry DB2 connection with exponential backoff
-2. **Transaction Recovery**: Issue ROLLBACK on transaction failures
-3. **Cursor Recovery**: Log cursor failures and determine retry/abort
-
-This pattern ensures resilient DB2 operations in online programs where connection stability is critical.
+1. **COMP Fields**: Both RESPONSE-CODE and SQLCODE use COMP (binary) for efficient numeric storage
+2. **Token Usage**: The 16-byte connection token should be stored and passed on subsequent operations
+3. **CICS Integration**: Designed for use with EXEC CICS LINK to the DB2ONLN service program
+4. **Error Recovery**: On connection failure, check DB2-SQLCODE for the specific DB2 error

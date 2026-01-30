@@ -1,307 +1,339 @@
 ---
 title: "ERRHAND"
-description: "Standard Error Handling Definitions - provides common error categories, return codes, message structures, and VSAM status handling"
+description: "Standard Error Handling Definitions - common error categories, return codes, and VSAM status handling"
 ---
 
 ## Overview
 
-ERRHAND is a foundational copybook that provides standardized error handling definitions used throughout the batch and online systems. It defines error categories, standard return codes, a structured error message format, and VSAM file status handling constants.
+ERRHAND is a foundational copybook that provides standardized error handling definitions used throughout the application portfolio. It establishes common error categories, standard return codes, error message structures, and VSAM status handling constants.
 
-This copybook is one of the most widely used in the system, included by 19 programs across batch processing, reporting, database operations, utilities, and testing components. It ensures consistent error handling, messaging, and return code conventions across the entire application.
-
-## Usage
-
-```cobol
-WORKING-STORAGE SECTION.
-    COPY ERRHAND.
-```
-
-## Used By
-
-### Batch Programs
-
-| Program | Description |
-|---------|-------------|
-| [BCHCTL00](/docs/programs/BCHCTL00) | Batch Control Processor |
-| [HISTLD00](/docs/programs/HISTLD00) | History Load Program |
-| [PRCSEQ00](/docs/programs/PRCSEQ00) | Process Sequence Manager |
-| [RCVPRC00](/docs/programs/RCVPRC00) | Process Recovery Handler |
-
-### Reporting Programs
-
-| Program | Description |
-|---------|-------------|
-| [RPTAUD00](/docs/programs/RPTAUD00) | Audit Reporting |
-| [RPTPOS00](/docs/programs/RPTPOS00) | Position Reporting |
-| [RPTSTA00](/docs/programs/RPTSTA00) | Status Reporting |
-
-### Database Programs
-
-| Program | Description |
-|---------|-------------|
-| [DB2CMT](/docs/programs/DB2CMT) | DB2 Commit Handler |
-| [DB2CONN](/docs/programs/DB2CONN) | DB2 Connection Manager |
-| [DB2ERR](/docs/programs/DB2ERR) | DB2 Error Handler |
-| [DB2STAT](/docs/programs/DB2STAT) | DB2 Statistics Collector |
-
-### Common Programs
-
-| Program | Description |
-|---------|-------------|
-| [ERRPROC](/docs/programs/ERRPROC) | Error Processing Routine |
-| [PORTTEST](/docs/programs/PORTTEST) | Portfolio Testing |
-| [PORTTRAN](/docs/programs/PORTTRAN) | Portfolio Transaction Processing |
-
-### Utility Programs
-
-| Program | Description |
-|---------|-------------|
-| [TSTGEN00](/docs/programs/TSTGEN00) | Test Data Generation |
-| [TSTVAL00](/docs/programs/TSTVAL00) | Test Validation |
-| [UTLMNT00](/docs/programs/UTLMNT00) | File Maintenance Utility |
-| [UTLMON00](/docs/programs/UTLMON00) | Monitoring Utility |
-| [UTLVAL00](/docs/programs/UTLVAL00) | Validation Utility |
+This copybook is one of the most widely used in the system, included by 19 programs spanning batch processing, database operations, reporting, utilities, and testing. Its consistent use ensures uniform error handling and reporting across all application components.
 
 ## Data Structures
 
-### ERR-CATEGORIES
+### Error Categories (ERR-CATEGORIES)
 
-Predefined error category codes for classifying errors:
+Defines standard two-character codes for classifying errors by source:
 
 | Level | Name | Picture | Value | Description |
 |-------|------|---------|-------|-------------|
 | 01 | ERR-CATEGORIES | - | - | Error category constants |
-| 05 | ERR-CAT-VSAM | X(2) | 'VS' | VSAM file errors |
-| 05 | ERR-CAT-VALID | X(2) | 'VL' | Validation errors |
-| 05 | ERR-CAT-PROC | X(2) | 'PR' | Processing errors |
-| 05 | ERR-CAT-SYSTEM | X(2) | 'SY' | System errors |
+| 05 | ERR-CAT-VSAM | X(2) | `'VS'` | VSAM/File I/O errors |
+| 05 | ERR-CAT-VALID | X(2) | `'VL'` | Validation errors |
+| 05 | ERR-CAT-PROC | X(2) | `'PR'` | Processing/business logic errors |
+| 05 | ERR-CAT-SYSTEM | X(2) | `'SY'` | System-level errors |
 
-```mermaid
-graph LR
-    A[Error Categories] --> B[VS - VSAM]
-    A --> C[VL - Validation]
-    A --> D[PR - Processing]
-    A --> E[SY - System]
-    
-    B --> B1[File I/O errors]
-    C --> C1[Data validation failures]
-    D --> D1[Business logic errors]
-    E --> E1[System/environment errors]
-```
+#### Category Usage Guidelines
 
-### ERR-RETURN-CODES
+| Category | Code | Use For |
+|----------|------|---------|
+| VSAM | `'VS'` | File open/close failures, read/write errors, status codes |
+| Validation | `'VL'` | Data validation failures, format errors, range checks |
+| Processing | `'PR'` | Business rule violations, calculation errors, logic failures |
+| System | `'SY'` | Resource exhaustion, system calls, environment issues |
 
-Standard return code values following IBM conventions:
+### Standard Return Codes (ERR-RETURN-CODES)
+
+Defines the standard mainframe return code values:
 
 | Level | Name | Picture | Value | Description |
 |-------|------|---------|-------|-------------|
 | 01 | ERR-RETURN-CODES | - | - | Return code constants |
 | 05 | ERR-SUCCESS | S9(4) COMP | +0 | Successful completion |
-| 05 | ERR-WARNING | S9(4) COMP | +4 | Warning condition |
-| 05 | ERR-ERROR | S9(4) COMP | +8 | Error condition |
-| 05 | ERR-SEVERE | S9(4) COMP | +12 | Severe error |
-| 05 | ERR-TERMINAL | S9(4) COMP | +16 | Terminal/fatal error |
+| 05 | ERR-WARNING | S9(4) COMP | +4 | Warning - processing completed with issues |
+| 05 | ERR-ERROR | S9(4) COMP | +8 | Error - significant problem occurred |
+| 05 | ERR-SEVERE | S9(4) COMP | +12 | Severe error - critical failure |
+| 05 | ERR-TERMINAL | S9(4) COMP | +16 | Terminal error - immediate abort required |
 
-**Return Code Hierarchy:**
+#### Return Code Guidelines
 
-```mermaid
-graph TD
-    A[Return Codes] --> B["0 - SUCCESS"]
-    A --> C["4 - WARNING"]
-    A --> D["8 - ERROR"]
-    A --> E["12 - SEVERE"]
-    A --> F["16 - TERMINAL"]
-    
-    B --> B1[Processing completed normally]
-    C --> C1[Completed with minor issues]
-    D --> D1[Errors occurred, partial completion]
-    E --> E1[Significant errors, may need intervention]
-    F --> F1[Fatal error, immediate termination]
-```
+| Code | Level | JCL Behavior | Recommended Action |
+|------|-------|--------------|-------------------|
+| 0 | Success | Continue | Normal processing |
+| 4 | Warning | Continue | Review output, may need attention |
+| 8 | Error | Typically stop | Investigate before continuing |
+| 12 | Severe | Stop | Critical issue, manual intervention |
+| 16 | Terminal | Stop | Fatal error, abort job stream |
 
-### ERR-MESSAGE
+### Error Message Structure (ERR-MESSAGE)
 
-Structured error message record for logging and display:
+Provides a standardized structure for error information:
 
-| Level | Name | Picture | Bytes | Description |
-|-------|------|---------|-------|-------------|
-| 01 | ERR-MESSAGE | - | 362 | Complete error message structure |
-| 05 | ERR-TIMESTAMP | - | 18 | Error timestamp group |
-| 10 | ERR-DATE | X(10) | 10 | Error date (YYYY-MM-DD) |
-| 10 | ERR-TIME | X(8) | 8 | Error time (HH:MM:SS) |
-| 05 | ERR-PROGRAM | X(8) | 8 | Program name where error occurred |
-| 05 | ERR-CATEGORY | X(2) | 2 | Error category code |
-| 05 | ERR-CODE | X(4) | 4 | Specific error code |
-| 05 | ERR-SEVERITY | S9(4) COMP | 2 | Severity level (0/4/8/12/16) |
-| 05 | ERR-TEXT | X(80) | 80 | Short error message |
-| 05 | ERR-DETAILS | X(256) | 256 | Detailed error information |
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 01 | ERR-MESSAGE | - | Error message work area |
+| 05 | ERR-TIMESTAMP | - | Timestamp group |
+| 10 | ERR-DATE | X(10) | Error date (YYYY-MM-DD) |
+| 10 | ERR-TIME | X(8) | Error time (HH:MM:SS) |
+| 05 | ERR-PROGRAM | X(8) | Program that detected error |
+| 05 | ERR-CATEGORY | X(2) | Error category code |
+| 05 | ERR-CODE | X(4) | Application-specific error code |
+| 05 | ERR-SEVERITY | S9(4) COMP | Severity level |
+| 05 | ERR-TEXT | X(80) | Short error message |
+| 05 | ERR-DETAILS | X(256) | Extended error details |
 
-**Message Structure Diagram:**
+#### ERR-MESSAGE Layout
 
 ```
-+------------+----------+----------+----------+------+----------+------------+---------------+
-| ERR-DATE   | ERR-TIME | ERR-     | ERR-     | ERR- | ERR-     | ERR-TEXT   | ERR-DETAILS   |
-|            |          | PROGRAM  | CATEGORY | CODE | SEVERITY |            |               |
-+------------+----------+----------+----------+------+----------+------------+---------------+
-|  10 bytes  | 8 bytes  | 8 bytes  | 2 bytes  |4 byte| 2 bytes  | 80 bytes   | 256 bytes     |
-+------------+----------+----------+----------+------+----------+------------+---------------+
+┌─────────────────────────────────────────────────────────────────┐
+│                        ERR-MESSAGE                               │
+├──────────────────────────────────────┬──────────────────────────┤
+│ ERR-TIMESTAMP (18 bytes)             │                          │
+│ ├── ERR-DATE (10)                    │ ERR-PROGRAM (8)          │
+│ └── ERR-TIME (8)                     │                          │
+├──────────────────────────────────────┴──────────────────────────┤
+│ ERR-CATEGORY (2) │ ERR-CODE (4) │ ERR-SEVERITY (2 COMP)        │
+├─────────────────────────────────────────────────────────────────┤
+│ ERR-TEXT (80 bytes)                                             │
+├─────────────────────────────────────────────────────────────────┤
+│ ERR-DETAILS (256 bytes)                                         │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-### ERR-VSAM-STATUSES
+### VSAM Status Handling (ERR-VSAM-STATUSES)
 
-Common VSAM file status codes:
+Provides constants for common VSAM file status codes:
 
 | Level | Name | Picture | Value | Description |
 |-------|------|---------|-------|-------------|
 | 01 | ERR-VSAM-STATUSES | - | - | VSAM status constants |
-| 05 | ERR-VSAM-SUCCESS | X(2) | '00' | Successful operation |
-| 05 | ERR-VSAM-DUPKEY | X(2) | '22' | Duplicate key on WRITE |
-| 05 | ERR-VSAM-NOTFND | X(2) | '23' | Record not found |
-| 05 | ERR-VSAM-EOF | X(2) | '10' | End of file |
+| 05 | ERR-VSAM-SUCCESS | X(2) | `'00'` | Successful operation |
+| 05 | ERR-VSAM-DUPKEY | X(2) | `'22'` | Duplicate key on write |
+| 05 | ERR-VSAM-NOTFND | X(2) | `'23'` | Record not found |
+| 05 | ERR-VSAM-EOF | X(2) | `'10'` | End of file reached |
 
-### ERR-VSAM-MSGS
+### VSAM Error Messages (ERR-VSAM-MSGS)
 
-Predefined error messages for common VSAM errors:
+Pre-defined error messages for common VSAM errors:
 
 | Level | Name | Picture | Value | Description |
 |-------|------|---------|-------|-------------|
-| 01 | ERR-VSAM-MSGS | - | - | VSAM error messages |
-| 05 | ERR-VSAM-22 | X(80) | 'Duplicate record key' | Message for status 22 |
-| 05 | ERR-VSAM-23 | X(80) | 'Record not found' | Message for status 23 |
-| 05 | ERR-OTHER | X(80) | 'Unexpected VSAM error' | Default error message |
+| 01 | ERR-VSAM-MSGS | - | - | VSAM error message texts |
+| 05 | ERR-VSAM-22 | X(80) | `'Duplicate record key'` | Message for status 22 |
+| 05 | ERR-VSAM-23 | X(80) | `'Record not found'` | Message for status 23 |
+| 05 | ERR-OTHER | X(80) | `'Unexpected VSAM error'` | Generic error message |
 
 ## Usage Examples
 
 ### Setting Up an Error Message
 
 ```cobol
-* Populate error message structure
-MOVE FUNCTION CURRENT-DATE TO WS-CURRENT-DATE
-MOVE WS-CURRENT-DATE(1:10) TO ERR-DATE
-MOVE WS-CURRENT-DATE(12:8) TO ERR-TIME
-MOVE 'MYPROG00' TO ERR-PROGRAM
-MOVE ERR-CAT-PROC TO ERR-CATEGORY
-MOVE '0001' TO ERR-CODE
-MOVE ERR-ERROR TO ERR-SEVERITY
-MOVE 'Customer record validation failed' TO ERR-TEXT
-MOVE 'Customer ID: 12345 - Missing required field: NAME'
-    TO ERR-DETAILS
+WORKING-STORAGE SECTION.
+    COPY ERRHAND.
 
-* Call error processor
-CALL 'ERRPROC' USING ERR-MESSAGE
+PROCEDURE DIVISION.
+    ...
+    * Record a validation error
+    ACCEPT ERR-DATE FROM DATE YYYYMMDD
+    ACCEPT ERR-TIME FROM TIME
+    MOVE 'PORTMSTR' TO ERR-PROGRAM
+    MOVE ERR-CAT-VALID TO ERR-CATEGORY
+    MOVE 'V001' TO ERR-CODE
+    MOVE ERR-ERROR TO ERR-SEVERITY
+    MOVE 'Invalid portfolio ID format' TO ERR-TEXT
+    MOVE 'Portfolio ID must be 8 characters, alphanumeric'
+      TO ERR-DETAILS
+    
+    PERFORM WRITE-ERROR-LOG
+    ...
 ```
 
-### Checking VSAM Status
+### Handling VSAM Status Codes
 
 ```cobol
-READ CUSTOMER-FILE
-    INVALID KEY
-        EVALUATE WS-FILE-STATUS
-            WHEN ERR-VSAM-NOTFND
-                MOVE ERR-VSAM-23 TO ERR-TEXT
-                MOVE ERR-CAT-VSAM TO ERR-CATEGORY
-            WHEN ERR-VSAM-DUPKEY
-                MOVE ERR-VSAM-22 TO ERR-TEXT
-                MOVE ERR-CAT-VSAM TO ERR-CATEGORY
-            WHEN OTHER
-                MOVE ERR-OTHER TO ERR-TEXT
-                MOVE ERR-CAT-VSAM TO ERR-CATEGORY
-        END-EVALUATE
-        PERFORM 9000-ERROR-HANDLER
-END-READ
+    READ PORTFOLIO-FILE INTO WS-PORTFOLIO-RECORD
+    
+    EVALUATE WS-FILE-STATUS
+        WHEN ERR-VSAM-SUCCESS
+            CONTINUE
+        WHEN ERR-VSAM-NOTFND
+            MOVE ERR-VSAM-23 TO ERR-TEXT
+            MOVE ERR-CAT-VSAM TO ERR-CATEGORY
+            PERFORM HANDLE-NOT-FOUND
+        WHEN ERR-VSAM-EOF
+            SET END-OF-FILE TO TRUE
+        WHEN OTHER
+            MOVE ERR-OTHER TO ERR-TEXT
+            STRING 'VSAM Status: ' WS-FILE-STATUS
+                   DELIMITED SIZE INTO ERR-DETAILS
+            PERFORM HANDLE-VSAM-ERROR
+    END-EVALUATE
 ```
 
 ### Setting Return Codes
 
 ```cobol
-* Set appropriate return code based on processing results
-EVALUATE TRUE
-    WHEN WS-ERROR-COUNT = 0
-        MOVE ERR-SUCCESS TO RETURN-CODE
-    WHEN WS-ERROR-COUNT < 10
+    * Normal completion
+    MOVE ERR-SUCCESS TO RETURN-CODE
+    GOBACK
+    
+    * Warning condition
+    IF WS-WARNING-COUNT > 0
         MOVE ERR-WARNING TO RETURN-CODE
-    WHEN WS-ERROR-COUNT < 100
+    END-IF
+    
+    * Error handling
+    IF WS-ERROR-OCCURRED
         MOVE ERR-ERROR TO RETURN-CODE
-    WHEN OTHER
+        PERFORM LOG-ERROR-AND-EXIT
+    END-IF
+    
+    * Severe error - abort processing
+    IF WS-CRITICAL-FAILURE
         MOVE ERR-SEVERE TO RETURN-CODE
-END-EVALUATE
+        DISPLAY 'CRITICAL ERROR - ABORTING'
+        PERFORM EMERGENCY-CLEANUP
+        GOBACK
+    END-IF
 ```
 
-### Categorizing Errors
+### Calling ERRPROC Service
 
 ```cobol
-* Set error category based on error type
-EVALUATE TRUE
-    WHEN WS-FILE-ERROR
-        MOVE ERR-CAT-VSAM TO ERR-CATEGORY
-    WHEN WS-DATA-INVALID
-        MOVE ERR-CAT-VALID TO ERR-CATEGORY
-    WHEN WS-PROCESS-ERROR
-        MOVE ERR-CAT-PROC TO ERR-CATEGORY
-    WHEN OTHER
-        MOVE ERR-CAT-SYSTEM TO ERR-CATEGORY
-END-EVALUATE
+01  WS-ERROR-REQUEST.
+    05  WS-PROGRAM-ID      PIC X(8).
+    05  WS-CATEGORY        PIC X(2).
+    05  WS-ERROR-CODE      PIC X(4).
+    05  WS-SEVERITY        PIC S9(4) COMP.
+    05  WS-ERROR-TEXT      PIC X(80).
+    05  WS-ERROR-DETAILS   PIC X(256).
+    05  WS-RETURN-CODE     PIC S9(4) COMP.
+
+PROCEDURE DIVISION.
+    ...
+    * Log error via ERRPROC service
+    MOVE 'PORTUPDT' TO WS-PROGRAM-ID
+    MOVE ERR-CAT-PROC TO WS-CATEGORY
+    MOVE 'P001' TO WS-ERROR-CODE
+    MOVE ERR-ERROR TO WS-SEVERITY
+    MOVE 'Update failed - record locked' TO WS-ERROR-TEXT
+    MOVE 'Portfolio: ' & PORT-ID & ' locked by user ' & LOCK-USER
+      TO WS-ERROR-DETAILS
+    
+    CALL 'ERRPROC' USING WS-ERROR-REQUEST
+    ...
 ```
 
-## Return Code Guidelines
+## Error Code Standards
 
-| Code | When to Use | JCL COND Parameter |
-|------|-------------|-------------------|
-| 0 | All processing completed successfully | COND=(0,NE) |
-| 4 | Minor issues, processing completed | COND=(4,LT) |
-| 8 | Errors occurred, may need review | COND=(8,LT) |
-| 12 | Serious errors, manual intervention needed | COND=(12,LT) |
-| 16 | Fatal error, job should stop | COND=(16,LT) |
+### Recommended Error Code Format
 
-## VSAM Status Code Reference
+Error codes in ERR-CODE should follow a consistent pattern:
 
-| Status | Meaning | Typical Cause |
-|--------|---------|---------------|
-| 00 | Success | Normal operation |
-| 02 | Duplicate alternate key | Non-unique AIX |
-| 10 | End of file | Sequential read past last record |
-| 21 | Sequence error | Key out of order |
-| 22 | Duplicate primary key | WRITE with existing key |
-| 23 | Record not found | READ/DELETE with non-existent key |
-| 24 | Key outside boundary | Key value too large |
-| 35 | File not found | Missing DD or dataset |
-| 39 | Attribute mismatch | DCB doesn't match file |
-| 41 | File already open | Duplicate OPEN |
-| 42 | File not open | I/O before OPEN |
-| 46 | No current record | READ NEXT without position |
-| 47 | READ not permitted | Wrong open mode |
-| 48 | WRITE not permitted | Wrong open mode |
+| Position | Content | Example |
+|----------|---------|---------|
+| 1 | Category indicator | V=Validation, P=Processing, F=File, S=System |
+| 2-4 | Numeric sequence | 001-999 |
+
+### Example Error Codes
+
+| Code | Category | Description |
+|------|----------|-------------|
+| V001 | Validation | Invalid field format |
+| V002 | Validation | Required field missing |
+| V003 | Validation | Value out of range |
+| P001 | Processing | Record locked |
+| P002 | Processing | Business rule violation |
+| P003 | Processing | Calculation error |
+| F001 | File | File not found |
+| F002 | File | I/O error |
+| F003 | File | End of file unexpected |
+| S001 | System | Resource unavailable |
+| S002 | System | Timeout |
+| S003 | System | Memory allocation failed |
+
+## Programs Using This Copybook
+
+ERRHAND is used by 19 programs across the application:
+
+### Batch Processing
+| Program | Purpose |
+|---------|---------|
+| BCHCTL00 | Batch control management |
+| HISTLD00 | History data loading |
+| PRCSEQ00 | Process sequencing |
+| RCVPRC00 | Recovery processing |
+
+### Reporting
+| Program | Purpose |
+|---------|---------|
+| RPTAUD00 | Audit reporting |
+| RPTPOS00 | Position reporting |
+| RPTSTA00 | Status reporting |
+
+### Database Operations
+| Program | Purpose |
+|---------|---------|
+| DB2CMT | DB2 commit handling |
+| DB2CONN | DB2 connection management |
+| DB2ERR | DB2 error handling |
+| DB2STAT | DB2 statistics |
+
+### Core Services
+| Program | Purpose |
+|---------|---------|
+| ERRPROC | Error processing service |
+
+### Portfolio Processing
+| Program | Purpose |
+|---------|---------|
+| PORTTEST | Portfolio testing |
+| PORTTRAN | Portfolio transactions |
+
+### Testing & Utilities
+| Program | Purpose |
+|---------|---------|
+| TSTGEN00 | Test data generation |
+| TSTVAL00 | Test validation |
+| UTLMNT00 | Maintenance utility |
+| UTLMON00 | Monitoring utility |
+| UTLVAL00 | Validation utility |
 
 ## Related Copybooks
 
 | Copybook | Relationship |
-|----------|-------------|
-| **RTNCODE** | Extended return code management with logging |
-| **ERRHND** | Online error handling (CICS) |
-| **DBPROC** | DB2 error handling procedures |
+|----------|--------------|
+| RTNCODE | Complements ERRHAND with return code management |
+| ERRHND | Online/CICS version of error handling (different copybook) |
+| RETHND | Return handling for checkpoint/restart |
 
-## Design Notes
+## Technical Notes
 
-1. **Centralized Constants**: All error-related constants are defined once, ensuring consistency across programs.
+### COBOL Constructs Used
 
-2. **COMP Fields**: Return codes use `S9(4) COMP` (binary) for efficient comparison and assignment to RETURN-CODE.
+- **VALUE Clause**: All constants are initialized with VALUE clauses, making them immediately usable without runtime initialization.
 
-3. **Fixed-Length Messages**: ERR-TEXT (80) and ERR-DETAILS (256) provide standardized lengths for logging and display.
+- **COMP Fields**: ERR-SEVERITY and return code fields use COMP (binary) format for efficient comparison and arithmetic operations.
 
-4. **IBM Conventions**: Return code values follow IBM standard conventions (0, 4, 8, 12, 16) for JCL COND parameter compatibility.
+- **Group-Level Organization**: Related fields are grouped (ERR-CATEGORIES, ERR-RETURN-CODES, etc.) for logical organization and potential group-level operations.
 
-5. **Extensible Categories**: The two-character category code allows for additional categories without changing the structure.
+### Record Size
 
-6. **VSAM Focus**: Common VSAM status codes are included as they are the most frequently encountered file errors.
+| Structure | Size (bytes) |
+|-----------|--------------|
+| ERR-CATEGORIES | 8 |
+| ERR-RETURN-CODES | ~10 (COMP fields) |
+| ERR-MESSAGE | ~370 |
+| ERR-VSAM-STATUSES | 8 |
+| ERR-VSAM-MSGS | 240 |
 
-## Best Practices
+### JCL Return Code Handling
 
-1. **Always Initialize**: Clear ERR-MESSAGE before populating to avoid residual data.
+The return codes defined in this copybook align with standard JCL COND parameter conventions:
 
-2. **Set All Fields**: Populate program name, category, and timestamp for every error.
+```jcl
+//STEP02   EXEC PGM=NEXTPROG,
+//         COND=(8,LT)    Skip if prior RC >= 8
+//STEP03   EXEC PGM=CLEANUP,
+//         COND=(4,LT)    Skip if prior RC >= 4
+//STEP04   EXEC PGM=ALWAYS,
+//         COND=EVEN      Run even if prior steps failed
+```
 
-3. **Use Constants**: Reference ERR-CAT-* and ERR-SUCCESS/WARNING/ERROR instead of literals.
+### Best Practices
 
-4. **Meaningful Details**: Use ERR-DETAILS for diagnostic information (key values, record contents, etc.).
-
-5. **Consistent Severity**: Match ERR-SEVERITY to the actual RETURN-CODE being set.
+1. **Always use constants**: Use ERR-SUCCESS, ERR-ERROR, etc. instead of literal values
+2. **Populate all fields**: Fill in ERR-MESSAGE completely for comprehensive error logging
+3. **Use appropriate categories**: Choose the correct ERR-CAT-* for accurate error classification
+4. **Include context**: Put key values and identifiers in ERR-DETAILS for debugging
+5. **Log before exit**: Write error information before setting return code and exiting

@@ -1,18 +1,19 @@
 ---
 title: "RPTAUD00"
-description: "Batch audit report generator that produces comprehensive system audit reports including security audit trails, error summaries, and control verification"
+description: "Audit Report Generator - produces comprehensive audit and error reports from system logs"
 ---
 
 ## Overview
 
-RPTAUD00 is a batch report generation program that produces comprehensive system audit reports. The program reads from two indexed VSAM files—the audit trail log and the error log—and generates a formatted report containing security audit information, process audit details, error summaries, and control verification data.
+RPTAUD00 is a batch report generation program that produces comprehensive audit reports from system audit trails and error logs. The program consolidates information from multiple indexed VSAM files and generates a formatted sequential report file.
 
-The program serves as a critical component of the system's compliance and operational monitoring infrastructure, enabling administrators and auditors to review system activity, track user actions, identify errors, and verify control processes. The generated report follows a standard 132-character fixed-length record format suitable for printing or archival.
+The report includes:
+- **Security audit trails** - User actions, login/logout events, and access patterns
+- **Process audit reporting** - Transaction processing history and system events
+- **Error summary reporting** - Consolidated error information across programs
+- **Control verification** - Summary statistics for audit compliance
 
-Key features include:
-- **Security Audit Trail Processing**: Reads and summarizes audit records capturing user logins, transactions, and system events
-- **Error Log Analysis**: Processes error records and generates error summaries by category
-- **Control Verification**: Provides control totals and summary statistics for audit purposes
+This program is typically run as part of daily or periodic batch processing to provide operations and compliance teams with visibility into system activity and errors.
 
 ## Program Structure
 
@@ -21,41 +22,27 @@ graph TD
     A[0000-MAIN] --> B[1000-INITIALIZE]
     A --> C[2000-PROCESS-REPORT]
     A --> D[3000-CLEANUP]
+    A --> E[GOBACK]
     
-    B --> E[1100-OPEN-FILES]
-    B --> F[1200-WRITE-HEADERS]
+    B --> B1[1100-OPEN-FILES]
+    B --> B2[1200-WRITE-HEADERS]
+    B1 -->|Error| ERR[9999-ERROR-HANDLER]
     
-    E -->|Error| G[9999-ERROR-HANDLER]
+    C --> C1[2100-PROCESS-AUDIT-TRAIL]
+    C --> C2[2200-PROCESS-ERROR-LOG]
+    C --> C3[2300-WRITE-SUMMARY]
     
-    C --> H[2100-PROCESS-AUDIT-TRAIL]
-    C --> I[2200-PROCESS-ERROR-LOG]
-    C --> J[2300-WRITE-SUMMARY]
+    C1 --> C1A[2110-READ-AUDIT-RECORDS]
+    C1 --> C1B[2120-SUMMARIZE-AUDIT]
     
-    H --> K[2110-READ-AUDIT-RECORDS]
-    H --> L[2120-SUMMARIZE-AUDIT]
+    C2 --> C2A[2210-READ-ERROR-RECORDS]
+    C2 --> C2B[2220-SUMMARIZE-ERRORS]
     
-    I --> M[2210-READ-ERROR-RECORDS]
-    I --> N[2220-SUMMARIZE-ERRORS]
+    C3 --> C3A[2310-WRITE-AUDIT-SUMMARY]
+    C3 --> C3B[2320-WRITE-ERROR-SUMMARY]
+    C3 --> C3C[2330-WRITE-CONTROL-SUMMARY]
     
-    J --> O[2310-WRITE-AUDIT-SUMMARY]
-    J --> P[2320-WRITE-ERROR-SUMMARY]
-    J --> Q[2330-WRITE-CONTROL-SUMMARY]
-    
-    subgraph "Input Files"
-        R[(AUDIT-FILE)]
-        S[(ERROR-FILE)]
-    end
-    
-    subgraph "Output"
-        T[REPORT-FILE]
-    end
-    
-    K -.->|Read| R
-    M -.->|Read| S
-    F -.->|Write| T
-    O -.->|Write| T
-    P -.->|Write| T
-    Q -.->|Write| T
+    D --> D1[CLOSE Files]
 ```
 
 ## Data Structures
@@ -66,99 +53,113 @@ graph TD
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | WS-FILE-STATUS | - | Group for all file status codes |
-| 05 | WS-AUDIT-STATUS | XX | Status code for AUDIT-FILE |
-| 05 | WS-ERROR-STATUS | XX | Status code for ERROR-FILE |
-| 05 | WS-REPORT-STATUS | XX | Status code for REPORT-FILE |
+| 01 | WS-FILE-STATUS | - | File status group |
+| 05 | WS-AUDIT-STATUS | XX | VSAM status for AUDIT-FILE |
+| 05 | WS-ERROR-STATUS | XX | VSAM status for ERROR-FILE |
+| 05 | WS-REPORT-STATUS | XX | Status for REPORT-FILE |
 
-#### Report Header Lines
+#### Report Headers
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | WS-REPORT-HEADERS | - | Group for report headers |
-| 05 | WS-HEADER1 | X(132) | Border line (asterisks) |
-| 05 | WS-HEADER2 | X(132) | Report title "SYSTEM AUDIT REPORT" |
-| 05 | WS-HEADER3 | X(132) | Report date line |
-| 10 | WS-REPORT-DATE | X(10) | Date value from system |
+| 01 | WS-REPORT-HEADERS | - | Report header group |
+| 05 | WS-HEADER1 | X(132) | Border line (all asterisks) |
+| 05 | WS-HEADER2 | X(132) | Title line: "SYSTEM AUDIT REPORT" |
+| 05 | WS-HEADER3 | - | Date line |
+| 10 | WS-REPORT-DATE | X(10) | Report date from system |
 
 #### Audit Detail Line
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | WS-AUDIT-DETAIL | - | Audit record print line |
-| 05 | WS-AUD-TIMESTAMP | X(26) | Timestamp of audit event |
-| 05 | WS-AUD-PROGRAM | X(8) | Program that generated the audit |
-| 05 | WS-AUD-TYPE | X(10) | Type of audit event |
+| 01 | WS-AUDIT-DETAIL | - | Audit record display line |
+| 05 | WS-AUD-TIMESTAMP | X(26) | Audit event timestamp |
+| 05 | WS-AUD-PROGRAM | X(8) | Source program name |
+| 05 | WS-AUD-TYPE | X(10) | Audit type description |
 | 05 | WS-AUD-MESSAGE | X(80) | Audit message text |
 
 #### Error Detail Line
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | WS-ERROR-DETAIL | - | Error record print line |
-| 05 | WS-ERR-TIMESTAMP | X(26) | Timestamp of error |
-| 05 | WS-ERR-PROGRAM | X(8) | Program that generated the error |
+| 01 | WS-ERROR-DETAIL | - | Error record display line |
+| 05 | WS-ERR-TIMESTAMP | X(26) | Error event timestamp |
+| 05 | WS-ERR-PROGRAM | X(8) | Source program name |
 | 05 | WS-ERR-CODE | X(4) | Error code |
 | 05 | WS-ERR-MESSAGE | X(80) | Error message text |
 
-### File Section (from Copybooks)
+### File Section Records
 
 #### AUDIT-RECORD (from AUDITLOG copybook)
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | AUDIT-RECORD | - | Complete audit trail record |
-| 05 | AUD-HEADER | - | Audit record header group |
+| 01 | AUDIT-RECORD | - | Audit trail record |
+| 05 | AUD-HEADER | - | Header information |
 | 10 | AUD-TIMESTAMP | X(26) | Event timestamp |
 | 10 | AUD-SYSTEM-ID | X(8) | System identifier |
-| 10 | AUD-USER-ID | X(8) | User who performed action |
+| 10 | AUD-USER-ID | X(8) | User identifier |
 | 10 | AUD-PROGRAM | X(8) | Program name |
 | 10 | AUD-TERMINAL | X(8) | Terminal ID |
 | 05 | AUD-TYPE | X(4) | Audit type code |
 | 05 | AUD-ACTION | X(8) | Action performed |
-| 05 | AUD-STATUS | X(4) | Result status |
-| 05 | AUD-KEY-INFO | - | Key information group |
-| 10 | AUD-PORTFOLIO-ID | X(8) | Portfolio identifier |
+| 05 | AUD-STATUS | X(4) | Status code |
+| 05 | AUD-KEY-INFO | - | Key information |
+| 10 | AUD-PORTFOLIO-ID | X(8) | Portfolio ID |
 | 10 | AUD-ACCOUNT-NO | X(10) | Account number |
 | 05 | AUD-BEFORE-IMAGE | X(100) | Data before change |
 | 05 | AUD-AFTER-IMAGE | X(100) | Data after change |
-| 05 | AUD-MESSAGE | X(100) | Audit message |
+| 05 | AUD-MESSAGE | X(100) | Additional message |
 
-**Audit Type Values (88-levels):**
+##### Audit Type Values (AUD-TYPE)
 
-| Condition | Value | Description |
-|-----------|-------|-------------|
-| AUD-TRANSACTION | 'TRAN' | Transaction audit |
-| AUD-USER-ACTION | 'USER' | User action audit |
-| AUD-SYSTEM-EVENT | 'SYST' | System event audit |
+| Value | 88-Level Name | Meaning |
+|-------|---------------|---------|
+| `'TRAN'` | AUD-TRANSACTION | Transaction event |
+| `'USER'` | AUD-USER-ACTION | User-initiated action |
+| `'SYST'` | AUD-SYSTEM-EVENT | System event |
 
-**Audit Action Values (88-levels):**
+##### Audit Action Values (AUD-ACTION)
 
-| Condition | Value | Description |
-|-----------|-------|-------------|
-| AUD-CREATE | 'CREATE' | Record creation |
-| AUD-UPDATE | 'UPDATE' | Record update |
-| AUD-DELETE | 'DELETE' | Record deletion |
-| AUD-INQUIRE | 'INQUIRE' | Record inquiry |
-| AUD-LOGIN | 'LOGIN' | User login |
-| AUD-LOGOUT | 'LOGOUT' | User logout |
-| AUD-STARTUP | 'STARTUP' | System startup |
-| AUD-SHUTDOWN | 'SHUTDOWN' | System shutdown |
+| Value | 88-Level Name | Meaning |
+|-------|---------------|---------|
+| `'CREATE'` | AUD-CREATE | Record created |
+| `'UPDATE'` | AUD-UPDATE | Record updated |
+| `'DELETE'` | AUD-DELETE | Record deleted |
+| `'INQUIRE'` | AUD-INQUIRE | Record viewed |
+| `'LOGIN'` | AUD-LOGIN | User login |
+| `'LOGOUT'` | AUD-LOGOUT | User logout |
+| `'STARTUP'` | AUD-STARTUP | System startup |
+| `'SHUTDOWN'` | AUD-SHUTDOWN | System shutdown |
+
+##### Audit Status Values (AUD-STATUS)
+
+| Value | 88-Level Name | Meaning |
+|-------|---------------|---------|
+| `'SUCC'` | AUD-SUCCESS | Successful operation |
+| `'FAIL'` | AUD-FAILURE | Failed operation |
+| `'WARN'` | AUD-WARNING | Warning issued |
 
 #### ERR-MESSAGE (from ERRHAND copybook)
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | ERR-MESSAGE | - | Error message structure |
-| 05 | ERR-TIMESTAMP | - | Error timestamp group |
+| 01 | ERR-MESSAGE | - | Error message record |
+| 05 | ERR-TIMESTAMP | - | Timestamp group |
 | 10 | ERR-DATE | X(10) | Error date |
 | 10 | ERR-TIME | X(8) | Error time |
-| 05 | ERR-PROGRAM | X(8) | Program name |
-| 05 | ERR-CATEGORY | X(2) | Error category code |
-| 05 | ERR-CODE | X(4) | Specific error code |
+| 05 | ERR-PROGRAM | X(8) | Source program |
+| 05 | ERR-CATEGORY | X(2) | Error category |
+| 05 | ERR-CODE | X(4) | Error code |
 | 05 | ERR-SEVERITY | S9(4) COMP | Severity level |
 | 05 | ERR-TEXT | X(80) | Error text |
-| 05 | ERR-DETAILS | X(256) | Extended error details |
+| 05 | ERR-DETAILS | X(256) | Extended details |
+
+#### REPORT-RECORD
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 01 | REPORT-RECORD | X(132) | Output report line (132 columns) |
 
 ## File I/O
 
@@ -168,126 +169,162 @@ graph TD
 
 | Property | Value |
 |----------|-------|
-| Assign To | AUDITLOG |
-| Organization | Indexed (VSAM KSDS) |
-| Access Mode | Sequential |
+| DD Name | AUDITLOG |
+| Organization | INDEXED (VSAM KSDS) |
+| Access Mode | SEQUENTIAL |
 | Record Key | AUD-KEY |
 | File Status | WS-AUDIT-STATUS |
+| Open Mode | INPUT |
 
-The audit file is an indexed VSAM file accessed sequentially to read all audit trail records in key order.
+Contains the system audit trail records with user actions, transactions, and system events.
 
 #### ERROR-FILE
 
 | Property | Value |
 |----------|-------|
-| Assign To | ERRLOG |
-| Organization | Indexed (VSAM KSDS) |
-| Access Mode | Sequential |
+| DD Name | ERRLOG |
+| Organization | INDEXED (VSAM KSDS) |
+| Access Mode | SEQUENTIAL |
 | Record Key | ERR-KEY |
 | File Status | WS-ERROR-STATUS |
+| Open Mode | INPUT |
 
-The error file is an indexed VSAM file accessed sequentially to read all error log records in key order.
+Contains error log records captured from various system programs.
 
-### Output File
+### Output Files
 
 #### REPORT-FILE
 
 | Property | Value |
 |----------|-------|
-| Assign To | RPTFILE |
-| Organization | Sequential |
-| Recording Mode | Fixed (F) |
-| Record Length | 132 characters |
-| Block Contains | 0 (system-determined) |
+| DD Name | RPTFILE |
+| Organization | SEQUENTIAL |
+| Recording Mode | F (Fixed) |
+| Record Length | 132 bytes |
 | File Status | WS-REPORT-STATUS |
+| Open Mode | OUTPUT |
 
-The report file is a sequential file with 132-character fixed-length records, suitable for standard print output.
+The generated audit report output file, formatted for 132-column printing.
 
-### I/O Operations Summary
+### File Operations Summary
 
-| Paragraph | File | Operation | Mode |
-|-----------|------|-----------|------|
-| 1100-OPEN-FILES | AUDIT-FILE | OPEN | INPUT |
-| 1100-OPEN-FILES | ERROR-FILE | OPEN | INPUT |
-| 1100-OPEN-FILES | REPORT-FILE | OPEN | OUTPUT |
-| 1200-WRITE-HEADERS | REPORT-FILE | WRITE | FROM WS-HEADER1/2/3 |
-| 3000-CLEANUP | AUDIT-FILE | CLOSE | - |
-| 3000-CLEANUP | ERROR-FILE | CLOSE | - |
-| 3000-CLEANUP | REPORT-FILE | CLOSE | - |
+| Paragraph | File | Operation |
+|-----------|------|-----------|
+| 1100-OPEN-FILES | AUDIT-FILE | OPEN INPUT |
+| 1100-OPEN-FILES | ERROR-FILE | OPEN INPUT |
+| 1100-OPEN-FILES | REPORT-FILE | OPEN OUTPUT |
+| 1200-WRITE-HEADERS | REPORT-RECORD | WRITE (3 times) |
+| 3000-CLEANUP | AUDIT-FILE | CLOSE |
+| 3000-CLEANUP | ERROR-FILE | CLOSE |
+| 3000-CLEANUP | REPORT-FILE | CLOSE |
 
 ## Control Flow
 
-### Main Processing Flow
+### 0000-MAIN
 
-1. **0000-MAIN**: Entry point that orchestrates the three major processing phases: initialization, report processing, and cleanup. After all processing completes, the program returns to the calling environment via GOBACK.
+The main entry point orchestrates the three major processing phases:
+1. Initialize - Opens files and writes report headers
+2. Process - Reads input files and generates report content
+3. Cleanup - Closes all files and returns to caller
 
-2. **1000-INITIALIZE**: Prepares the program for processing by opening all required files and writing the report header lines.
+### 1000-INITIALIZE
 
-3. **2000-PROCESS-REPORT**: Main processing paragraph that coordinates audit trail processing, error log processing, and summary generation.
+Performs startup activities:
+- **1100-OPEN-FILES**: Opens all three files with error checking. If any file fails to open, the program moves an error message and invokes the error handler, which terminates processing with return code 12.
+- **1200-WRITE-HEADERS**: Accepts the current date from the system and writes the three report header lines.
 
-4. **3000-CLEANUP**: Closes all open files before program termination.
+### 2000-PROCESS-REPORT
 
-### Initialization Phase
+The main processing paragraph that generates the report body:
+- **2100-PROCESS-AUDIT-TRAIL**: Processes the audit file
+  - **2110-READ-AUDIT-RECORDS**: Reads and processes audit records
+  - **2120-SUMMARIZE-AUDIT**: Summarizes audit activity
+- **2200-PROCESS-ERROR-LOG**: Processes the error file
+  - **2210-READ-ERROR-RECORDS**: Reads and processes error records
+  - **2220-SUMMARIZE-ERRORS**: Summarizes error activity
+- **2300-WRITE-SUMMARY**: Writes summary sections
+  - **2310-WRITE-AUDIT-SUMMARY**: Writes audit summary
+  - **2320-WRITE-ERROR-SUMMARY**: Writes error summary
+  - **2330-WRITE-CONTROL-SUMMARY**: Writes control totals
 
-- **1100-OPEN-FILES**: Opens all three files (AUDIT-FILE for input, ERROR-FILE for input, REPORT-FILE for output). Each file open is validated against file status `'00'`. If any file fails to open, an error message is displayed and the program terminates with return code 12.
+### 3000-CLEANUP
 
-- **1200-WRITE-HEADERS**: Accepts the current system date using `ACCEPT FROM DATE` and writes three header lines to the report: a border line of asterisks, the report title, and the report date.
+Closes all three files in a single CLOSE statement.
 
-### Report Processing Phase
+### 9999-ERROR-HANDLER
 
-- **2100-PROCESS-AUDIT-TRAIL**: Coordinates reading audit records (2110-READ-AUDIT-RECORDS) and summarizing the audit data (2120-SUMMARIZE-AUDIT).
+Error handling routine that:
+1. Displays the error message
+2. Sets RETURN-CODE to 12 (severe error)
+3. Terminates the program via GOBACK
 
-- **2200-PROCESS-ERROR-LOG**: Coordinates reading error records (2210-READ-ERROR-RECORDS) and summarizing the error data (2220-SUMMARIZE-ERRORS).
+## Report Format
 
-- **2300-WRITE-SUMMARY**: Writes the three summary sections to the report:
-  - **2310-WRITE-AUDIT-SUMMARY**: Audit trail summary statistics
-  - **2320-WRITE-ERROR-SUMMARY**: Error log summary statistics
-  - **2330-WRITE-CONTROL-SUMMARY**: Control totals and verification data
+The output report has a 132-character fixed-length record format suitable for mainframe printing:
 
-### Error Handling
-
-- **9999-ERROR-HANDLER**: Centralized error handler that displays the error message stored in WS-ERROR-MESSAGE, sets the return code to 12 (severe error), and terminates the program via GOBACK.
+```
+************************************************************...
+                    SYSTEM AUDIT REPORT
+REPORT DATE: YYYY-MM-DD
+...
+[Audit Trail Detail Section]
+...
+[Error Log Detail Section]
+...
+[Audit Summary Section]
+[Error Summary Section]
+[Control Summary Section]
+```
 
 ## Dependencies
 
 ### Copybooks
 
-- [AUDITLOG](/docs/copybooks/AUDITLOG) - Audit trail record definitions with audit types, actions, and status codes
-- [ERRHAND](/docs/copybooks/ERRHAND) - Standard error handling definitions including error categories and VSAM status handling
-- [RTNCODE](/docs/copybooks/RTNCODE) - Return code management structure for tracking program return codes
+- **AUDITLOG** - Audit trail record structure with audit types, actions, and status codes
+- **ERRHAND** - Error handling definitions including categories, return codes, and message structures
+- **RTNCODE** - Return code management structure for program status tracking
 
 ### Called Programs
 
-This program does not call any external programs.
+None - this is a standalone batch report program.
 
 ### Related Programs
 
-Programs that share copybooks or have caller/callee relationships with this program:
-- [AUDPROC](/docs/programs/AUDPROC) - Also uses AUDITLOG copybook (audit processing)
-- [PORTTRAN](/docs/programs/PORTTRAN) - Also uses AUDITLOG and ERRHAND copybooks
-- [BCHCTL00](/docs/programs/BCHCTL00), [HISTLD00](/docs/programs/HISTLD00), [PRCSEQ00](/docs/programs/PRCSEQ00), [RCVPRC00](/docs/programs/RCVPRC00) - Also use ERRHAND copybook
-- [RPTPOS00](/docs/programs/RPTPOS00), [RPTSTA00](/docs/programs/RPTSTA00) - Also use ERRHAND and RTNCODE copybooks (related report programs)
+Programs that write to the audit log (AUDITLOG) or error log (ERRLOG) are data sources for this report. Any program using the AUDITLOG or ERRHAND copybooks to log events will have its data included in reports generated by RPTAUD00.
 
-## Return Codes
+## JCL Requirements
 
-| Code | Description |
-|------|-------------|
+Sample JCL for executing RPTAUD00:
+
+```jcl
+//RPTAUD00 EXEC PGM=RPTAUD00
+//STEPLIB  DD DSN=your.loadlib,DISP=SHR
+//AUDITLOG DD DSN=your.audit.vsam.file,DISP=SHR
+//ERRLOG   DD DSN=your.error.vsam.file,DISP=SHR
+//RPTFILE  DD DSN=your.report.output,
+//            DISP=(NEW,CATLG,DELETE),
+//            DCB=(RECFM=FB,LRECL=132,BLKSIZE=0),
+//            SPACE=(TRK,(10,5),RLSE)
+//SYSOUT   DD SYSOUT=*
+```
+
+## Technical Notes
+
+### COBOL Constructs Used
+
+- **ACCEPT FROM DATE**: Retrieves the current system date in YYMMDD format and stores it in WS-REPORT-DATE.
+
+- **WRITE FROM**: Writes a record to the file using data from a working storage variable rather than the file's record area directly.
+
+- **Multiple CLOSE**: COBOL allows closing multiple files in a single CLOSE statement by listing them sequentially.
+
+- **RECORDING MODE IS F**: Specifies fixed-length records in the file description.
+
+- **Sequential Access on Indexed File**: Although the AUDIT-FILE and ERROR-FILE are indexed (VSAM KSDS), they are opened with sequential access mode for reading all records in key order.
+
+### Return Codes
+
+| Code | Meaning |
+|------|---------|
 | 0 | Successful completion |
 | 12 | Severe error (file open failure) |
-
-## Report Format
-
-The generated report follows this structure:
-
-```
-************************************************************************...
-                                        SYSTEM AUDIT REPORT
-REPORT DATE:  YYYY-MM-DD
-[Audit Trail Section]
-[Error Log Section]
-[Audit Summary]
-[Error Summary]
-[Control Summary]
-```
-
-Each section contains detailed records and summary statistics appropriate for audit and compliance review.

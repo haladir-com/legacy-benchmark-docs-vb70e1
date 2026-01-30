@@ -1,344 +1,352 @@
 ---
 title: "RETHND"
-description: "Return Code Handling Definitions - provides structured return status, error details, and recovery action controls"
+description: "Return Code Handling Definitions - structured return status, error details, and action control for subprograms"
 ---
 
 ## Overview
 
-RETHND is a copybook that provides comprehensive return code handling definitions for COBOL programs. It defines a structured approach to capturing and communicating error information, including return codes, reason codes, error locations, error types, and recovery actions.
+RETHND is a copybook that provides comprehensive return code handling definitions for subprogram communication. It defines a structured approach to passing return status, error details, and action directives between calling and called programs.
 
-Unlike simpler error handling copybooks that only define constants, RETHND provides a complete error context structure that captures where an error occurred, what type of error it is, and what action should be taken in response. This makes it particularly useful for complex batch processing scenarios where detailed error tracking and retry logic are required.
-
-## Usage
-
-```cobol
-WORKING-STORAGE SECTION.
-    COPY RETHND.
-```
-
-## Used By
-
-| Program | Description |
-|---------|-------------|
-| CKPRST | Checkpoint/Restart Processing - uses RETURN-STATUS for checkpoint operation results |
+This copybook is designed for use with service-oriented programs where detailed error information needs to flow back to the caller. It complements the simpler ERRHAND copybook by providing:
+- **Structured return status** with reason codes and module identification
+- **Detailed error location** tracking (program, paragraph, routine)
+- **Error classification** by type (validation, processing, database, file, security)
+- **Action control** for determining how to proceed after errors
+- **Standard error codes** for common error conditions
 
 ## Data Structures
 
-### RETURN-HANDLING (01 Level)
+### Return Handling (RETURN-HANDLING)
 
-The main structure containing all return code handling fields.
+The main structure for return information passed via linkage section:
 
 ```
-+------------------+------------------+------------------+
-|  RETURN-STATUS   | RETURN-DETAILS   | RETURN-ACTIONS   |
-|   (22 bytes)     |   (113 bytes)    |    (5 bytes)     |
-+------------------+------------------+------------------+
+┌─────────────────────────────────────────────────────────────────┐
+│                      RETURN-HANDLING                             │
+├─────────────────────────────────────────────────────────────────┤
+│ RETURN-STATUS                                                   │
+│ ├── RETURN-CODE (S9(4) COMP)                                    │
+│ ├── REASON-CODE (S9(4) COMP)                                    │
+│ ├── MODULE-ID (X(8))                                            │
+│ └── FUNCTION-ID (X(8))                                          │
+├─────────────────────────────────────────────────────────────────┤
+│ RETURN-DETAILS                                                  │
+│ ├── ERROR-LOCATION                                              │
+│ │   ├── PROGRAM-NAME (X(8))                                     │
+│ │   ├── PARAGRAPH-NAME (X(8))                                   │
+│ │   └── ERROR-ROUTINE (X(8))                                    │
+│ ├── ERROR-INFO                                                  │
+│ │   ├── ERROR-TYPE (X(1))                                       │
+│ │   ├── ERROR-CODE (X(4))                                       │
+│ │   └── ERROR-TEXT (X(80))                                      │
+│ └── SYSTEM-INFO                                                 │
+│     ├── SYSTEM-CODE (X(4))                                      │
+│     └── SYSTEM-MSG (X(80))                                      │
+├─────────────────────────────────────────────────────────────────┤
+│ RETURN-ACTIONS                                                  │
+│ ├── ACTION-FLAG (X(1))                                          │
+│ ├── RETRY-COUNT (9(2) COMP)                                     │
+│ └── MAX-RETRIES (9(2) COMP) = 3                                 │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-### RETURN-STATUS
+### Return Status (RETURN-STATUS)
 
-Core return code information:
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | RETURN-STATUS | - | Status information group |
+| 10 | RETURN-CODE | S9(4) COMP | Primary return code |
+| 10 | REASON-CODE | S9(4) COMP | Secondary reason code |
+| 10 | MODULE-ID | X(8) | Module/program identifier |
+| 10 | FUNCTION-ID | X(8) | Function being performed |
 
-| Level | Name | Picture | Bytes | Description |
+#### Return Code Values (RETURN-CODE)
+
+| Value | 88-Level Name | Meaning |
+|-------|---------------|---------|
+| +0 | RC-SUCCESS | Successful completion |
+| +4 | RC-WARNING | Warning - completed with issues |
+| +8 | RC-ERROR | Error - operation failed |
+| +12 | RC-SEVERE | Severe error - critical failure |
+| +16 | RC-CRITICAL | Critical error - immediate abort |
+
+### Return Details (RETURN-DETAILS)
+
+#### Error Location
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 10 | ERROR-LOCATION | - | Error location group |
+| 15 | PROGRAM-NAME | X(8) | Program where error occurred |
+| 15 | PARAGRAPH-NAME | X(8) | Paragraph where error occurred |
+| 15 | ERROR-ROUTINE | X(8) | Error handling routine invoked |
+
+#### Error Information
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 10 | ERROR-INFO | - | Error information group |
+| 15 | ERROR-TYPE | X(1) | Error type classification |
+| 15 | ERROR-CODE | X(4) | Specific error code |
+| 15 | ERROR-TEXT | X(80) | Error description text |
+
+##### Error Type Values (ERROR-TYPE)
+
+| Value | 88-Level Name | Meaning |
+|-------|---------------|---------|
+| `'V'` | ERR-VALIDATION | Validation error |
+| `'P'` | ERR-PROCESSING | Processing/logic error |
+| `'D'` | ERR-DATABASE | Database error |
+| `'F'` | ERR-FILE | File I/O error |
+| `'S'` | ERR-SECURITY | Security/authorization error |
+
+#### System Information
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 10 | SYSTEM-INFO | - | System-level information |
+| 15 | SYSTEM-CODE | X(4) | System/subsystem error code |
+| 15 | SYSTEM-MSG | X(80) | System error message |
+
+### Return Actions (RETURN-ACTIONS)
+
+| Level | Name | Picture | Value | Description |
 |-------|------|---------|-------|-------------|
-| 05 | RETURN-STATUS | - | 22 | Return status group |
-| 10 | RETURN-CODE | S9(4) COMP | 2 | Primary return code |
-| 10 | REASON-CODE | S9(4) COMP | 2 | Secondary reason code |
-| 10 | MODULE-ID | X(8) | 8 | Module/program identifier |
-| 10 | FUNCTION-ID | X(8) | 8 | Function being performed |
+| 05 | RETURN-ACTIONS | - | - | Action control group |
+| 10 | ACTION-FLAG | X(1) | - | Recommended action |
+| 10 | RETRY-COUNT | 9(2) COMP | - | Current retry attempt |
+| 10 | MAX-RETRIES | 9(2) COMP | 3 | Maximum retry attempts |
 
-**Return Code Conditions (88-Levels)**:
+#### Action Flag Values (ACTION-FLAG)
 
-| Condition | Value | Description |
-|-----------|-------|-------------|
-| RC-SUCCESS | +0 | Successful completion |
-| RC-WARNING | +4 | Warning condition |
-| RC-ERROR | +8 | Error condition |
-| RC-SEVERE | +12 | Severe error |
-| RC-CRITICAL | +16 | Critical/fatal error |
+| Value | 88-Level Name | Meaning |
+|-------|---------------|---------|
+| `'C'` | ACTION-CONTINUE | Continue processing |
+| `'A'` | ACTION-ABORT | Abort processing |
+| `'R'` | ACTION-RETRY | Retry the operation |
 
-```mermaid
-graph LR
-    A[Return Codes] --> B["0 - SUCCESS"]
-    A --> C["4 - WARNING"]
-    A --> D["8 - ERROR"]
-    A --> E["12 - SEVERE"]
-    A --> F["16 - CRITICAL"]
-    
-    B --> B1[Normal completion]
-    C --> C1[Minor issues, continue]
-    D --> D1[Errors, may retry]
-    E --> E1[Serious errors]
-    F --> F1[Fatal, must abort]
-```
+### Standard Error Codes (STD-ERROR-CODES)
 
-### RETURN-DETAILS
-
-Detailed error context information:
-
-| Level | Name | Picture | Bytes | Description |
-|-------|------|---------|-------|-------------|
-| 05 | RETURN-DETAILS | - | 113 | Error details group |
-
-#### ERROR-LOCATION
-
-| Level | Name | Picture | Bytes | Description |
-|-------|------|---------|-------|-------------|
-| 10 | ERROR-LOCATION | - | 24 | Error location group |
-| 15 | PROGRAM-NAME | X(8) | 8 | Program where error occurred |
-| 15 | PARAGRAPH-NAME | X(8) | 8 | Paragraph where error occurred |
-| 15 | ERROR-ROUTINE | X(8) | 8 | Error handling routine name |
-
-#### ERROR-INFO
-
-| Level | Name | Picture | Bytes | Description |
-|-------|------|---------|-------|-------------|
-| 10 | ERROR-INFO | - | 85 | Error information group |
-| 15 | ERROR-TYPE | X(1) | 1 | Error type code |
-| 15 | ERROR-CODE | X(4) | 4 | Specific error code |
-| 15 | ERROR-TEXT | X(80) | 80 | Error message text |
-
-**Error Type Conditions (88-Levels)**:
-
-| Condition | Value | Description |
-|-----------|-------|-------------|
-| ERR-VALIDATION | 'V' | Data validation error |
-| ERR-PROCESSING | 'P' | Processing/business logic error |
-| ERR-DATABASE | 'D' | Database operation error |
-| ERR-FILE | 'F' | File I/O error |
-| ERR-SECURITY | 'S' | Security/authorization error |
-
-```mermaid
-graph TD
-    A[Error Types] --> B["V - Validation"]
-    A --> C["P - Processing"]
-    A --> D["D - Database"]
-    A --> E["F - File"]
-    A --> F["S - Security"]
-    
-    B --> B1[Invalid data, format errors]
-    C --> C1[Business rule violations]
-    D --> D1[DB2, SQL errors]
-    E --> E1[VSAM, sequential I/O errors]
-    F --> F1[Authorization failures]
-```
-
-#### SYSTEM-INFO
-
-| Level | Name | Picture | Bytes | Description |
-|-------|------|---------|-------|-------------|
-| 10 | SYSTEM-INFO | - | 84 | System error information |
-| 15 | SYSTEM-CODE | X(4) | 4 | System return/status code |
-| 15 | SYSTEM-MSG | X(80) | 80 | System error message |
-
-### RETURN-ACTIONS
-
-Recovery action controls:
-
-| Level | Name | Picture | Bytes | Description |
-|-------|------|---------|-------|-------------|
-| 05 | RETURN-ACTIONS | - | 5 | Action control group |
-| 10 | ACTION-FLAG | X(1) | 1 | Action to take |
-| 10 | RETRY-COUNT | 9(2) COMP | 2 | Current retry count |
-| 10 | MAX-RETRIES | 9(2) COMP | 2 | Maximum retries allowed (default: 3) |
-
-**Action Flag Conditions (88-Levels)**:
-
-| Condition | Value | Description |
-|-----------|-------|-------------|
-| ACTION-CONTINUE | 'C' | Continue processing |
-| ACTION-ABORT | 'A' | Abort processing |
-| ACTION-RETRY | 'R' | Retry the operation |
-
-```mermaid
-flowchart TD
-    A[Error Occurs] --> B{Action Flag?}
-    B -->|C - Continue| C[Log and Continue]
-    B -->|R - Retry| D{Retry Count < Max?}
-    B -->|A - Abort| E[Terminate Processing]
-    
-    D -->|Yes| F[Increment Retry Count]
-    F --> G[Retry Operation]
-    D -->|No| E
-    
-    G --> H{Success?}
-    H -->|Yes| I[Continue Normal Processing]
-    H -->|No| A
-```
-
-### STD-ERROR-CODES
-
-Predefined standard error codes:
+Pre-defined error codes for common error conditions:
 
 | Level | Name | Picture | Value | Description |
 |-------|------|---------|-------|-------------|
 | 01 | STD-ERROR-CODES | - | - | Standard error code constants |
-| 05 | ERR-INVALID-DATA | X(4) | 'E001' | Invalid data error |
-| 05 | ERR-NOT-FOUND | X(4) | 'E002' | Record not found |
-| 05 | ERR-DUPLICATE | X(4) | 'E003' | Duplicate record |
-| 05 | ERR-FILE-ERROR | X(4) | 'E004' | File operation error |
-| 05 | ERR-DB-ERROR | X(4) | 'E005' | Database error |
-| 05 | ERR-SECURITY | X(4) | 'E006' | Security violation |
-| 05 | ERR-PROCESSING | X(4) | 'E007' | Processing error |
-| 05 | ERR-VALIDATION | X(4) | 'E008' | Validation failure |
-| 05 | ERR-VERSION | X(4) | 'E009' | Version mismatch |
-| 05 | ERR-TIMEOUT | X(4) | 'E010' | Timeout error |
+| 05 | ERR-INVALID-DATA | X(4) | `'E001'` | Invalid data format/content |
+| 05 | ERR-NOT-FOUND | X(4) | `'E002'` | Record/resource not found |
+| 05 | ERR-DUPLICATE | X(4) | `'E003'` | Duplicate key/record |
+| 05 | ERR-FILE-ERROR | X(4) | `'E004'` | File I/O error |
+| 05 | ERR-DB-ERROR | X(4) | `'E005'` | Database error |
+| 05 | ERR-SECURITY | X(4) | `'E006'` | Security violation |
+| 05 | ERR-PROCESSING | X(4) | `'E007'` | Processing error |
+| 05 | ERR-VALIDATION | X(4) | `'E008'` | Validation failure |
+| 05 | ERR-VERSION | X(4) | `'E009'` | Version mismatch |
+| 05 | ERR-TIMEOUT | X(4) | `'E010'` | Operation timeout |
 
 ## Usage Examples
 
-### Basic Error Setup
+### Setting Return Status (Called Program)
 
 ```cobol
-* Set up a validation error
-MOVE 'PORTMSTR' TO MODULE-ID
-MOVE 'VALIDATE' TO FUNCTION-ID
-MOVE ERR-INVALID-DATA TO ERROR-CODE
-SET ERR-VALIDATION TO TRUE
-SET RC-ERROR TO TRUE
-MOVE 'Invalid portfolio ID format' TO ERROR-TEXT
+WORKING-STORAGE SECTION.
+    COPY RETHND.
 
-* Set location information
-MOVE 'PORTVAL0' TO PROGRAM-NAME
-MOVE '2100-VAL' TO PARAGRAPH-NAME
-MOVE '9000-ERR' TO ERROR-ROUTINE
+LINKAGE SECTION.
+01  LS-RETURN-STATUS.
+    COPY RETHND REPLACING ==RETURN-HANDLING== BY ==LS-RETURN-HANDLING==.
+
+PROCEDURE DIVISION USING LS-RETURN-STATUS.
+    ...
+    * Successful completion
+    SET RC-SUCCESS TO TRUE
+    MOVE ZEROS TO REASON-CODE
+    MOVE 'CKPRST' TO MODULE-ID
+    MOVE 'INIT' TO FUNCTION-ID
+    SET ACTION-CONTINUE TO TRUE
+    GOBACK
+    ...
+```
+
+### Reporting an Error (Called Program)
+
+```cobol
+    * Report a validation error
+    SET RC-ERROR TO TRUE
+    MOVE 1001 TO REASON-CODE
+    MOVE 'PORTMSTR' TO MODULE-ID
+    MOVE 'VALIDATE' TO FUNCTION-ID
+    
+    MOVE 'PORTMSTR' TO PROGRAM-NAME
+    MOVE '2100-VAL' TO PARAGRAPH-NAME
+    MOVE '9000-ERR' TO ERROR-ROUTINE
+    
+    SET ERR-VALIDATION TO TRUE
+    MOVE ERR-INVALID-DATA TO ERROR-CODE
+    MOVE 'Invalid portfolio ID format' TO ERROR-TEXT
+    
+    INITIALIZE SYSTEM-INFO
+    
+    SET ACTION-ABORT TO TRUE
+    GOBACK
+```
+
+### Checking Return Status (Calling Program)
+
+```cobol
+    CALL 'CKPRST' USING WS-CHECKPOINT-CONTROL
+                        WS-RETURN-STATUS
+    
+    EVALUATE TRUE
+        WHEN RC-SUCCESS
+            CONTINUE
+        WHEN RC-WARNING
+            PERFORM LOG-WARNING
+            CONTINUE
+        WHEN RC-ERROR
+            PERFORM HANDLE-ERROR
+            IF ACTION-RETRY AND RETRY-COUNT < MAX-RETRIES
+                ADD 1 TO RETRY-COUNT
+                PERFORM RETRY-OPERATION
+            ELSE
+                PERFORM ABORT-PROCESSING
+            END-IF
+        WHEN RC-SEVERE OR RC-CRITICAL
+            DISPLAY 'CRITICAL ERROR IN ' MODULE-ID
+            DISPLAY 'FUNCTION: ' FUNCTION-ID
+            DISPLAY 'ERROR: ' ERROR-TEXT
+            PERFORM EMERGENCY-ABORT
+    END-EVALUATE
 ```
 
 ### Implementing Retry Logic
 
 ```cobol
-* Initialize retry handling
-MOVE ZERO TO RETRY-COUNT
-MOVE 3 TO MAX-RETRIES
-SET ACTION-RETRY TO TRUE
-
-* Retry loop
-PERFORM UNTIL ACTION-CONTINUE OR ACTION-ABORT
-    PERFORM 2000-PROCESS-RECORD
-    
-    IF RC-SUCCESS
-        SET ACTION-CONTINUE TO TRUE
-    ELSE
+RETRY-OPERATION.
+    IF RETRY-COUNT < MAX-RETRIES
         ADD 1 TO RETRY-COUNT
-        IF RETRY-COUNT >= MAX-RETRIES
-            SET ACTION-ABORT TO TRUE
-            MOVE 'Max retries exceeded' TO ERROR-TEXT
-        END-IF
-    END-IF
-END-PERFORM
-```
-
-### Database Error Handling
-
-```cobol
-* Handle DB2 error
-IF SQLCODE NOT = 0
-    SET ERR-DATABASE TO TRUE
-    SET RC-ERROR TO TRUE
-    MOVE ERR-DB-ERROR TO ERROR-CODE
-    MOVE SQLCODE TO SYSTEM-CODE
-    MOVE 'DB2 error occurred' TO ERROR-TEXT
-    
-    EVALUATE SQLCODE
-        WHEN -803
-            MOVE ERR-DUPLICATE TO ERROR-CODE
-            MOVE 'Duplicate key violation' TO ERROR-TEXT
-        WHEN -204
-            MOVE ERR-NOT-FOUND TO ERROR-CODE
-            MOVE 'Table not found' TO ERROR-TEXT
-    END-EVALUATE
-END-IF
-```
-
-### File Error Handling
-
-```cobol
-* Handle VSAM error
-IF WS-FILE-STATUS NOT = '00'
-    SET ERR-FILE TO TRUE
-    SET RC-ERROR TO TRUE
-    MOVE ERR-FILE-ERROR TO ERROR-CODE
-    MOVE WS-FILE-STATUS TO SYSTEM-CODE
-    
-    EVALUATE WS-FILE-STATUS
-        WHEN '23'
-            MOVE ERR-NOT-FOUND TO ERROR-CODE
-            MOVE 'Record not found' TO ERROR-TEXT
-        WHEN '22'
-            MOVE ERR-DUPLICATE TO ERROR-CODE
-            MOVE 'Duplicate key' TO ERROR-TEXT
-        WHEN OTHER
-            MOVE 'Unexpected file error' TO ERROR-TEXT
-    END-EVALUATE
-END-IF
-```
-
-### Integration with Checkpoint/Restart
-
-```cobol
-* Call checkpoint routine with return status
-CALL 'CKPTAKE' USING CHECKPOINT-CONTROL
-                     RETURN-STATUS
-
-IF NOT RC-SUCCESS
-    MOVE 'CKPRST00' TO PROGRAM-NAME
-    MOVE 'CKPTAKE ' TO PARAGRAPH-NAME
-    
-    IF RC-WARNING
-        SET ACTION-CONTINUE TO TRUE
+        DISPLAY 'Retry attempt ' RETRY-COUNT ' of ' MAX-RETRIES
+        
+        * Wait before retry (if needed)
+        CALL 'ILBOABN0' USING WS-WAIT-SECONDS
+        
+        * Attempt operation again
+        PERFORM CALL-SERVICE
     ELSE
+        DISPLAY 'Max retries exceeded'
         SET ACTION-ABORT TO TRUE
-        PERFORM 9000-ERROR-HANDLER
-    END-IF
-END-IF
+        PERFORM HANDLE-FINAL-FAILURE
+    END-IF.
 ```
 
-## Error Code Reference
+### Logging Detailed Error Information
 
-| Code | Name | Type | Description |
-|------|------|------|-------------|
-| E001 | ERR-INVALID-DATA | V | Invalid data format or content |
-| E002 | ERR-NOT-FOUND | F/D | Record not found in file or database |
-| E003 | ERR-DUPLICATE | F/D | Duplicate key or record |
-| E004 | ERR-FILE-ERROR | F | General file I/O error |
-| E005 | ERR-DB-ERROR | D | Database operation error |
-| E006 | ERR-SECURITY | S | Security or authorization failure |
-| E007 | ERR-PROCESSING | P | Business logic or processing error |
-| E008 | ERR-VALIDATION | V | Data validation failure |
-| E009 | ERR-VERSION | P | Version or compatibility mismatch |
-| E010 | ERR-TIMEOUT | P | Operation timeout |
+```cobol
+LOG-ERROR-DETAILS.
+    DISPLAY '=========================================='
+    DISPLAY 'ERROR REPORT'
+    DISPLAY '=========================================='
+    DISPLAY 'Return Code:    ' RETURN-CODE
+    DISPLAY 'Reason Code:    ' REASON-CODE
+    DISPLAY 'Module:         ' MODULE-ID
+    DISPLAY 'Function:       ' FUNCTION-ID
+    DISPLAY '------------------------------------------'
+    DISPLAY 'Program:        ' PROGRAM-NAME
+    DISPLAY 'Paragraph:      ' PARAGRAPH-NAME
+    DISPLAY 'Error Routine:  ' ERROR-ROUTINE
+    DISPLAY '------------------------------------------'
+    DISPLAY 'Error Type:     ' ERROR-TYPE
+    DISPLAY 'Error Code:     ' ERROR-CODE
+    DISPLAY 'Error Text:     ' ERROR-TEXT
+    DISPLAY '------------------------------------------'
+    DISPLAY 'System Code:    ' SYSTEM-CODE
+    DISPLAY 'System Message: ' SYSTEM-MSG
+    DISPLAY '------------------------------------------'
+    DISPLAY 'Action:         ' ACTION-FLAG
+    DISPLAY 'Retry Count:    ' RETRY-COUNT '/' MAX-RETRIES
+    DISPLAY '=========================================='.
+```
 
-## Related Copybooks
+## Error Type Guidelines
 
-| Copybook | Relationship |
-|----------|-------------|
-| **ERRHAND** | Simpler error constants (categories, return codes, VSAM status) |
-| **RTNCODE** | Return code management with DB2 logging |
-| **CKPRST** | Checkpoint/restart - primary consumer of RETHND |
+| Type | Code | Use For | Examples |
+|------|------|---------|----------|
+| Validation | `'V'` | Input/data validation failures | Invalid format, missing required field, out of range |
+| Processing | `'P'` | Business logic errors | Rule violation, calculation error, state mismatch |
+| Database | `'D'` | DB2/database errors | SQL error, deadlock, connection failure |
+| File | `'F'` | VSAM/file I/O errors | Open failure, read error, status code |
+| Security | `'S'` | Authorization failures | Access denied, invalid credentials, expired token |
 
-## Design Notes
+## Programs Using This Copybook
 
-1. **Structured Context**: Unlike flat error codes, RETHND captures complete error context including location, type, and recovery action.
+| Program | Purpose |
+|---------|---------|
+| CKPRST | Checkpoint/restart service module |
 
-2. **Retry Support**: Built-in retry counter and maximum with action flags enable automatic retry logic.
+RETHND is designed primarily for the checkpoint/restart subsystem but can be adopted by any service-oriented program requiring detailed return status communication.
 
-3. **Dual Codes**: Both RETURN-CODE (severity) and ERROR-CODE (specific error) allow filtering by severity while identifying exact issues.
+## Comparison with ERRHAND
 
-4. **System Integration**: SYSTEM-CODE and SYSTEM-MSG fields capture underlying system errors (SQLCODE, file status).
+| Aspect | RETHND | ERRHAND |
+|--------|--------|---------|
+| **Purpose** | Subprogram return status | Error logging/handling |
+| **Usage** | Linkage section communication | Working storage logging |
+| **Return codes** | With 88-levels (RC-SUCCESS, etc.) | Constants only (ERR-SUCCESS, etc.) |
+| **Error location** | Program, paragraph, routine | Program only |
+| **Action control** | Continue/Abort/Retry with counters | Not included |
+| **System info** | Separate system code/message | Combined in message |
+| **Reason codes** | Included | Not included |
 
-5. **Module Tracking**: MODULE-ID and FUNCTION-ID identify what operation was being performed when the error occurred.
+## Technical Notes
 
-6. **COMP Fields**: Return codes use binary (COMP) for efficient comparison and direct use with RETURN-CODE register.
+### COBOL Constructs Used
 
-## Best Practices
+- **88-Level Conditions**: Extensive use of condition names for readable status and type checking. Using `SET RC-ERROR TO TRUE` is clearer than `MOVE +8 TO RETURN-CODE`.
 
-1. **Always Set Location**: Populate PROGRAM-NAME, PARAGRAPH-NAME, and ERROR-ROUTINE for debugging.
+- **COMP Fields**: Binary fields used for return codes and counters for efficient comparison and arithmetic.
 
-2. **Use Standard Codes**: Reference STD-ERROR-CODES constants instead of hard-coding values.
+- **VALUE Clause**: MAX-RETRIES is initialized to 3, providing a sensible default that can be overridden.
 
-3. **Match Types**: Ensure ERROR-TYPE matches the nature of the error (V for validation, D for database, etc.).
+- **Nested Groups**: Three-level nesting (RETURN-HANDLING → RETURN-DETAILS → ERROR-LOCATION) for logical organization.
 
-4. **Capture System Info**: Always copy SQLCODE or file status to SYSTEM-CODE for diagnostics.
+### Record Size
 
-5. **Initialize on Entry**: Clear RETURN-HANDLING at program start to avoid residual data.
+| Section | Size (bytes) |
+|---------|--------------|
+| RETURN-STATUS | ~22 |
+| RETURN-DETAILS | ~197 |
+| RETURN-ACTIONS | ~6 |
+| **RETURN-HANDLING Total** | ~225 |
+| STD-ERROR-CODES | 40 |
 
-6. **Check Before Retry**: Always verify RETRY-COUNT < MAX-RETRIES before attempting retry.
+### Linkage Section Usage
+
+When using RETHND in the linkage section, the calling program should define a matching area:
+
+```cobol
+* Calling program
+WORKING-STORAGE SECTION.
+01  WS-RETURN-STATUS.
+    COPY RETHND.
+
+PROCEDURE DIVISION.
+    CALL 'SUBPROG' USING ... WS-RETURN-STATUS
+```
+
+```cobol
+* Called program
+LINKAGE SECTION.
+01  LS-RETURN-STATUS.
+    COPY RETHND.
+
+PROCEDURE DIVISION USING ... LS-RETURN-STATUS.
+```
+
+### Best Practices
+
+1. **Always initialize**: Clear RETURN-HANDLING at the start of each call
+2. **Set all relevant fields**: Don't leave location or error info blank on errors
+3. **Use 88-levels**: Prefer `SET RC-ERROR TO TRUE` over literal moves
+4. **Include context**: MODULE-ID and FUNCTION-ID help identify the source
+5. **Populate SYSTEM-INFO**: Include system codes when available (SQLCODE, file status)
+6. **Honor action flags**: Calling programs should respect ACTION-CONTINUE/ABORT/RETRY
+7. **Track retries**: Increment RETRY-COUNT and check against MAX-RETRIES

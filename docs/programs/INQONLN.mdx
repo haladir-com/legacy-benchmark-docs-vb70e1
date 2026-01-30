@@ -1,47 +1,56 @@
 ---
 title: "INQONLN"
-description: "Portfolio Online Inquiry Main Handler - CICS program that manages portfolio and history inquiry transactions with security validation"
+description: "Portfolio Online Inquiry Main Handler - CICS program for managing portfolio inquiry transactions with menu navigation, security validation, and history lookups"
 ---
 
 ## Overview
 
-INQONLN is a CICS COBOL program that serves as the main handler for portfolio online inquiry transactions. It provides a menu-driven interface for users to perform portfolio lookups and view transaction history through BMS (Basic Mapping Support) screens.
+INQONLN is a CICS online program that serves as the main handler for portfolio inquiry transactions. It provides a menu-driven interface for users to perform portfolio lookups and view transaction history, while implementing security validation and centralized error handling.
 
-The program implements a conversational transaction model, maintaining session state through a communication area (COMMAREA) and processing user requests in a loop until the user exits. Key features include:
+The program acts as a controller that:
+- **Manages screen interactions** - Receives and processes BMS map input
+- **Routes requests** - Dispatches to appropriate sub-programs based on user selection
+- **Enforces security** - Validates user authentication and authorization via SECMGR
+- **Handles errors** - Provides consistent error handling through ERRHNDL
 
-- **Menu-driven navigation** - Displays main menu and routes to appropriate functions
-- **Portfolio inquiry** - Delegates to INQPORT for portfolio details
-- **History inquiry** - Delegates to INQHIST for transaction history
-- **Security integration** - Validates user access through SECMGR before processing
-- **Error handling** - Centralized error processing with CICS condition handling
+Key features include:
+- Menu-based navigation (MENU, INQP, INQH, EXIT)
+- Portfolio inquiry via INQPORT program
+- Transaction history inquiry via INQHIST program
+- Three-level security check (Validate, Authorize, Log)
+- Pseudo-conversational design with session management
 
 ## Program Structure
 
 ```mermaid
 graph TD
-    A[PROCEDURE DIVISION] --> B[EXEC CICS HANDLE CONDITION]
-    B --> C[P100-PROCESS-REQUEST Loop]
-    C --> D{Function?}
+    A[PROCEDURE DIVISION] --> B[CICS HANDLE CONDITION]
+    B --> C{Session Loop}
+    C -->|SESSION-ACTIVE| D[P100-PROCESS-REQUEST]
+    C -->|SESSION-TERMINATED| E[CICS RETURN]
     
-    D -->|MENU| E[P200-DISPLAY-MENU]
-    D -->|INQP| F[P300-PORTFOLIO-INQUIRY]
-    D -->|INQH| G[P400-HISTORY-INQUIRY]
-    D -->|EXIT| H[Set SESSION-TERMINATED]
-    D -->|OTHER| I[P900-ERROR-ROUTINE]
+    D --> F[CICS RECEIVE MAP]
+    F --> G{EVALUATE Function}
     
-    E --> J[P050-SECURITY-CHECK]
-    F --> J
-    G --> J
+    G -->|MENU| H[P200-DISPLAY-MENU]
+    G -->|INQP| I[P300-PORTFOLIO-INQUIRY]
+    G -->|INQH| J[P400-HISTORY-INQUIRY]
+    G -->|EXIT| K[Set SESSION-TERMINATED]
+    G -->|OTHER| L[P900-ERROR-ROUTINE]
     
-    J -->|Access Denied| I
-    J -->|Access OK| C
+    D --> M[P050-SECURITY-CHECK]
+    M -->|Failed| L
     
-    H --> K[EXEC CICS RETURN]
+    H --> H1[CICS SEND MAP INQMNU]
+    I --> I1[CICS LINK INQPORT]
+    J --> J1[CICS LINK INQHIST]
     
-    F --> F1[INQPORT]
-    G --> G1[INQHIST]
-    I --> I1[ERRHNDL]
-    J --> J1[SECMGR]
+    L --> L1[CICS LINK ERRHNDL]
+    L1 -->|ERR-ABEND| L2[CICS ABEND]
+    
+    M --> M1[SECMGR - Validate]
+    M1 --> M2[SECMGR - Authorize]
+    M2 --> M3[SECMGR - Log]
 ```
 
 ## Data Structures
@@ -50,238 +59,220 @@ graph TD
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | WS-COMMAREA | - | Communication area (uses INQCOM copybook) |
-| 01 | WS-FLAGS | - | Session control flags |
-| 05 | WS-END-OF-SESSION | PIC X | Session status flag (default 'N') |
-| 05 | WS-RESPONSE-CODE | PIC S9(8) COMP | CICS response code |
-| 01 | WS-ERROR-AREA | - | Error handling area (uses ERRHND copybook) |
-| 01 | WS-SECURITY-REQUEST | - | Security manager request block |
-| 05 | SEC-REQUEST-TYPE | PIC X | Security operation type |
-| 05 | SEC-USER-ID | PIC X(8) | User ID for security check |
-| 05 | SEC-RESOURCE-NAME | PIC X(8) | Resource being accessed |
-| 05 | SEC-ACCESS-TYPE | PIC X(8) | Type of access requested |
-| 05 | SEC-RESPONSE-CODE | PIC S9(8) COMP | Security check result |
-| 05 | SEC-ERROR-INFO | PIC X(80) | Security error message |
-
-### Session Control Flags (88-levels)
-
-| Condition Name | Value | Description |
-|----------------|-------|-------------|
-| SESSION-ACTIVE | 'N' | Session is active, continue processing |
-| SESSION-TERMINATED | 'Y' | User requested exit |
+| 01 | WS-COMMAREA | | Communication area (INQCOM copybook) |
+| 01 | WS-FLAGS | | Session control flags |
+| 05 | WS-END-OF-SESSION | X | Session termination flag ('N'/'Y') |
+| 05 | WS-RESPONSE-CODE | S9(8) COMP | CICS response code |
+| 01 | WS-ERROR-AREA | | Error handling area (ERRHND copybook) |
+| 01 | WS-SECURITY-REQUEST | | Security manager request |
+| 05 | SEC-REQUEST-TYPE | X | V=Validate, A=Authorize, L=Log |
+| 05 | SEC-USER-ID | X(8) | User ID from CICS |
+| 05 | SEC-RESOURCE-NAME | X(8) | Resource to check (INQONLN) |
+| 05 | SEC-ACCESS-TYPE | X(8) | Access type (READ) |
+| 05 | SEC-RESPONSE-CODE | S9(8) COMP | Security check result |
+| 05 | SEC-ERROR-INFO | X(80) | Security error message |
 
 ### Linkage Section
 
 | Level | Name | Description |
 |-------|------|-------------|
-| 01 | DFHCOMMAREA | CICS communication area (uses INQCOM copybook) |
+| 01 | DFHCOMMAREA | CICS communication area (INQCOM copybook) |
 
-## CICS Operations
+### Inquiry Communication Area (INQCOM Copybook)
 
-### BMS Map Operations
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 01 | INQCOM-AREA | | Main communication structure |
+| 05 | INQCOM-FUNCTION | X(4) | Function code |
+| 05 | INQCOM-ACCOUNT-NO | X(10) | Account number for inquiry |
+| 05 | INQCOM-RESPONSE-CODE | S9(8) COMP | Response code |
+| 05 | INQCOM-ERROR-MSG | X(80) | Error message |
 
-| Map | Mapset | Operation | Paragraph | Description |
-|-----|--------|-----------|-----------|-------------|
-| INQMAP | INQSET | RECEIVE | P100 | Receives user input from inquiry screen |
-| INQMNU | INQSET | SEND | P200 | Displays the main menu screen |
+### Function Codes
 
-### Program Links
+| Code | 88-Level Name | Description |
+|------|---------------|-------------|
+| MENU | INQCOM-MENU | Display main menu |
+| INQP | INQCOM-PORTFOLIO | Portfolio inquiry |
+| INQH | INQCOM-HISTORY | History inquiry |
+| EXIT | INQCOM-EXIT | End session |
 
-| Program | Paragraph | Purpose |
-|---------|-----------|---------|
-| INQPORT | P300 | Portfolio inquiry processing |
-| INQHIST | P400 | Transaction history inquiry |
-| ERRHNDL | P900 | Error handling and logging |
-| SECMGR | P050 | Security validation (called 3 times) |
+### Error Handling Area (ERRHND Copybook)
 
-### CICS Commands Summary
-
-| Command | Purpose |
-|---------|---------|
-| `HANDLE CONDITION` | Sets up error handling for ERROR, PGMIDERR, NOTFND |
-| `RECEIVE MAP` | Receives input from BMS map |
-| `SEND MAP` | Sends BMS map to terminal |
-| `LINK PROGRAM` | Calls subprograms with COMMAREA |
-| `ASSIGN USERID` | Retrieves current user ID |
-| `RETURN` | Returns control to CICS |
-| `ABEND` | Terminates transaction abnormally |
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 01 | ERROR-HANDLING | | Error information structure |
+| 05 | ERR-PROGRAM | X(8) | Program name |
+| 05 | ERR-PARAGRAPH | X(30) | Paragraph where error occurred |
+| 05 | ERR-SQLCODE | S9(9) COMP | DB2 SQLCODE (if applicable) |
+| 05 | ERR-CICS-RESP | S9(8) COMP | CICS EIBRESP value |
+| 05 | ERR-CICS-RESP2 | S9(8) COMP | CICS EIBRESP2 value |
+| 05 | ERR-SEVERITY | X | F=Fatal, W=Warning, I=Info |
+| 05 | ERR-MESSAGE | X(80) | Error message text |
+| 05 | ERR-ACTION | X | R=Return, C=Continue, A=Abend |
+| 05 | ERR-TRACE | | Trace information |
+| 10 | ERR-TRACE-ID | X(16) | Trace identifier |
+| 10 | ERR-TIMESTAMP | X(26) | Error timestamp |
 
 ## Control Flow
 
 ### Main Processing Loop
 
-The program operates in a conversational loop:
+The program operates in a pseudo-conversational loop:
 
-1. **Condition Handling Setup**: Establishes handlers for ERROR, PGMIDERR, and NOTFND conditions
-2. **Request Processing Loop**: Executes P100-PROCESS-REQUEST until SESSION-TERMINATED
-3. **Return**: When user exits, returns control to CICS
+1. **HANDLE CONDITION Setup**: Establishes error handling for ERROR, PGMIDERR, and NOTFND conditions, routing all to P900-ERROR-ROUTINE
+
+2. **Session Loop**: Continues processing until `SESSION-TERMINATED` is set to TRUE
+
+3. **CICS RETURN**: Returns control to CICS when session ends
 
 ### P100-PROCESS-REQUEST
 
-Main request dispatcher:
+Main request processing paragraph:
 
 1. Initializes WS-COMMAREA to LOW-VALUES
-2. Receives input from INQMAP screen
-3. Evaluates WS-COMMAREA-FUNCTION to route request:
-   - `'MENU'` → P200-DISPLAY-MENU
-   - `'INQP'` → P300-PORTFOLIO-INQUIRY
-   - `'INQH'` → P400-HISTORY-INQUIRY
-   - `'EXIT'` → Set SESSION-TERMINATED
+2. Receives input from BMS map (INQMAP in INQSET mapset)
+3. Evaluates function code and dispatches to appropriate handler:
+   - `MENU` → P200-DISPLAY-MENU
+   - `INQP` → P300-PORTFOLIO-INQUIRY
+   - `INQH` → P400-HISTORY-INQUIRY
+   - `EXIT` → Sets SESSION-TERMINATED
    - Other → P900-ERROR-ROUTINE
-4. Performs security check (P050-SECURITY-CHECK)
-5. If security check fails, displays error and returns
+4. Performs security check via P050-SECURITY-CHECK
+5. If security fails, displays error and returns to CICS
 
 ### P200-DISPLAY-MENU
 
 Displays the main inquiry menu:
-- Sends INQMNU map with ERASE option (clears screen)
-- Captures response code for error handling
+- Sends INQMNU map from INQSET mapset
+- Uses ERASE option to clear screen
+- Captures response code
 
 ### P300-PORTFOLIO-INQUIRY
 
-Delegates to portfolio inquiry program:
-- Links to INQPORT program
-- Passes WS-COMMAREA for data exchange
+Links to the portfolio inquiry subprogram:
+- Calls INQPORT program via EXEC CICS LINK
+- Passes WS-COMMAREA as communication area
 - Captures response code
 
 ### P400-HISTORY-INQUIRY
 
-Delegates to history inquiry program:
-- Links to INQHIST program
-- Passes WS-COMMAREA for data exchange
+Links to the history inquiry subprogram:
+- Calls INQHIST program via EXEC CICS LINK
+- Passes WS-COMMAREA as communication area
 - Captures response code
 
 ### P050-SECURITY-CHECK
 
-Performs three-phase security validation:
+Performs three-level security validation:
 
-**Phase 1 - User Validation ('V')**
-1. Sets request type to 'V' (Validate)
-2. Retrieves user ID via CICS ASSIGN
-3. Calls SECMGR to validate user
+1. **Validate (V)**: Verifies user identity
+   - Gets user ID via EXEC CICS ASSIGN USERID
+   - Calls SECMGR with request type 'V'
 
-**Phase 2 - Authorization ('A')**
-1. If user valid, sets request type to 'A' (Authorize)
-2. Sets resource name to 'INQONLN'
-3. Sets access type to 'READ'
-4. Calls SECMGR to check authorization
+2. **Authorize (A)**: Checks resource access permission
+   - Sets resource name to 'INQONLN'
+   - Sets access type to 'READ'
+   - Calls SECMGR with request type 'A'
 
-**Phase 3 - Logging ('L')**
-1. If authorized, sets request type to 'L' (Log)
-2. Calls SECMGR to log the access
+3. **Log (L)**: Records access for audit trail
+   - Calls SECMGR with request type 'L'
 
-```mermaid
-sequenceDiagram
-    participant INQONLN
-    participant SECMGR
-    
-    INQONLN->>SECMGR: Validate User (V)
-    SECMGR-->>INQONLN: Response Code
-    
-    alt User Valid
-        INQONLN->>SECMGR: Authorize Access (A)
-        SECMGR-->>INQONLN: Response Code
-        
-        alt Access Authorized
-            INQONLN->>SECMGR: Log Access (L)
-            SECMGR-->>INQONLN: Response Code
-        end
-    end
-```
+If any step fails (SEC-RESPONSE-CODE ≠ 0), subsequent steps are skipped.
 
 ### P900-ERROR-ROUTINE
 
 Centralized error handling:
 
 1. Populates error area:
-   - ERR-PROGRAM = 'INQONLN'
-   - ERR-PARAGRAPH = 'P900-ERROR-ROUTINE'
-   - ERR-CICS-RESP = EIBRESP (CICS response)
-   - ERR-CICS-RESP2 = EIBRESP2 (extended response)
-   - Sets ERR-WARNING flag
-2. Links to ERRHNDL for processing
-3. If ERR-ABEND is set, issues CICS ABEND with code 'IERR'
-4. Copies error message for display
+   - Sets ERR-PROGRAM to 'INQONLN'
+   - Sets ERR-PARAGRAPH to 'P900-ERROR-ROUTINE'
+   - Captures EIBRESP and EIBRESP2 from CICS
+   - Sets severity to WARNING
 
-## Menu Functions
+2. Links to ERRHNDL for error processing
 
-| Function Code | Description | Target Program |
-|---------------|-------------|----------------|
-| MENU | Display main menu | (internal) |
-| INQP | Portfolio inquiry | INQPORT |
-| INQH | History inquiry | INQHIST |
-| EXIT | End session | (terminates) |
+3. If ERR-ABEND flag is set, issues CICS ABEND with abcode 'IERR'
+
+4. Copies ERR-MESSAGE to WS-ERROR-MESSAGE for display
+
+## BMS Maps
+
+| Map Name | Mapset | Purpose |
+|----------|--------|---------|
+| INQMAP | INQSET | Input map for receiving user requests |
+| INQMNU | INQSET | Menu display map |
 
 ## Dependencies
 
 ### Copybooks
 
-- **INQCOM** - Inquiry communication area layout (defines WS-COMMAREA-FUNCTION and related fields)
-- **ERRHND** - Error handling structures (defines ERR-PROGRAM, ERR-PARAGRAPH, ERR-CICS-RESP, ERR-CICS-RESP2, ERR-WARNING, ERR-ABEND, ERR-MESSAGE, WS-ERROR-MESSAGE)
+- **INQCOM** - Online inquiry communication area structure
+- **ERRHND** - Online error handling structure with severity and action codes
 
 ### Called Programs
 
-| Program | Purpose | Called From |
-|---------|---------|-------------|
-| INQPORT | Portfolio inquiry processing | P300-PORTFOLIO-INQUIRY |
-| INQHIST | Transaction history inquiry | P400-HISTORY-INQUIRY |
-| ERRHNDL | Error handling and logging | P900-ERROR-ROUTINE |
-| SECMGR | Security validation and logging | P050-SECURITY-CHECK |
-
-### BMS Maps
-
-| Mapset | Maps | Description |
-|--------|------|-------------|
-| INQSET | INQMAP | Main inquiry input screen |
-| INQSET | INQMNU | Main menu display screen |
+| Program | Purpose | Parameters |
+|---------|---------|------------|
+| INQPORT | Portfolio inquiry processing | WS-COMMAREA (INQCOM) |
+| INQHIST | Transaction history inquiry | WS-COMMAREA (INQCOM) |
+| SECMGR | Security manager for validation/authorization | WS-SECURITY-REQUEST |
+| ERRHNDL | Error handling and logging | WS-ERROR-AREA (ERRHND) |
 
 ### Related Programs
 
 Programs that share copybooks with INQONLN:
-
-| Program | Shared Copybooks | Relationship |
-|---------|------------------|--------------|
-| INQHIST | INQCOM | History inquiry - called by this program |
-| INQPORT | INQCOM | Portfolio inquiry - called by this program |
-| DB2ONLN | ERRHND | DB2 online services |
-| DB2RECV | ERRHND | DB2 recovery |
-| ERRHNDL | ERRHND | Error handler - called by this program |
-| SECMGR | ERRHND | Security manager - called by this program |
+- **INQHIST** - History inquiry (uses INQCOM)
+- **INQPORT** - Portfolio inquiry (uses INQCOM)
+- **DB2ONLN** - DB2 online handler (uses ERRHND)
+- **DB2RECV** - DB2 recovery (uses ERRHND)
+- **SECMGR** - Security manager (uses ERRHND)
 
 ## Technical Notes
 
-### Conversational Transaction Model
+### Pseudo-Conversational Design
 
-This program uses a pseudo-conversational pattern within a single transaction:
-- Session state maintained in WS-COMMAREA
-- Loop continues until user selects EXIT
-- COMMAREA passed to subprograms preserves context
+The program uses a session-based loop with `WS-END-OF-SESSION` controlling continuation. While structured as a loop, in a true CICS pseudo-conversational implementation, the program would typically:
+1. Receive input
+2. Process request
+3. Send response
+4. Issue EXEC CICS RETURN TRANSID(...) COMMAREA(...)
 
-For true pseudo-conversational design (releasing CICS resources between interactions), the program would need to use `EXEC CICS RETURN TRANSID(...) COMMAREA(...)`.
+The current implementation processes multiple requests within a single task invocation.
 
 ### Security Model
 
-The three-phase security check ensures:
-1. **Authentication**: User ID is valid in the system
-2. **Authorization**: User has READ access to INQONLN resource
-3. **Audit**: Access attempt is logged for compliance
+The three-phase security check implements defense in depth:
+
+| Phase | Type | Purpose |
+|-------|------|---------|
+| 1 | Validate (V) | Confirm user identity is valid |
+| 2 | Authorize (A) | Verify READ access to INQONLN resource |
+| 3 | Log (L) | Record access attempt for audit |
+
+If validation fails, authorization is skipped. If authorization fails, logging may still occur depending on SECMGR implementation.
 
 ### Error Handling Strategy
 
-The program uses CICS HANDLE CONDITION for exception-based error handling:
-- ERROR, PGMIDERR, NOTFND conditions routed to P900-ERROR-ROUTINE
-- Error details captured from EIB (Exec Interface Block)
-- Severity-based response (warning vs. abend)
+The program uses EXEC CICS HANDLE CONDITION to trap errors at the CICS level, routing all exceptional conditions to P900-ERROR-ROUTINE. The error routine:
 
-### Abend Code
+- Captures CICS diagnostic information (EIBRESP, EIBRESP2)
+- Delegates to ERRHNDL for centralized processing
+- Supports three actions: Return, Continue, or Abend
+- Uses abend code 'IERR' for fatal errors
 
-| Code | Meaning |
-|------|---------|
-| IERR | Inquiry error - unrecoverable error in INQONLN |
+### CICS Commands Used
 
-### CICS Resources Required
+| Command | Purpose |
+|---------|---------|
+| HANDLE CONDITION | Set up exception handling |
+| RECEIVE MAP | Get input from terminal |
+| SEND MAP | Display output to terminal |
+| LINK | Call subprogram |
+| ASSIGN USERID | Get current user ID |
+| RETURN | Return to CICS |
+| ABEND | Abnormal termination |
 
-- **Transaction**: Transaction ID to invoke this program
-- **Program**: INQONLN, INQPORT, INQHIST, ERRHNDL, SECMGR
-- **Mapset**: INQSET (contains INQMAP, INQMNU)
-- **DB2 Connection**: Required for INQPORT and INQHIST operations
+### Response Code Handling
+
+The program captures CICS response codes in WS-RESPONSE-CODE using the RESP option on CICS commands. This allows programmatic checking of command success without relying solely on HANDLE CONDITION.

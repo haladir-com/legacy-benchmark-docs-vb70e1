@@ -1,287 +1,357 @@
 ---
 title: "PORTFLIO"
-description: "Portfolio Master Record Layout - Copybook defining the structure for portfolio master file records"
+description: "Portfolio Master Record Layout - defines the standard data structure for portfolio records including client information, financial data, and audit trail"
 ---
 
 ## Overview
 
-PORTFLIO is a COBOL copybook that defines the standard record layout for portfolio master file records. It provides a comprehensive structure for storing portfolio information including:
+PORTFLIO is a copybook that defines the standard record layout for portfolio master records. It provides the data structure used throughout the portfolio management system for storing and managing investment portfolio information.
 
-- **Key fields** - Portfolio ID and account number for unique identification
-- **Client information** - Client name and type classification
-- **Portfolio details** - Creation date, maintenance date, and status
-- **Financial data** - Total portfolio value and cash balance
-- **Audit trail** - Last user and transaction tracking
-
-This copybook is used by all programs that need to read, write, or manipulate portfolio master records, ensuring consistent data representation across the application.
+This copybook is fundamental to the portfolio management infrastructure, containing:
+- **Portfolio Identification** - Unique keys for portfolio and account tracking
+- **Client Information** - Owner details and account classification
+- **Portfolio Details** - Status, creation date, and maintenance tracking
+- **Financial Data** - Total value and cash balance in packed decimal format
+- **Audit Trail** - Last user and transaction date for compliance
 
 ## Record Layout
 
-### PORT-RECORD Structure
-
 ```
-+------------------+------------------+------------------+
-|     PORT-KEY     | PORT-CLIENT-INFO |PORT-PORTFOLIO-   |
-|    (18 bytes)    |   (31 bytes)     |INFO (17 bytes)   |
-+------------------+------------------+------------------+
-|PORT-FINANCIAL-   | PORT-AUDIT-INFO  |   PORT-FILLER    |
-|INFO (16 bytes)   |   (16 bytes)     |   (50 bytes)     |
-+------------------+------------------+------------------+
++------------------------------------------------------------------+
+|                        PORT-RECORD                                |
++------------------------------------------------------------------+
+| PORT-KEY (18 bytes)                                               |
+|   +-- PORT-ID (8) + PORT-ACCOUNT-NO (10)                         |
++------------------------------------------------------------------+
+| PORT-CLIENT-INFO (31 bytes)                                       |
+|   +-- PORT-CLIENT-NAME (30) + PORT-CLIENT-TYPE (1)               |
++------------------------------------------------------------------+
+| PORT-PORTFOLIO-INFO (17 bytes)                                    |
+|   +-- PORT-CREATE-DATE (8) + PORT-LAST-MAINT (8) + STATUS (1)    |
++------------------------------------------------------------------+
+| PORT-FINANCIAL-INFO (16 bytes)                                    |
+|   +-- PORT-TOTAL-VALUE (8) + PORT-CASH-BALANCE (8)               |
++------------------------------------------------------------------+
+| PORT-AUDIT-INFO (16 bytes)                                        |
+|   +-- PORT-LAST-USER (8) + PORT-LAST-TRANS (8)                   |
++------------------------------------------------------------------+
+| PORT-FILLER (50 bytes)                                            |
++------------------------------------------------------------------+
+| Total: ~148 bytes                                                 |
++------------------------------------------------------------------+
 ```
-
-**Total Record Size**: 148 bytes
 
 ## Data Structures
 
-### PORT-KEY (Primary Key)
+### Portfolio Record (PORT-RECORD)
 
-| Level | Name | Picture | Size | Description |
-|-------|------|---------|------|-------------|
-| 05 | PORT-KEY | - | 18 | Composite primary key |
-| 10 | PORT-ID | PIC X(8) | 8 | Portfolio identifier |
-| 10 | PORT-ACCOUNT-NO | PIC X(10) | 10 | Associated account number |
+The top-level record structure:
 
-**Key Format**: The composite key uniquely identifies each portfolio record. Example: `PORT0001` + `1234567890`
+| Level | Name | Description |
+|-------|------|-------------|
+| 01 | PORT-RECORD | Complete portfolio master record |
 
-### PORT-CLIENT-INFO (Client Details)
+### Record Key (PORT-KEY)
 
-| Level | Name | Picture | Size | Description |
-|-------|------|---------|------|-------------|
-| 05 | PORT-CLIENT-INFO | - | 31 | Client information group |
-| 10 | PORT-CLIENT-NAME | PIC X(30) | 30 | Client's full name |
-| 10 | PORT-CLIENT-TYPE | PIC X(1) | 1 | Client classification code |
+The composite primary key for indexed file access:
 
-#### Client Type Codes (88-levels)
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | PORT-KEY | - | Composite primary key (18 bytes) |
+| 10 | PORT-ID | X(8) | Unique portfolio identifier |
+| 10 | PORT-ACCOUNT-NO | X(10) | Associated account number |
 
-| Condition | Value | Description |
-|-----------|-------|-------------|
-| PORT-INDIVIDUAL | 'I' | Individual/retail client |
-| PORT-CORPORATE | 'C' | Corporate/business client |
-| PORT-TRUST | 'T' | Trust account |
+**Key Usage:**
+- Used as RECORD KEY in indexed file SELECT statements
+- Supports both random and sequential access patterns
+- Combination ensures uniqueness across the portfolio system
 
-### PORT-PORTFOLIO-INFO (Portfolio Details)
+### Client Information (PORT-CLIENT-INFO)
 
-| Level | Name | Picture | Size | Description |
-|-------|------|---------|------|-------------|
-| 05 | PORT-PORTFOLIO-INFO | - | 17 | Portfolio information group |
-| 10 | PORT-CREATE-DATE | PIC 9(8) | 8 | Creation date (YYYYMMDD) |
-| 10 | PORT-LAST-MAINT | PIC 9(8) | 8 | Last maintenance date (YYYYMMDD) |
-| 10 | PORT-STATUS | PIC X(1) | 1 | Portfolio status code |
+Owner and account classification data:
 
-#### Status Codes (88-levels)
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | PORT-CLIENT-INFO | - | Client information group |
+| 10 | PORT-CLIENT-NAME | X(30) | Client/owner name |
+| 10 | PORT-CLIENT-TYPE | X(1) | Account type classification |
+| 88 | PORT-INDIVIDUAL | VALUE 'I' | Individual investor account |
+| 88 | PORT-CORPORATE | VALUE 'C' | Corporate/institutional account |
+| 88 | PORT-TRUST | VALUE 'T' | Trust or fiduciary account |
 
-| Condition | Value | Description |
-|-----------|-------|-------------|
-| PORT-ACTIVE | 'A' | Active portfolio - available for transactions |
-| PORT-CLOSED | 'C' | Closed portfolio - no longer active |
-| PORT-SUSPENDED | 'S' | Suspended portfolio - temporarily inactive |
+**Client Type Values:**
 
-### PORT-FINANCIAL-INFO (Financial Data)
+| Code | Condition Name | Description |
+|------|----------------|-------------|
+| I | PORT-INDIVIDUAL | Personal investment account for individuals |
+| C | PORT-CORPORATE | Business or institutional investment account |
+| T | PORT-TRUST | Trust, estate, or fiduciary account |
 
-| Level | Name | Picture | Size | Description |
-|-------|------|---------|------|-------------|
-| 05 | PORT-FINANCIAL-INFO | - | 16 | Financial information group |
-| 10 | PORT-TOTAL-VALUE | PIC S9(13)V99 COMP-3 | 8 | Total portfolio market value |
-| 10 | PORT-CASH-BALANCE | PIC S9(13)V99 COMP-3 | 8 | Available cash balance |
+### Portfolio Information (PORT-PORTFOLIO-INFO)
 
-#### Packed Decimal (COMP-3) Fields
+Status and date tracking:
 
-Both financial fields use COMP-3 (packed decimal) format:
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | PORT-PORTFOLIO-INFO | - | Portfolio details group |
+| 10 | PORT-CREATE-DATE | 9(8) | Creation date (YYYYMMDD) |
+| 10 | PORT-LAST-MAINT | 9(8) | Last maintenance date (YYYYMMDD) |
+| 10 | PORT-STATUS | X(1) | Current portfolio status |
+| 88 | PORT-ACTIVE | VALUE 'A' | Active and operational |
+| 88 | PORT-CLOSED | VALUE 'C' | Closed/terminated |
+| 88 | PORT-SUSPENDED | VALUE 'S' | Temporarily suspended |
+
+**Status Values:**
+
+| Code | Condition Name | Description |
+|------|----------------|-------------|
+| A | PORT-ACTIVE | Portfolio is active and can process transactions |
+| C | PORT-CLOSED | Portfolio has been closed; no new transactions |
+| S | PORT-SUSPENDED | Portfolio is temporarily frozen pending review |
+
+### Financial Information (PORT-FINANCIAL-INFO)
+
+Monetary values in packed decimal format:
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | PORT-FINANCIAL-INFO | - | Financial data group |
+| 10 | PORT-TOTAL-VALUE | S9(13)V99 COMP-3 | Total portfolio value |
+| 10 | PORT-CASH-BALANCE | S9(13)V99 COMP-3 | Available cash balance |
+
+**Technical Details:**
+- **COMP-3 (Packed Decimal)**: Efficient storage for financial calculations
+- **S9(13)V99**: Signed, 13 integer digits, 2 decimal places
+- **Storage**: 8 bytes each (15 digits packed = 8 bytes)
 - **Range**: -9,999,999,999,999.99 to +9,999,999,999,999.99
-- **Precision**: 2 decimal places
-- **Storage**: 8 bytes each (15 digits + sign packed)
 
-### PORT-AUDIT-INFO (Audit Trail)
+### Audit Information (PORT-AUDIT-INFO)
 
-| Level | Name | Picture | Size | Description |
-|-------|------|---------|------|-------------|
-| 05 | PORT-AUDIT-INFO | - | 16 | Audit information group |
-| 10 | PORT-LAST-USER | PIC X(8) | 8 | User ID of last update |
-| 10 | PORT-LAST-TRANS | PIC 9(8) | 8 | Last transaction date (YYYYMMDD) |
+Change tracking for compliance:
 
-### PORT-FILLER (Reserved)
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | PORT-AUDIT-INFO | - | Audit trail group |
+| 10 | PORT-LAST-USER | X(8) | User ID of last modifier |
+| 10 | PORT-LAST-TRANS | 9(8) | Date of last transaction (YYYYMMDD) |
 
-| Level | Name | Picture | Size | Description |
-|-------|------|---------|------|-------------|
-| 05 | PORT-FILLER | PIC X(50) | 50 | Reserved for future expansion |
+### Reserved Space (PORT-FILLER)
 
-## Field Summary Table
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | PORT-FILLER | X(50) | Reserved for future expansion |
 
-| Field | Offset | Size | Type | Description |
-|-------|--------|------|------|-------------|
-| PORT-ID | 0 | 8 | Alpha | Portfolio ID |
-| PORT-ACCOUNT-NO | 8 | 10 | Alpha | Account number |
-| PORT-CLIENT-NAME | 18 | 30 | Alpha | Client name |
-| PORT-CLIENT-TYPE | 48 | 1 | Alpha | Client type (I/C/T) |
-| PORT-CREATE-DATE | 49 | 8 | Numeric | Creation date |
-| PORT-LAST-MAINT | 57 | 8 | Numeric | Last maintenance date |
-| PORT-STATUS | 65 | 1 | Alpha | Status (A/C/S) |
-| PORT-TOTAL-VALUE | 66 | 8 | Packed | Total value |
-| PORT-CASH-BALANCE | 74 | 8 | Packed | Cash balance |
-| PORT-LAST-USER | 82 | 8 | Alpha | Last user ID |
-| PORT-LAST-TRANS | 90 | 8 | Numeric | Last transaction date |
-| PORT-FILLER | 98 | 50 | Alpha | Reserved |
+## Usage
 
-## Usage Examples
-
-### Reading a Portfolio Record
+### File Definition (Indexed File)
 
 ```cobol
-WORKING-STORAGE SECTION.
-    COPY PORTFLIO.
-
-PROCEDURE DIVISION.
-    MOVE 'PORT0001' TO PORT-ID
-    MOVE '1234567890' TO PORT-ACCOUNT-NO
-    
-    READ PORTFOLIO-FILE INTO PORT-RECORD
-        KEY IS PORT-KEY
-        INVALID KEY
-            DISPLAY 'Portfolio not found'
-        NOT INVALID KEY
-            DISPLAY 'Client: ' PORT-CLIENT-NAME
-            DISPLAY 'Value: ' PORT-TOTAL-VALUE
-    END-READ
-```
-
-### Creating a New Portfolio
-
-```cobol
-WORKING-STORAGE SECTION.
-    COPY PORTFLIO.
-
-PROCEDURE DIVISION.
-    INITIALIZE PORT-RECORD
-    
-    MOVE 'PORT0002' TO PORT-ID
-    MOVE '9876543210' TO PORT-ACCOUNT-NO
-    MOVE 'SMITH, JOHN Q' TO PORT-CLIENT-NAME
-    MOVE 'I' TO PORT-CLIENT-TYPE
-    MOVE 20240320 TO PORT-CREATE-DATE
-    MOVE 20240320 TO PORT-LAST-MAINT
-    SET PORT-ACTIVE TO TRUE
-    MOVE 0 TO PORT-TOTAL-VALUE
-    MOVE 10000.00 TO PORT-CASH-BALANCE
-    MOVE 'ADMIN01' TO PORT-LAST-USER
-    MOVE 20240320 TO PORT-LAST-TRANS
-    
-    WRITE PORT-RECORD
-```
-
-### Checking Portfolio Status
-
-```cobol
-EVALUATE TRUE
-    WHEN PORT-ACTIVE
-        PERFORM 1000-PROCESS-ACTIVE-PORTFOLIO
-    WHEN PORT-SUSPENDED
-        DISPLAY 'Portfolio is suspended - no transactions allowed'
-    WHEN PORT-CLOSED
-        DISPLAY 'Portfolio is closed'
-    WHEN OTHER
-        DISPLAY 'Unknown portfolio status: ' PORT-STATUS
-END-EVALUATE
-```
-
-### Checking Client Type
-
-```cobol
-EVALUATE TRUE
-    WHEN PORT-INDIVIDUAL
-        PERFORM 2000-INDIVIDUAL-PROCESSING
-    WHEN PORT-CORPORATE
-        PERFORM 2100-CORPORATE-PROCESSING
-    WHEN PORT-TRUST
-        PERFORM 2200-TRUST-PROCESSING
-END-EVALUATE
-```
-
-## Programs Using This Copybook
-
-| Program | Description |
-|---------|-------------|
-| PORTADD | Add new portfolio records |
-| PORTDEL | Delete portfolio records |
-| PORTREAD | Read/retrieve portfolio records |
-| PORTTEST | Portfolio testing program |
-| PORTUPDT | Update existing portfolio records |
-| TSTGEN00 | Test data generation utility |
-
-## File Definition
-
-Programs using this copybook typically define the portfolio file as:
-
-```cobol
-INPUT-OUTPUT SECTION.
 FILE-CONTROL.
     SELECT PORTFOLIO-FILE
         ASSIGN TO PORTFILE
         ORGANIZATION IS INDEXED
         ACCESS MODE IS DYNAMIC
         RECORD KEY IS PORT-KEY
-        FILE STATUS IS WS-PORT-STATUS.
+        FILE STATUS IS WS-FILE-STATUS.
 
 FILE SECTION.
-FD  PORTFOLIO-FILE
-    RECORD CONTAINS 148 CHARACTERS.
+FD  PORTFOLIO-FILE.
     COPY PORTFLIO.
 ```
 
-## Technical Notes
+### File Definition (Sequential File)
 
-### Record Size Calculation
+```cobol
+FILE-CONTROL.
+    SELECT PORTFOLIO-FILE
+        ASSIGN TO PORTFILE
+        ORGANIZATION IS SEQUENTIAL
+        FILE STATUS IS WS-FILE-STATUS.
 
-| Section | Size |
-|---------|------|
-| PORT-KEY | 18 bytes |
-| PORT-CLIENT-INFO | 31 bytes |
-| PORT-PORTFOLIO-INFO | 17 bytes |
-| PORT-FINANCIAL-INFO | 16 bytes |
-| PORT-AUDIT-INFO | 16 bytes |
-| PORT-FILLER | 50 bytes |
-| **Total** | **148 bytes** |
-
-### COMP-3 Storage
-
-The financial fields use COMP-3 (packed decimal) format which stores two digits per byte plus a sign nibble:
-- PIC S9(13)V99 = 15 digits + sign
-- Storage = (15 + 1) / 2 = 8 bytes
-
-### Date Format
-
-All date fields use YYYYMMDD format (8 numeric digits):
-- Enables proper sorting
-- Y2K compliant
-- Easy date arithmetic
-
-### Filler Space
-
-The 50-byte PORT-FILLER provides:
-- Room for future field additions
-- Backward compatibility when new fields are added
-- Padding to maintain consistent record size
-
-### Key Design
-
-The composite key (PORT-ID + PORT-ACCOUNT-NO) allows:
-- Multiple portfolios per account
-- Unique portfolio identification
-- Efficient VSAM KSDS access
-
-### Status Transitions
-
-```mermaid
-stateDiagram-v2
-    [*] --> Active: Create
-    Active --> Suspended: Suspend
-    Suspended --> Active: Reactivate
-    Active --> Closed: Close
-    Suspended --> Closed: Close
-    Closed --> [*]
+FILE SECTION.
+FD  PORTFOLIO-FILE.
+    COPY PORTFLIO.
 ```
 
-Valid status transitions:
-- New portfolios start as Active ('A')
-- Active portfolios can be Suspended ('S') or Closed ('C')
-- Suspended portfolios can be reactivated to Active or Closed
-- Closed is a terminal state (no transitions out)
+### Working-Storage Usage
+
+```cobol
+WORKING-STORAGE SECTION.
+01  WS-PORTFOLIO-RECORD.
+    COPY PORTFLIO.
+```
+
+### Creating a New Portfolio
+
+```cobol
+INITIALIZE PORT-RECORD
+
+MOVE 'PORT0001'    TO PORT-ID
+MOVE '1234567890'  TO PORT-ACCOUNT-NO
+MOVE 'SMITH, JOHN' TO PORT-CLIENT-NAME
+SET PORT-INDIVIDUAL TO TRUE
+ACCEPT PORT-CREATE-DATE FROM DATE YYYYMMDD
+MOVE PORT-CREATE-DATE TO PORT-LAST-MAINT
+SET PORT-ACTIVE TO TRUE
+MOVE ZERO TO PORT-TOTAL-VALUE
+MOVE ZERO TO PORT-CASH-BALANCE
+MOVE 'ADMIN001' TO PORT-LAST-USER
+MOVE PORT-CREATE-DATE TO PORT-LAST-TRANS
+
+WRITE PORT-RECORD
+```
+
+### Reading by Key
+
+```cobol
+MOVE 'PORT0001'   TO PORT-ID
+MOVE '1234567890' TO PORT-ACCOUNT-NO
+
+READ PORTFOLIO-FILE
+    INVALID KEY
+        DISPLAY 'Portfolio not found'
+    NOT INVALID KEY
+        DISPLAY 'Client: ' PORT-CLIENT-NAME
+        DISPLAY 'Value:  ' PORT-TOTAL-VALUE
+END-READ
+```
+
+### Checking Status with 88-Levels
+
+```cobol
+READ PORTFOLIO-FILE
+
+EVALUATE TRUE
+    WHEN PORT-ACTIVE
+        PERFORM PROCESS-TRANSACTION
+    WHEN PORT-SUSPENDED
+        DISPLAY 'Portfolio suspended - no transactions allowed'
+    WHEN PORT-CLOSED
+        DISPLAY 'Portfolio closed'
+END-EVALUATE
+```
+
+### Updating Financial Values
+
+```cobol
+READ PORTFOLIO-FILE
+
+ADD WS-TRANSACTION-AMOUNT TO PORT-TOTAL-VALUE
+SUBTRACT WS-FEE-AMOUNT FROM PORT-CASH-BALANCE
+ACCEPT PORT-LAST-MAINT FROM DATE YYYYMMDD
+MOVE WS-USER-ID TO PORT-LAST-USER
+MOVE PORT-LAST-MAINT TO PORT-LAST-TRANS
+
+REWRITE PORT-RECORD
+```
+
+## Programs Using This Copybook
+
+### PORTADD - Portfolio Addition Program
+
+**Purpose:** Creates new portfolio records from an input file
+
+**Usage:**
+- Copies PORTFLIO for both PORTFOLIO-FILE (indexed, I-O) and INPUT-FILE (sequential)
+- Validates PORT-ID, PORT-CLIENT-NAME, and PORT-STATUS before writing
+- Sets PORT-CREATE-DATE and PORT-LAST-MAINT to current date
+- Handles duplicate key errors (file status '22')
+
+### PORTREAD - Portfolio Reading Program
+
+**Purpose:** Sequentially reads and displays all portfolio records
+
+**Usage:**
+- Uses dynamic access mode for sequential reading
+- Displays PORT-ID, PORT-ACCOUNT-NO, PORT-CLIENT-NAME, PORT-STATUS, PORT-TOTAL-VALUE
+- Counts total records processed
+
+### PORTUPDT - Portfolio Update Program
+
+**Purpose:** Updates existing portfolio records based on update requests
+
+**Usage:**
+- Reads portfolio by PORT-KEY for random access
+- Updates PORT-STATUS, PORT-CLIENT-NAME, or PORT-TOTAL-VALUE based on action code
+- Uses REWRITE to update records in place
+
+### PORTDEL - Portfolio Deletion Program
+
+**Purpose:** Processes portfolio deletion requests with audit trail
+
+**Usage:**
+- Reads portfolio by PORT-KEY
+- Deletes record using DELETE statement
+- Writes audit record with PORT-KEY, PORT-STATUS, and deletion reason
+
+### PORTTEST - Portfolio Test Data Generator
+
+**Purpose:** Generates test portfolio records for development and testing
+
+**Usage:**
+- Creates PORT-RECORD with generated values
+- Uses FUNCTION RANDOM for PORT-CLIENT-TYPE and PORT-STATUS selection
+- Computes PORT-TOTAL-VALUE and PORT-CASH-BALANCE randomly
+- Generates PORT-ID using STRING with sequence counter
+
+### TSTGEN00 - Test Data Generator
+
+**Purpose:** System-wide test data generation utility
+
+**Usage:**
+- Uses COPY PORTFLIO with REPLACING clause for prefix substitution
+- Generates portfolio records as part of comprehensive test data sets
+- Writes to sequential output file for batch loading
+
+## File Status Codes
+
+Common file status codes when using PORTFLIO:
+
+| Status | Meaning | Typical Cause |
+|--------|---------|---------------|
+| 00 | Success | Operation completed normally |
+| 10 | End of file | Sequential read past last record |
+| 22 | Duplicate key | Attempting to write existing PORT-KEY |
+| 23 | Record not found | PORT-KEY doesn't exist for READ/DELETE |
+| 35 | File not found | PORTFILE DD not defined |
+
+## VSAM Considerations
+
+When used with VSAM KSDS (Key-Sequenced Data Set):
+
+- **Primary Key**: PORT-KEY (18 bytes) - PORT-ID + PORT-ACCOUNT-NO
+- **Record Length**: Fixed, approximately 148 bytes
+- **CI Size**: Recommend 4096 for typical volumes
+- **SHAREOPTIONS**: (2,3) for batch/online sharing
+
+**Sample VSAM Definition:**
+```jcl
+DEFINE CLUSTER (NAME(your.portfolio.file) -
+                INDEXED -
+                KEYS(18 0) -
+                RECORDSIZE(148 148) -
+                CISZ(4096) -
+                SHAREOPTIONS(2,3))
+```
+
+## Best Practices
+
+1. **Always Initialize**: Use `INITIALIZE PORT-RECORD` before creating new records to clear PORT-FILLER and ensure clean data
+
+2. **Validate Status**: Check PORT-STATUS using 88-level conditions before processing transactions
+
+3. **Maintain Audit Trail**: Always update PORT-LAST-USER and PORT-LAST-TRANS when modifying records
+
+4. **Handle Duplicates**: Check for file status '22' when writing to prevent silent failures
+
+5. **Date Consistency**: Use `ACCEPT FROM DATE YYYYMMDD` for consistent date formatting
+
+6. **Financial Precision**: PORT-TOTAL-VALUE and PORT-CASH-BALANCE use COMP-3 for accurate decimal arithmetic; avoid intermediate display fields
+
+## Related Copybooks
+
+| Copybook | Relationship |
+|----------|--------------|
+| POSREC | Position records linked to portfolios by portfolio ID |
+| TRNREC | Transaction records associated with portfolio activity |
+| HISTREC | Historical records for portfolio performance tracking |

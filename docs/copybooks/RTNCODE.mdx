@@ -1,76 +1,53 @@
 ---
 title: "RTNCODE"
-description: "Return code management copybook providing structures for tracking, analyzing, and managing program return codes"
+description: "Return Code Management Copybook - Standardized structure for managing, tracking, and analyzing return codes across batch and utility programs"
 ---
 
 ## Overview
 
-RTNCODE (Return Code) is a copybook that provides a comprehensive framework for managing return codes across batch and utility programs in the portfolio management system. It supports multiple operations including initialization, setting codes, retrieving codes, logging, and analysis of return code patterns.
+RTNCODE is a copybook that provides a standardized framework for managing return codes across the portfolio management system. It defines data structures for tracking current and highest return codes, determining status levels, logging return codes to a database, and analyzing historical return code patterns.
 
-This copybook enables:
-- **Centralized Return Code Management**: Consistent handling of return codes across programs
-- **Highest Code Tracking**: Automatically tracks the highest (most severe) return code encountered
-- **Return Code Analysis**: Supports statistical analysis of return codes over time
-- **Status Classification**: Maps numeric codes to status categories (Success/Warning/Error/Severe)
-- **Logging Integration**: Provides structures for return code logging and reporting
+The copybook supports five operations through a request-type interface:
+- **Initialize** - Reset return code tracking
+- **Set Code** - Record a new return code and update highest
+- **Get Code** - Retrieve current return code information
+- **Log Code** - Persist return code to database for audit
+- **Analyze** - Query historical return codes for a program
 
-## Structure Diagram
+This standardized approach ensures consistent return code handling across all programs, enabling centralized monitoring, reporting, and problem diagnosis.
 
-```mermaid
-graph TD
-    A[RETURN-CODE-AREA] --> B[RC-REQUEST-TYPE]
-    A --> C[RC-PROGRAM-ID]
-    A --> D[RC-CODES-AREA]
-    A --> E[RC-MESSAGE]
-    A --> F[RC-RESPONSE-CODE]
-    A --> G[RC-ANALYSIS-DATA]
-    A --> H[RC-RETURN-DATA]
-    
-    B --> B1[RC-INITIALIZE]
-    B --> B2[RC-SET-CODE]
-    B --> B3[RC-GET-CODE]
-    B --> B4[RC-LOG-CODE]
-    B --> B5[RC-ANALYZE]
-    
-    D --> D1[RC-CURRENT-CODE]
-    D --> D2[RC-HIGHEST-CODE]
-    D --> D3[RC-NEW-CODE]
-    D --> D4[RC-STATUS]
-    
-    G --> G1[RC-START-TIME]
-    G --> G2[RC-END-TIME]
-    G --> G3[RC-TOTAL-CODES]
-    G --> G4[RC-MAX-CODE]
-    G --> G5[RC-MIN-CODE]
-    
-    H --> H1[RC-RETURN-VALUE]
-    H --> H2[RC-HIGHEST-RETURN]
-    H --> H3[RC-RETURN-STATUS]
+## Record Layout
+
+### RETURN-CODE-AREA (01 Level)
+
+```
+01  RETURN-CODE-AREA.
+    05  RC-REQUEST-TYPE.
+    05  RC-PROGRAM-ID.
+    05  RC-CODES-AREA.
+    05  RC-MESSAGE.
+    05  RC-RESPONSE-CODE.
+    05  RC-ANALYSIS-DATA.
+    05  RC-RETURN-DATA.
 ```
 
-## Data Definitions
+## Data Structures
 
-### RETURN-CODE-AREA (Level 01)
-
-The main structure for return code management operations.
-
-### RC-REQUEST-TYPE - Operation Type
-
-Specifies the operation to perform on the return code area.
+### RC-REQUEST-TYPE - Operation Selector
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
 | 05 | RC-REQUEST-TYPE | X | Operation type code |
 
-**Request Type Values (88-levels):**
+#### Request Type Values
 
-| Condition | Value | Description |
-|-----------|-------|-------------|
-| RC-INITIALIZE | 'I' | Initialize return code tracking |
-| RC-SET-CODE | 'S' | Set a new return code |
-| RC-GET-CODE | 'G' | Get current return code |
-| RC-LOG-CODE | 'L' | Log the return code |
-| RC-ANALYZE | 'A' | Analyze return code history |
+| Value | 88-Level Name | Description |
+|-------|---------------|-------------|
+| I | RC-INITIALIZE | Initialize/reset return code tracking |
+| S | RC-SET-CODE | Set a new return code |
+| G | RC-GET-CODE | Get current return code values |
+| L | RC-LOG-CODE | Log return code to database |
+| A | RC-ANALYZE | Analyze historical return codes |
 
 ### RC-PROGRAM-ID - Program Identifier
 
@@ -80,24 +57,22 @@ Specifies the operation to perform on the return code area.
 
 ### RC-CODES-AREA - Return Code Values
 
-Contains the current state of return codes.
-
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 05 | RC-CODES-AREA | - | Return codes group |
+| 05 | RC-CODES-AREA | | Return codes group |
 | 10 | RC-CURRENT-CODE | S9(4) COMP | Current return code |
-| 10 | RC-HIGHEST-CODE | S9(4) COMP | Highest code encountered |
-| 10 | RC-NEW-CODE | S9(4) COMP | New code to set |
+| 10 | RC-HIGHEST-CODE | S9(4) COMP | Highest return code seen |
+| 10 | RC-NEW-CODE | S9(4) COMP | New code to set (input) |
 | 10 | RC-STATUS | X | Status classification |
 
-**RC-STATUS Values (88-levels):**
+#### RC-STATUS Values
 
-| Condition | Value | Code Range | Description |
-|-----------|-------|------------|-------------|
-| RC-STATUS-SUCCESS | 'S' | 0 | Successful completion |
-| RC-STATUS-WARNING | 'W' | 1-4 | Completed with warnings |
-| RC-STATUS-ERROR | 'E' | 5-8 | Error occurred |
-| RC-STATUS-SEVERE | 'F' | 9+ | Severe/fatal error |
+| Value | 88-Level Name | Return Code Range | Description |
+|-------|---------------|-------------------|-------------|
+| S | RC-STATUS-SUCCESS | 0 | Successful completion |
+| W | RC-STATUS-WARNING | 1-4 | Completed with warnings |
+| E | RC-STATUS-ERROR | 5-8 | Completed with errors |
+| F | RC-STATUS-SEVERE | 9+ | Severe/fatal error |
 
 ### RC-MESSAGE - Message Text
 
@@ -105,286 +80,285 @@ Contains the current state of return codes.
 |-------|------|---------|-------------|
 | 05 | RC-MESSAGE | X(80) | Descriptive message for the return code |
 
-### RC-RESPONSE-CODE - Response Code
+### RC-RESPONSE-CODE - Operation Response
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 05 | RC-RESPONSE-CODE | S9(8) COMP | Extended response code |
+| 05 | RC-RESPONSE-CODE | S9(8) COMP | Response from operation (0=success) |
 
-### RC-ANALYSIS-DATA - Analysis Information
-
-Statistical data for return code analysis.
+### RC-ANALYSIS-DATA - Analysis Parameters/Results
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 05 | RC-ANALYSIS-DATA | - | Analysis data group |
-| 10 | RC-START-TIME | X(26) | Analysis start timestamp |
-| 10 | RC-END-TIME | X(26) | Analysis end timestamp |
-| 10 | RC-TOTAL-CODES | S9(8) COMP | Total codes processed |
-| 10 | RC-MAX-CODE | S9(4) COMP | Maximum code in range |
-| 10 | RC-MIN-CODE | S9(4) COMP | Minimum code in range |
+| 05 | RC-ANALYSIS-DATA | | Analysis group |
+| 10 | RC-START-TIME | X(26) | Start of analysis period |
+| 10 | RC-END-TIME | X(26) | End of analysis period |
+| 10 | RC-TOTAL-CODES | S9(8) COMP | Count of return codes in period |
+| 10 | RC-MAX-CODE | S9(4) COMP | Maximum return code in period |
+| 10 | RC-MIN-CODE | S9(4) COMP | Minimum return code in period |
 
-### RC-RETURN-DATA - Return Information
-
-Final return values for program completion.
+### RC-RETURN-DATA - Retrieved Values
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 05 | RC-RETURN-DATA | - | Return data group |
-| 10 | RC-RETURN-VALUE | S9(4) COMP | Return value to use |
-| 10 | RC-HIGHEST-RETURN | S9(4) COMP | Highest return across calls |
-| 10 | RC-RETURN-STATUS | X | Final return status |
+| 05 | RC-RETURN-DATA | | Retrieved values group |
+| 10 | RC-RETURN-VALUE | S9(4) COMP | Retrieved current code |
+| 10 | RC-HIGHEST-RETURN | S9(4) COMP | Retrieved highest code |
+| 10 | RC-RETURN-STATUS | X | Retrieved status |
 
-## Record Layout
+## Operations
 
-```
-Position  Length  Field Name           Format       Description
---------  ------  -------------------  -----------  -------------------------
-1         1       RC-REQUEST-TYPE      X            Operation type
-2-9       8       RC-PROGRAM-ID        X(8)         Program identifier
-10-11     2       RC-CURRENT-CODE      S9(4) COMP   Current code
-12-13     2       RC-HIGHEST-CODE      S9(4) COMP   Highest code
-14-15     2       RC-NEW-CODE          S9(4) COMP   New code to set
-16        1       RC-STATUS            X            Status classification
-17-96     80      RC-MESSAGE           X(80)        Message text
-97-100    4       RC-RESPONSE-CODE     S9(8) COMP   Extended response
-101-126   26      RC-START-TIME        X(26)        Start timestamp
-127-152   26      RC-END-TIME          X(26)        End timestamp
-153-156   4       RC-TOTAL-CODES       S9(8) COMP   Total codes
-157-158   2       RC-MAX-CODE          S9(4) COMP   Maximum code
-159-160   2       RC-MIN-CODE          S9(4) COMP   Minimum code
-161-162   2       RC-RETURN-VALUE      S9(4) COMP   Return value
-163-164   2       RC-HIGHEST-RETURN    S9(4) COMP   Highest return
-165       1       RC-RETURN-STATUS     X            Return status
-```
+### Initialize (RC-INITIALIZE)
 
-**Total Structure Length: 165 bytes**
-
-## Usage
-
-### Including the Copybook
+Resets all return code tracking fields to initial state:
 
 ```cobol
-       WORKING-STORAGE SECTION.
-           COPY RTNCODE.
+SET RC-INITIALIZE TO TRUE
+CALL 'RTNCDE00' USING RETURN-CODE-AREA
 ```
 
-### Initializing Return Code Tracking
+**Effect:**
+- RC-CURRENT-CODE = 0
+- RC-HIGHEST-CODE = 0
+- RC-STATUS = 'S' (Success)
+- RC-RESPONSE-CODE = 0
+
+### Set Code (RC-SET-CODE)
+
+Records a new return code and updates the highest code if needed:
 
 ```cobol
-       INIT-RETURN-CODES.
-           INITIALIZE RETURN-CODE-AREA
-           SET RC-INITIALIZE TO TRUE
-           MOVE 'MYPROG  ' TO RC-PROGRAM-ID
-           ACCEPT RC-START-TIME FROM TIME STAMP
-           MOVE ZEROS TO RC-CURRENT-CODE
-           MOVE ZEROS TO RC-HIGHEST-CODE
-           SET RC-STATUS-SUCCESS TO TRUE.
+MOVE 'MYPROG01' TO RC-PROGRAM-ID
+MOVE 4 TO RC-NEW-CODE
+MOVE 'Minor validation warning' TO RC-MESSAGE
+SET RC-SET-CODE TO TRUE
+CALL 'RTNCDE00' USING RETURN-CODE-AREA
 ```
 
-### Setting a Return Code
+**Effect:**
+- RC-CURRENT-CODE = RC-NEW-CODE
+- RC-HIGHEST-CODE = MAX(RC-HIGHEST-CODE, RC-NEW-CODE)
+- RC-STATUS set based on code range
+- RC-RESPONSE-CODE = 0
+
+### Get Code (RC-GET-CODE)
+
+Retrieves current return code information:
 
 ```cobol
-       SET-RETURN-CODE.
-           SET RC-SET-CODE TO TRUE
-           MOVE WS-NEW-CODE TO RC-NEW-CODE
-           
-           IF RC-NEW-CODE > RC-HIGHEST-CODE
-               MOVE RC-NEW-CODE TO RC-HIGHEST-CODE
-           END-IF
-           
-           MOVE RC-NEW-CODE TO RC-CURRENT-CODE
-           
-           EVALUATE TRUE
-               WHEN RC-CURRENT-CODE = 0
-                   SET RC-STATUS-SUCCESS TO TRUE
-               WHEN RC-CURRENT-CODE <= 4
-                   SET RC-STATUS-WARNING TO TRUE
-               WHEN RC-CURRENT-CODE <= 8
-                   SET RC-STATUS-ERROR TO TRUE
-               WHEN OTHER
-                   SET RC-STATUS-SEVERE TO TRUE
-           END-EVALUATE
-           
-           ADD 1 TO RC-TOTAL-CODES.
+SET RC-GET-CODE TO TRUE
+CALL 'RTNCDE00' USING RETURN-CODE-AREA
+
+* Results available in:
+*   RC-RETURN-VALUE   - Current code
+*   RC-HIGHEST-RETURN - Highest code seen
+*   RC-RETURN-STATUS  - Status classification
 ```
 
-### Getting Current Return Code
+### Log Code (RC-LOG-CODE)
+
+Persists the current return code to the RTNCODES database table:
 
 ```cobol
-       GET-RETURN-CODE.
-           SET RC-GET-CODE TO TRUE
-           MOVE RC-CURRENT-CODE TO WS-PROGRAM-RC
-           MOVE RC-HIGHEST-CODE TO WS-HIGHEST-RC
-           MOVE RC-STATUS TO WS-STATUS-FLAG.
+MOVE 'MYPROG01' TO RC-PROGRAM-ID
+MOVE 'Processing completed with warnings' TO RC-MESSAGE
+SET RC-LOG-CODE TO TRUE
+CALL 'RTNCDE00' USING RETURN-CODE-AREA
+
+IF RC-RESPONSE-CODE NOT = 0
+    DISPLAY 'Failed to log return code'
+END-IF
 ```
 
-### Logging Return Code
+**Database Record:**
+- TIMESTAMP
+- PROGRAM_ID
+- RETURN_CODE
+- HIGHEST_CODE
+- STATUS_CODE
+- MESSAGE_TEXT
+
+### Analyze (RC-ANALYZE)
+
+Queries historical return codes for a program within a time range:
 
 ```cobol
-       LOG-RETURN-CODE.
-           SET RC-LOG-CODE TO TRUE
-           STRING 'Program ' DELIMITED SIZE
-                  RC-PROGRAM-ID DELIMITED SPACE
-                  ' ended with RC=' DELIMITED SIZE
-                  RC-CURRENT-CODE DELIMITED SIZE
-             INTO RC-MESSAGE
-           DISPLAY RC-MESSAGE.
-```
+MOVE 'MYPROG01' TO RC-PROGRAM-ID
+MOVE '2024-03-01-00.00.00.000000' TO RC-START-TIME
+MOVE '2024-03-31-23.59.59.999999' TO RC-END-TIME
+SET RC-ANALYZE TO TRUE
+CALL 'RTNCDE00' USING RETURN-CODE-AREA
 
-### Analyzing Return Codes
-
-```cobol
-       ANALYZE-RETURN-CODES.
-           SET RC-ANALYZE TO TRUE
-           ACCEPT RC-END-TIME FROM TIME STAMP
-           
-           DISPLAY 'Return Code Analysis for ' RC-PROGRAM-ID
-           DISPLAY '  Start Time:    ' RC-START-TIME
-           DISPLAY '  End Time:      ' RC-END-TIME
-           DISPLAY '  Total Codes:   ' RC-TOTAL-CODES
-           DISPLAY '  Highest Code:  ' RC-HIGHEST-CODE
-           DISPLAY '  Final Status:  ' RC-STATUS.
-```
-
-### Complete Return Code Management Example
-
-```cobol
-       PROCEDURE DIVISION.
-       0000-MAIN.
-           PERFORM 1000-INITIALIZE
-           PERFORM 2000-PROCESS
-           PERFORM 3000-TERMINATE
-           GOBACK.
-           
-       1000-INITIALIZE.
-           INITIALIZE RETURN-CODE-AREA
-           SET RC-INITIALIZE TO TRUE
-           MOVE 'MYPROG  ' TO RC-PROGRAM-ID
-           ACCEPT RC-START-TIME FROM TIME STAMP.
-           
-       2000-PROCESS.
-           * Processing that may set various return codes
-           PERFORM 2100-STEP-ONE
-           PERFORM 2200-STEP-TWO
-           PERFORM 2300-STEP-THREE.
-           
-       2100-STEP-ONE.
-           * Successful step
-           MOVE 0 TO RC-NEW-CODE
-           PERFORM UPDATE-RETURN-CODE.
-           
-       2200-STEP-TWO.
-           * Step with warning
-           MOVE 4 TO RC-NEW-CODE
-           MOVE 'Minor data issue detected' TO RC-MESSAGE
-           PERFORM UPDATE-RETURN-CODE.
-           
-       2300-STEP-THREE.
-           * Step completes OK
-           MOVE 0 TO RC-NEW-CODE
-           PERFORM UPDATE-RETURN-CODE.
-           
-       UPDATE-RETURN-CODE.
-           SET RC-SET-CODE TO TRUE
-           IF RC-NEW-CODE > RC-HIGHEST-CODE
-               MOVE RC-NEW-CODE TO RC-HIGHEST-CODE
-           END-IF
-           MOVE RC-NEW-CODE TO RC-CURRENT-CODE
-           ADD 1 TO RC-TOTAL-CODES.
-           
-       3000-TERMINATE.
-           ACCEPT RC-END-TIME FROM TIME STAMP
-           MOVE RC-HIGHEST-CODE TO RC-RETURN-VALUE
-           MOVE RC-RETURN-VALUE TO RETURN-CODE
-           
-           DISPLAY 'Program complete. Highest RC: ' 
-                   RC-HIGHEST-CODE.
+* Results available in:
+*   RC-TOTAL-CODES - Number of executions
+*   RC-MAX-CODE    - Worst return code
+*   RC-MIN-CODE    - Best return code
 ```
 
 ## Programs Using This Copybook
 
-| Program | Description |
-|---------|-------------|
-| RPTAUD00 | Audit report generator |
-| RPTPOS00 | Position report generator |
-| RPTSTA00 | Status report generator |
-| RTNCDE00 | Return code management utility |
-| TSTGEN00 | Test data generation program |
-| TSTVAL00 | Test validation program |
-| UTLMNT00 | Maintenance utility |
-| UTLMON00 | System monitoring utility |
-| UTLVAL00 | Validation utility |
+| Program | Category | Usage |
+|---------|----------|-------|
+| RTNCDE00 | Batch | Return code handler - implements the operations |
+| RPTAUD00 | Batch | Audit reporting - tracks report generation status |
+| RPTPOS00 | Batch | Position reporting - tracks report status |
+| RPTSTA00 | Batch | Status reporting - tracks processing status |
+| TSTGEN00 | Test | Test generation - tracks test execution |
+| TSTVAL00 | Test | Test validation - tracks validation results |
+| UTLMNT00 | Utility | File maintenance - tracks maintenance operations |
+| UTLMON00 | Utility | System monitoring - tracks monitoring status |
+| UTLVAL00 | Utility | Data validation - tracks validation results |
+
+## Usage Examples
+
+### Basic Return Code Tracking
+
+```cobol
+WORKING-STORAGE SECTION.
+    COPY RTNCODE.
+
+PROCEDURE DIVISION.
+    * Initialize at program start
+    SET RC-INITIALIZE TO TRUE
+    MOVE 'MYPROG01' TO RC-PROGRAM-ID
+    CALL 'RTNCDE00' USING RETURN-CODE-AREA
+    
+    * Process records, setting codes as needed
+    PERFORM PROCESS-RECORDS
+    
+    * Check results
+    SET RC-GET-CODE TO TRUE
+    CALL 'RTNCDE00' USING RETURN-CODE-AREA
+    
+    EVALUATE TRUE
+        WHEN RC-STATUS-SUCCESS
+            DISPLAY 'Processing completed successfully'
+        WHEN RC-STATUS-WARNING
+            DISPLAY 'Processing completed with warnings'
+        WHEN RC-STATUS-ERROR
+            DISPLAY 'Processing completed with errors'
+        WHEN RC-STATUS-SEVERE
+            DISPLAY 'Processing failed'
+    END-EVALUATE
+    
+    * Set program return code
+    MOVE RC-HIGHEST-RETURN TO RETURN-CODE
+    
+    GOBACK.
+
+PROCESS-RECORDS.
+    * On warning condition
+    IF minor-issue
+        MOVE 4 TO RC-NEW-CODE
+        MOVE 'Minor data issue encountered' TO RC-MESSAGE
+        SET RC-SET-CODE TO TRUE
+        CALL 'RTNCDE00' USING RETURN-CODE-AREA
+    END-IF
+    
+    * On error condition
+    IF error-condition
+        MOVE 8 TO RC-NEW-CODE
+        MOVE 'Error processing record' TO RC-MESSAGE
+        SET RC-SET-CODE TO TRUE
+        CALL 'RTNCDE00' USING RETURN-CODE-AREA
+    END-IF
+    .
+```
+
+### Logging Return Codes for Audit
+
+```cobol
+* At end of processing, log the final status
+MOVE 'Batch processing complete' TO RC-MESSAGE
+SET RC-LOG-CODE TO TRUE
+CALL 'RTNCDE00' USING RETURN-CODE-AREA
+```
+
+### Analyzing Historical Performance
+
+```cobol
+* Analyze last 30 days of return codes
+MOVE 'MYPROG01' TO RC-PROGRAM-ID
+COMPUTE start-date = FUNCTION CURRENT-DATE - 30
+MOVE start-date TO RC-START-TIME
+MOVE FUNCTION CURRENT-DATE TO RC-END-TIME
+SET RC-ANALYZE TO TRUE
+CALL 'RTNCDE00' USING RETURN-CODE-AREA
+
+DISPLAY 'Executions: ' RC-TOTAL-CODES
+DISPLAY 'Max RC: ' RC-MAX-CODE
+DISPLAY 'Min RC: ' RC-MIN-CODE
+```
 
 ## Related Copybooks
 
 | Copybook | Relationship |
 |----------|--------------|
-| ERRHAND | Error handling definitions (complementary error codes) |
-| BCHCON | Batch control constants (includes return code thresholds) |
+| ERRHAND | Error handling - complements RTNCODE for error management |
+| RETHND | Return handling - alternative return status structure |
 
-## Return Code Standards
+## Technical Notes
 
-### IBM z/OS Conventions
+### Return Code Conventions
 
-| Code | Meaning | Typical Action |
-|------|---------|----------------|
-| 0 | Success | Continue normally |
-| 4 | Warning | Log and continue |
-| 8 | Error | Review, may continue |
-| 12 | Severe | Stop processing |
-| 16 | Critical | Immediate attention |
+The copybook follows IBM mainframe return code conventions:
 
-### Status Mapping
-
-```mermaid
-graph LR
-    A[Return Code] --> B{Value?}
-    B -->|0| C[SUCCESS - S]
-    B -->|1-4| D[WARNING - W]
-    B -->|5-8| E[ERROR - E]
-    B -->|9+| F[SEVERE - F]
-```
-
-## Design Considerations
-
-### COMP Fields
-
-Numeric fields use `COMP` (binary) format for:
-- Efficient arithmetic operations
-- Compatibility with system return codes
-- Proper handling of signed values
-- Compact storage
+| Code | Severity | Meaning |
+|------|----------|---------|
+| 0 | Success | Processing completed successfully |
+| 4 | Warning | Minor issues, processing continued |
+| 8 | Error | Significant issues, some processing may have failed |
+| 12 | Severe | Major failure, processing terminated |
+| 16 | Critical | Catastrophic failure |
 
 ### Highest Code Tracking
 
-The RC-HIGHEST-CODE field implements a "high-water mark" pattern:
-- Tracks the most severe condition encountered
-- Never decreases during program execution
-- Used for final program return code
-- Enables accurate job step condition code checking
+The `RC-HIGHEST-CODE` field tracks the worst return code seen during execution. This is crucial because:
+- Multiple operations may set different codes
+- The program's final return code should reflect the worst outcome
+- JCL COND parameters typically check against the highest code
 
-### Analysis Support
+### Status Classification Logic
 
-The RC-ANALYSIS-DATA group supports:
-- Performance monitoring (start/end times)
-- Volume tracking (total codes processed)
-- Range analysis (min/max codes)
-- Historical trending
+The RTNCDE00 program classifies return codes as follows:
+```cobol
+EVALUATE RC-NEW-CODE
+    WHEN 0
+        SET RC-STATUS-SUCCESS TO TRUE
+    WHEN 1 THRU 4
+        SET RC-STATUS-WARNING TO TRUE
+    WHEN 5 THRU 8
+        SET RC-STATUS-ERROR TO TRUE
+    WHEN OTHER
+        SET RC-STATUS-SEVERE TO TRUE
+END-EVALUATE
+```
 
-### Message Field
+### Database Table Structure
 
-The 80-character RC-MESSAGE field:
-- Matches standard line width
-- Provides context for return codes
-- Supports display and logging
-- Can be concatenated with other information
+The RTNCODES table (used by RC-LOG-CODE and RC-ANALYZE) should have:
+```sql
+CREATE TABLE RTNCODES (
+    TIMESTAMP       CHAR(26) NOT NULL,
+    PROGRAM_ID      CHAR(8) NOT NULL,
+    RETURN_CODE     SMALLINT,
+    HIGHEST_CODE    SMALLINT,
+    STATUS_CODE     CHAR(1),
+    MESSAGE_TEXT    VARCHAR(80)
+);
 
-## Maintenance Notes
+CREATE INDEX RTNCODES_X1 
+    ON RTNCODES (PROGRAM_ID, TIMESTAMP);
+```
 
-When modifying this copybook:
+### Timestamp Format
 
-1. **Adding request types**: Update all programs that check RC-REQUEST-TYPE
-2. **Changing status mappings**: Review threshold logic in all using programs
-3. **Extending analysis data**: Ensure backward compatibility with existing programs
-4. **Modifying field sizes**: Consider impact on existing data and reports
+Time fields use ISO 8601 format with microseconds:
+```
+YYYY-MM-DD-HH.MM.SS.FFFFFF
+```
+Example: `2024-03-20-14.30.25.123456`
+
+### Thread Safety
+
+Each program instance maintains its own copy of RETURN-CODE-AREA in working storage, making this approach thread-safe for multi-task environments.

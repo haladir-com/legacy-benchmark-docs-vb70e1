@@ -1,21 +1,21 @@
 ---
 title: "BCHCTL00"
-description: "Batch Control Processor - manages job sequencing, prerequisites, and process status tracking"
+description: "Batch Control Processor - manages job-level control operations including initialization, prerequisite checking, status updates, and termination"
 ---
 
 ## Overview
 
-BCHCTL00 is a batch control processor program that provides centralized management of batch job sequencing and execution control. The program handles four primary functions: initializing batch processes, checking job prerequisites, updating process status, and finalizing completed jobs.
+BCHCTL00 is a batch control processor that provides centralized management of batch job execution within the system. It operates as a callable subprogram, receiving control requests through its linkage section and performing various job management functions.
 
-This program serves as the core batch control mechanism in the system, maintaining job execution state in an indexed VSAM file (BATCH-CONTROL-FILE). It works in conjunction with other batch programs like HISTLD00, PRCSEQ00, RCVPRC00, and RPTSTA00 that share its control structures. The program is called as a subprogram by batch job steps, receiving control requests through a linkage section parameter.
+The program manages the lifecycle of batch jobs by handling four primary operations: initializing job execution, checking prerequisites before processing, updating job status during execution, and finalizing jobs upon completion. It interacts with an indexed VSAM control file to track job states, dependencies, and return codes.
 
-The program supports a prerequisite dependency model where jobs can specify up to 10 prerequisite jobs that must complete successfully before execution can proceed. This enables complex batch workflows with parallel and sequential job dependencies.
+This is a foundational utility used by the batch processing infrastructure to ensure proper job sequencing, dependency management, and execution tracking across the batch environment.
 
 ## Program Structure
 
 ```mermaid
 graph TD
-    A[0000-MAIN] --> B{EVALUATE Function}
+    A[0000-MAIN] --> B{Evaluate Function}
     B -->|INIT| C[1000-PROCESS-INITIALIZE]
     B -->|CHEK| D[2000-CHECK-PREREQUISITES]
     B -->|UPDT| E[3000-UPDATE-STATUS]
@@ -37,23 +37,23 @@ graph TD
     F --> F1[4100-UPDATE-COMPLETION]
     F --> F2[4200-CLOSE-FILES]
     
-    G --> H[CALL ERRPROC]
+    G --> G1[CALL ERRPROC]
 ```
 
 ## Data Structures
 
-### Linkage Section (Control Request)
+### Linkage Section (Input/Output Parameters)
 
-The program receives control requests via the linkage section:
+The program receives a control request structure through the linkage section:
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | LS-CONTROL-REQUEST | - | Control request parameter |
-| 05 | LS-FUNCTION | X(4) | Function code: INIT, CHEK, UPDT, TERM |
-| 05 | LS-JOB-NAME | X(8) | Batch job name |
-| 05 | LS-PROCESS-DATE | X(8) | Processing date |
+| 01 | LS-CONTROL-REQUEST | - | Main request structure |
+| 05 | LS-FUNCTION | X(4) | Function code: `INIT`, `CHEK`, `UPDT`, `TERM` |
+| 05 | LS-JOB-NAME | X(8) | Name of the batch job |
+| 05 | LS-PROCESS-DATE | X(8) | Processing date (YYYYMMDD format) |
 | 05 | LS-SEQUENCE-NO | 9(4) | Job sequence number |
-| 05 | LS-RETURN-CODE | S9(4) COMP | Return code passed back to caller |
+| 05 | LS-RETURN-CODE | S9(4) COMP | Return code from operation |
 
 ### Working Storage
 
@@ -61,123 +61,145 @@ The program receives control requests via the linkage section:
 |-------|------|---------|-------------|
 | 05 | WS-BCT-STATUS | X(2) | VSAM file status code |
 | 05 | WS-CURRENT-TIME | X(26) | Current timestamp |
-| 05 | WS-PREREQ-MET | X(1) | Prerequisites status flag ('Y'/'N') |
-| 05 | WS-PROCESS-MODE | X(1) | Current processing mode indicator |
+| 05 | WS-PREREQ-MET | X(1) | Prerequisites status flag (`Y`/`N`) |
+| 05 | WS-PROCESS-MODE | X(1) | Current processing mode |
 
-### Batch Control Record (BCHCTL Copybook)
+#### Process Mode Values (88-level conditions)
 
-The batch control file record structure:
-
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 01 | BATCH-CONTROL-RECORD | - | Control file record |
-| 10 | BCT-JOB-NAME | X(8) | Job name (part of key) |
-| 10 | BCT-PROCESS-DATE | X(8) | Process date (part of key) |
-| 10 | BCT-SEQUENCE-NO | 9(4) | Sequence number (part of key) |
-| 10 | BCT-STATUS | X(1) | Job status: R=Ready, A=Active, W=Waiting, D=Done, E=Error |
-| 15 | BCT-STEP-NAME | X(8) | Current step name |
-| 15 | BCT-PROGRAM-NAME | X(8) | Executing program name |
-| 15 | BCT-START-TIME | X(8) | Process start time |
-| 15 | BCT-END-TIME | X(8) | Process end time |
-| 15 | BCT-PREREQ-COUNT | 9(2) COMP | Number of prerequisites |
-| 20 | BCT-PREREQ-NAME | X(8) | Prerequisite job name (occurs 10 times) |
-| 20 | BCT-PREREQ-SEQ | 9(4) | Prerequisite sequence number |
-| 20 | BCT-PREREQ-RC | S9(4) COMP | Prerequisite return code |
-| 15 | BCT-RETURN-CODE | S9(4) COMP | Job return code |
-| 15 | BCT-ERROR-DESC | X(80) | Error description |
-| 10 | BCT-RESTART-COUNT | 9(2) COMP | Number of restart attempts |
-| 10 | BCT-ATTEMPT-TS | X(26) | Last attempt timestamp |
-| 10 | BCT-COMPLETE-TS | X(26) | Completion timestamp |
+| Condition | Value | Description |
+|-----------|-------|-------------|
+| MODE-INITIALIZE | `I` | Initialization mode |
+| MODE-CHECK-PREREQ | `C` | Prerequisite checking mode |
+| MODE-UPDATE-STATUS | `U` | Status update mode |
+| MODE-FINALIZE | `F` | Finalization mode |
 
 ## File I/O
 
 ### BATCH-CONTROL-FILE
 
-| Attribute | Value |
-|-----------|-------|
+An indexed VSAM file that stores batch control records for job management.
+
+| Property | Value |
+|----------|-------|
 | Logical Name | BATCH-CONTROL-FILE |
 | DD Name | BCHCTL |
-| Organization | INDEXED (VSAM KSDS) |
+| Organization | INDEXED |
 | Access Mode | DYNAMIC |
-| Record Key | BCT-KEY (BCT-JOB-NAME + BCT-PROCESS-DATE + BCT-SEQUENCE-NO) |
+| Record Key | BCT-KEY (composite: job name + date + sequence) |
 | File Status | WS-BCT-STATUS |
 
-The file uses dynamic access mode allowing both sequential and random access based on the composite key. The record key is 20 bytes consisting of job name (8), process date (8), and sequence number (4).
+The control file record (defined in BCHCTL copybook) contains:
+- **Key fields**: Job name, process date, and sequence number
+- **Status tracking**: Current status (Ready/Active/Waiting/Done/Error)
+- **Process control**: Step name, program name, start/end times
+- **Dependencies**: Up to 10 prerequisite jobs with their expected return codes
+- **Statistics**: Restart count, attempt timestamp, completion timestamp
 
 ## Control Flow
 
-### Initialization (FUNC-INIT)
+### Main Routing (0000-MAIN)
 
+The program uses an `EVALUATE TRUE` statement to dispatch requests based on the function code:
+
+1. **FUNC-INIT** → Routes to initialization processing
+2. **FUNC-CHEK** → Routes to prerequisite checking
+3. **FUNC-UPDT** → Routes to status update processing
+4. **FUNC-TERM** → Routes to termination processing
+5. **Other** → Invokes error handling for invalid function codes
+
+After processing, the return code is set and the program returns control via `GOBACK`.
+
+### Initialize Processing (1000-PROCESS-INITIALIZE)
+
+Prepares a batch job for execution:
 1. Opens the batch control file
 2. Reads the control record for the specified job
-3. Validates the process can be started
-4. Updates status to Active and records start time
+3. Validates the process is ready to run
+4. Updates the record to indicate the job has started
 
-### Prerequisite Check (FUNC-CHEK)
+### Prerequisite Checking (2000-CHECK-PREREQUISITES)
 
+Validates that all dependent jobs have completed successfully:
+1. Reads the control record to get dependency information
+2. Checks each prerequisite job's completion status
+3. Returns `BCT-RC-SUCCESS` (0) if all prerequisites are satisfied
+4. Returns `BCT-RC-WARNING` (4) if prerequisites are still pending
+
+### Status Update (3000-UPDATE-STATUS)
+
+Updates the job's progress during execution:
 1. Reads the current control record
-2. Iterates through BCT-PREREQ-JOBS (up to BCT-PREREQ-COUNT entries)
-3. Verifies each prerequisite job has completed (BCT-STATUS-DONE)
-4. Returns BCT-RC-SUCCESS (0) if all prerequisites are satisfied
-5. Returns BCT-RC-WARNING (4) if prerequisites are still pending
+2. Modifies the process status fields
+3. Writes the updated record back to the file
 
-### Status Update (FUNC-UPDT)
+### Termination Processing (4000-PROCESS-TERMINATE)
 
-1. Reads the current control record
-2. Updates process status fields
-3. Rewrites the control record to the file
-
-### Termination (FUNC-TERM)
-
-1. Updates completion timestamp and final status
+Finalizes job execution:
+1. Updates completion information (timestamp, final status)
 2. Closes the batch control file
 
-### Error Handling
+### Error Handling (9000-ERROR-ROUTINE)
 
-Invalid function codes or processing errors invoke `9000-ERROR-ROUTINE` which:
-- Sets ERR-PROGRAM to 'BCHCTL00'
-- Sets return code to BCT-RC-ERROR (8)
-- Calls the ERRPROC program to log the error
+Handles errors by:
+1. Setting the program name in the error structure
+2. Setting return code to `BCT-RC-ERROR` (8)
+3. Calling the ERRPROC program to process and log the error
 
 ## Return Codes
 
 | Code | Constant | Description |
 |------|----------|-------------|
-| 0 | BCT-RC-SUCCESS | Successful completion |
-| 4 | BCT-RC-WARNING | Warning (e.g., prerequisites pending) |
-| 8 | BCT-RC-ERROR | Error during processing |
-| 12 | BCT-RC-SEVERE | Severe error |
+| 0 | BCT-RC-SUCCESS | Operation completed successfully |
+| 4 | BCT-RC-WARNING | Warning condition (e.g., prerequisites pending) |
+| 8 | BCT-RC-ERROR | Error occurred during processing |
+| 12 | BCT-RC-SEVERE | Severe error condition |
 | 16 | BCT-RC-CRITICAL | Critical failure |
 
 ## Dependencies
 
 ### Copybooks
 
-- **BCHCTL** - Batch control file record definition
-- **BCHCON** - Batch control constants (status values, return codes, thresholds)
+- **BCHCTL** - Batch control file record definition (FD level)
+- **BCHCON** - Batch control constants (status values, return codes, messages)
 - **ERRHAND** - Standard error handling definitions
 
 ### Called Programs
 
-- **ERRPROC** - Error processing and logging routine
+- **ERRPROC** - Error processing routine for logging and handling errors
 
 ### Related Programs
 
-Programs that share the BCHCTL copybook and interact with the batch control system:
+Programs that share the BCHCTL copybook (batch control integration):
+- HISTLD00 - History load processing
+- PRCSEQ00 - Process sequencing
+- RCVPRC00 - Receive processing
+- RPTSTA00 - Status reporting
 
-- **HISTLD00** - History load program
-- **PRCSEQ00** - Process sequence manager
-- **RCVPRC00** - Recovery processing
-- **RPTSTA00** - Status reporting
+Programs that share the BCHCON copybook (use batch control constants):
+- HISTLD00
+- PRCSEQ00
+- RCVPRC00
+
+## Usage Example
+
+To call BCHCTL00 for job initialization:
+
+```cobol
+MOVE 'INIT'     TO LS-FUNCTION
+MOVE 'MYJOB001' TO LS-JOB-NAME
+MOVE '20240115' TO LS-PROCESS-DATE
+MOVE 1          TO LS-SEQUENCE-NO
+CALL 'BCHCTL00' USING LS-CONTROL-REQUEST
+IF LS-RETURN-CODE = 0
+    CONTINUE WITH PROCESSING
+ELSE
+    HANDLE ERROR CONDITION
+END-IF
+```
 
 ## Technical Notes
 
-1. **COBOL-88 Levels**: The program uses level-88 condition names extensively for readable status checking (e.g., `FUNC-INIT`, `PREREQS-SATISFIED`).
-
-2. **EVALUATE Statement**: The main paragraph uses EVALUATE TRUE to dispatch based on function codes, a cleaner alternative to nested IF statements.
-
-3. **COMP Fields**: Binary fields (`S9(4) COMP`) are used for return codes and counters for efficient storage and processing.
-
-4. **Dynamic File Access**: The indexed file with DYNAMIC access allows the program to read records by key or sequentially as needed.
-
-5. **Stub Procedures**: The source indicates several detailed procedures (1100-OPEN-FILES, 1200-READ-CONTROL-RECORD, etc.) are to be implemented, suggesting this is a framework or template program.
+- The program uses **DYNAMIC** access mode for the VSAM file, allowing both sequential and random access to control records
+- The **GOBACK** statement is used instead of STOP RUN, allowing the calling program to continue execution
+- The `EVALUATE TRUE` pattern with 88-level conditions provides clean, readable dispatch logic
+- All processing modes are tracked via 88-level conditions for clear state management

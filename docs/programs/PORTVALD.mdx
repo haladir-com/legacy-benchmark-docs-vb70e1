@@ -1,93 +1,171 @@
 ---
 title: "PORTVALD"
-description: "Portfolio Validation Subroutine - Validates portfolio data elements including IDs, accounts, types, and amounts"
+description: "Portfolio Validation Subroutine - Callable subprogram for validating portfolio data elements including IDs, accounts, investment types, and amounts"
 ---
 
 ## Overview
 
-PORTVALD is a reusable COBOL validation subroutine that validates various portfolio data elements. It provides a single entry point for multiple validation types, making it easy for calling programs to perform consistent data validation across the portfolio management system.
+PORTVALD is a callable validation subroutine that provides centralized data validation services for portfolio-related fields. It validates four types of data elements commonly used in portfolio management applications:
 
-The program supports four types of validation:
-- **Portfolio ID** - Validates the format of portfolio identifiers
-- **Account Number** - Validates account number format
-- **Investment Type** - Validates investment type codes
-- **Amount** - Validates monetary amounts are within acceptable ranges
+- **Portfolio ID** - Validates format (PORTnnnn)
+- **Account Number** - Validates numeric format
+- **Investment Type** - Validates against allowed type codes
+- **Amount** - Validates within acceptable range
 
-This centralized validation approach ensures consistent business rules are applied throughout the application and simplifies maintenance when validation requirements change.
+By centralizing validation logic in a single subprogram, PORTVALD ensures consistent data quality across all programs that handle portfolio data. The program returns specific error codes and descriptive messages for each validation failure, enabling calling programs to provide meaningful feedback to users.
 
 ## Program Structure
 
 ```mermaid
 graph TD
-    A[0000-MAIN] --> B{Validation Type?}
+    A[0000-MAIN] --> B[Initialize Work Areas]
+    B --> C{EVALUATE Validation Type}
     
-    B -->|I - Portfolio ID| C[1000-VALIDATE-ID]
-    B -->|A - Account| D[2000-VALIDATE-ACCOUNT]
-    B -->|T - Type| E[3000-VALIDATE-TYPE]
-    B -->|M - Amount| F[4000-VALIDATE-AMOUNT]
-    B -->|Other| G[Return Invalid Type Error]
+    C -->|I - ID| D[1000-VALIDATE-ID]
+    C -->|A - Account| E[2000-VALIDATE-ACCOUNT]
+    C -->|T - Type| F[3000-VALIDATE-TYPE]
+    C -->|M - Amount| G[4000-VALIDATE-AMOUNT]
+    C -->|Other| H[Invalid Type Error]
     
-    C --> H[GOBACK]
-    D --> H
-    E --> H
-    F --> H
-    G --> H
+    D --> D1{Prefix = 'PORT'?}
+    D1 -->|No| D2[Return Invalid ID]
+    D1 -->|Yes| D3{Digits Numeric?}
+    D3 -->|No| D2
+    D3 -->|Yes| D4[Return Success]
+    
+    E --> E1{Numeric & Non-Zero?}
+    E1 -->|No| E2[Return Invalid Account]
+    E1 -->|Yes| E3[Return Success]
+    
+    F --> F1{Valid Type Code?}
+    F1 -->|No| F2[Return Invalid Type]
+    F1 -->|Yes| F3[Return Success]
+    
+    G --> G1{Within Range?}
+    G1 -->|No| G2[Return Invalid Amount]
+    G1 -->|Yes| G3[Return Success]
+    
+    D2 --> I[GOBACK]
+    D4 --> I
+    E2 --> I
+    E3 --> I
+    F2 --> I
+    F3 --> I
+    G2 --> I
+    G3 --> I
+    H --> I
 ```
 
 ## Data Structures
 
-### Linkage Section (Interface)
-
-The program receives a single parameter block `LS-VALIDATION-REQUEST`:
+### Linkage Section (Calling Interface)
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | LS-VALIDATION-REQUEST | - | Validation request block |
-| 05 | LS-VALIDATE-TYPE | PIC X(1) | Type of validation to perform |
-| 05 | LS-INPUT-VALUE | PIC X(50) | Value to validate |
-| 05 | LS-RETURN-CODE | PIC S9(4) COMP | Validation result code |
-| 05 | LS-ERROR-MSG | PIC X(50) | Error message if validation fails |
+| 01 | LS-VALIDATION-REQUEST | | Main request structure |
+| 05 | LS-VALIDATE-TYPE | X(1) | Validation type code |
+| 05 | LS-INPUT-VALUE | X(50) | Value to validate |
+| 05 | LS-RETURN-CODE | S9(4) COMP | Return code (0=success) |
+| 05 | LS-ERROR-MSG | X(50) | Error message (if failed) |
 
-### Validation Type Codes (88-levels)
+### Validation Type Codes
 
-| Condition Name | Value | Description |
-|----------------|-------|-------------|
-| LS-VAL-ID | 'I' | Validate Portfolio ID |
-| LS-VAL-ACCT | 'A' | Validate Account Number |
-| LS-VAL-TYPE | 'T' | Validate Investment Type |
-| LS-VAL-AMT | 'M' | Validate Amount |
+| Code | 88-Level Name | Description |
+|------|---------------|-------------|
+| I | LS-VAL-ID | Validate Portfolio ID |
+| A | LS-VAL-ACCT | Validate Account Number |
+| T | LS-VAL-TYPE | Validate Investment Type |
+| M | LS-VAL-AMT | Validate Amount |
 
-### Working Storage (from PORTVAL copybook)
+### Return Codes (PORTVAL Copybook)
 
-The PORTVAL copybook provides validation constants and work areas:
+| Code | Constant | Description |
+|------|----------|-------------|
+| 0 | VAL-SUCCESS | Validation passed |
+| 1 | VAL-INVALID-ID | Invalid Portfolio ID format |
+| 2 | VAL-INVALID-ACCT | Invalid Account Number format |
+| 3 | VAL-INVALID-TYPE | Invalid Investment Type |
+| 4 | VAL-INVALID-AMT | Amount outside valid range |
 
-| Field | Description |
-|-------|-------------|
-| VAL-WORK-AREAS | Work area group |
-| VAL-NUMERIC-CHECK | Temporary field for numeric validation |
-| VAL-TEMP-NUM | Temporary numeric field for amount validation |
-| VAL-ID-PREFIX | Expected prefix for portfolio IDs ('PORT') |
-| VAL-SUCCESS | Success return code (0) |
-| VAL-INVALID-ID | Invalid ID return code |
-| VAL-INVALID-ACCT | Invalid account return code |
-| VAL-INVALID-TYPE | Invalid type return code |
-| VAL-INVALID-AMT | Invalid amount return code |
-| VAL-ERR-ID | Error message for invalid ID |
-| VAL-ERR-ACCT | Error message for invalid account |
-| VAL-ERR-TYPE | Error message for invalid type |
-| VAL-ERR-AMT | Error message for invalid amount |
-| VAL-MIN-AMOUNT | Minimum allowed amount |
-| VAL-MAX-AMOUNT | Maximum allowed amount |
+### Error Messages (PORTVAL Copybook)
+
+| Constant | Message |
+|----------|---------|
+| VAL-ERR-ID | "Invalid Portfolio ID format" |
+| VAL-ERR-ACCT | "Invalid Account Number format" |
+| VAL-ERR-TYPE | "Invalid Investment Type" |
+| VAL-ERR-AMT | "Amount outside valid range" |
+
+### Validation Constants (PORTVAL Copybook)
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| VAL-ID-PREFIX | 'PORT' | Required portfolio ID prefix |
+| VAL-MIN-AMOUNT | -9999999999999.99 | Minimum allowed amount |
+| VAL-MAX-AMOUNT | +9999999999999.99 | Maximum allowed amount |
+
+### Work Areas (PORTVAL Copybook)
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 01 | VAL-WORK-AREAS | | Working storage group |
+| 05 | VAL-NUMERIC-CHECK | X(10) | Temporary for numeric validation |
+| 05 | VAL-TEMP-NUM | S9(13)V99 | Temporary for amount validation |
+| 05 | VAL-ERROR-CODE | S9(4) | Internal error code |
+| 05 | VAL-ERROR-MSG | X(50) | Internal error message |
+
+## Calling Interface
+
+### COBOL Call Example
+
+```cobol
+       01  WS-VALIDATION-REQUEST.
+           05  WS-VAL-TYPE         PIC X(1).
+           05  WS-INPUT-VALUE      PIC X(50).
+           05  WS-RETURN-CODE      PIC S9(4) COMP.
+           05  WS-ERROR-MSG        PIC X(50).
+       
+       * Validate Portfolio ID
+           MOVE 'I' TO WS-VAL-TYPE
+           MOVE 'PORT1234' TO WS-INPUT-VALUE
+           CALL 'PORTVALD' USING WS-VALIDATION-REQUEST
+           IF WS-RETURN-CODE NOT = 0
+               DISPLAY 'ID Error: ' WS-ERROR-MSG
+           END-IF
+       
+       * Validate Account Number
+           MOVE 'A' TO WS-VAL-TYPE
+           MOVE '1234567890' TO WS-INPUT-VALUE
+           CALL 'PORTVALD' USING WS-VALIDATION-REQUEST
+           IF WS-RETURN-CODE NOT = 0
+               DISPLAY 'Account Error: ' WS-ERROR-MSG
+           END-IF
+       
+       * Validate Investment Type
+           MOVE 'T' TO WS-VAL-TYPE
+           MOVE 'STK' TO WS-INPUT-VALUE
+           CALL 'PORTVALD' USING WS-VALIDATION-REQUEST
+           IF WS-RETURN-CODE NOT = 0
+               DISPLAY 'Type Error: ' WS-ERROR-MSG
+           END-IF
+       
+       * Validate Amount
+           MOVE 'M' TO WS-VAL-TYPE
+           MOVE '1000000.00' TO WS-INPUT-VALUE
+           CALL 'PORTVALD' USING WS-VALIDATION-REQUEST
+           IF WS-RETURN-CODE NOT = 0
+               DISPLAY 'Amount Error: ' WS-ERROR-MSG
+           END-IF
+```
 
 ## Control Flow
 
 ### 0000-MAIN
 
-Entry point that dispatches to the appropriate validation routine:
-
-1. Initializes VAL-WORK-AREAS
-2. Evaluates LS-VALIDATE-TYPE to determine validation type
-3. Performs the corresponding validation paragraph
+Main entry point:
+1. Initializes VAL-WORK-AREAS to clear previous values
+2. Evaluates LS-VALIDATE-TYPE to determine validation routine
+3. Dispatches to appropriate validation paragraph
 4. If invalid type code, sets error return code and message
 5. Returns to caller via GOBACK
 
@@ -95,224 +173,147 @@ Entry point that dispatches to the appropriate validation routine:
 
 Validates Portfolio ID format:
 
-**Rule**: Portfolio ID must start with 'PORT' followed by 4 numeric digits
+**Rules:**
+- First 4 characters must be 'PORT'
+- Characters 5-8 must be numeric digits
 
-**Validation Steps**:
-1. Check if first 4 characters equal VAL-ID-PREFIX ('PORT')
-2. If not, return VAL-INVALID-ID with VAL-ERR-ID message
-3. Extract characters 5-8 into VAL-NUMERIC-CHECK
-4. Verify these characters are numeric
-5. If not numeric, return VAL-INVALID-ID with VAL-ERR-ID message
-6. If valid, return VAL-SUCCESS with empty error message
+**Logic:**
+1. Checks if positions 1-4 equal VAL-ID-PREFIX ('PORT')
+2. If not, returns VAL-INVALID-ID with VAL-ERR-ID message
+3. Extracts positions 5-8 into VAL-NUMERIC-CHECK
+4. Validates extracted portion is numeric
+5. If not numeric, returns VAL-INVALID-ID with VAL-ERR-ID message
+6. If all checks pass, returns VAL-SUCCESS with empty message
 
-**Valid Format**: `PORTnnnn` where `n` is a digit (0-9)
-
-**Examples**:
-| Input | Result | Reason |
-|-------|--------|--------|
-| `PORT0001` | Valid | Correct format |
-| `PORT9999` | Valid | Correct format |
-| `ACCT0001` | Invalid | Wrong prefix |
-| `PORTABCD` | Invalid | Non-numeric suffix |
-| `PORT001` | Invalid | Insufficient digits |
+**Valid Examples:** PORT0001, PORT1234, PORT9999  
+**Invalid Examples:** ACCT1234, PORT12AB, PORTabcd
 
 ### 2000-VALIDATE-ACCOUNT
 
 Validates Account Number format:
 
-**Rule**: Account number must be numeric and non-zero
+**Rules:**
+- Must be entirely numeric
+- Cannot be all zeros
 
-**Validation Steps**:
-1. Check if LS-INPUT-VALUE is numeric
-2. Check if LS-INPUT-VALUE is not all zeros
-3. If either check fails, return VAL-INVALID-ACCT with VAL-ERR-ACCT message
-4. If valid, return VAL-SUCCESS with empty error message
+**Logic:**
+1. Checks if LS-INPUT-VALUE is numeric
+2. Checks if LS-INPUT-VALUE equals ZEROS
+3. If either check fails, returns VAL-INVALID-ACCT with VAL-ERR-ACCT message
+4. If all checks pass, returns VAL-SUCCESS with empty message
 
-**Examples**:
-| Input | Result | Reason |
-|-------|--------|--------|
-| `1234567890` | Valid | All numeric, non-zero |
-| `0000000001` | Valid | Numeric, non-zero |
-| `0000000000` | Invalid | All zeros |
-| `123456789A` | Invalid | Contains non-numeric |
-| `ABCDEFGHIJ` | Invalid | All non-numeric |
+**Valid Examples:** 1234567890, 0000000001  
+**Invalid Examples:** 123ABC7890, 0000000000, ABCDEFGHIJ
 
 ### 3000-VALIDATE-TYPE
 
 Validates Investment Type code:
 
-**Rule**: Investment type must be one of the predefined valid codes
+**Rules:**
+- Must be one of the allowed type codes
 
-**Valid Investment Types**:
+**Allowed Values:**
 | Code | Description |
 |------|-------------|
-| STK | Stock |
-| BND | Bond |
-| MMF | Money Market Fund |
-| ETF | Exchange-Traded Fund |
+| STK | Stocks |
+| BND | Bonds |
+| MMF | Money Market Funds |
+| ETF | Exchange-Traded Funds |
 
-**Validation Steps**:
-1. Check if LS-INPUT-VALUE equals 'STK', 'BND', 'MMF', or 'ETF'
-2. If not a valid code, return VAL-INVALID-TYPE with VAL-ERR-TYPE message
-3. If valid, return VAL-SUCCESS with empty error message
+**Logic:**
+1. Checks if LS-INPUT-VALUE matches any valid type code
+2. If no match, returns VAL-INVALID-TYPE with VAL-ERR-TYPE message
+3. If match found, returns VAL-SUCCESS with empty message
 
-**Examples**:
-| Input | Result | Reason |
-|-------|--------|--------|
-| `STK` | Valid | Stock |
-| `BND` | Valid | Bond |
-| `MMF` | Valid | Money Market Fund |
-| `ETF` | Valid | Exchange-Traded Fund |
-| `MUT` | Invalid | Not a valid type |
-| `STOCK` | Invalid | Not a valid code |
+**Valid Examples:** STK, BND, MMF, ETF  
+**Invalid Examples:** MUT, OPT, FUT, ABC
 
 ### 4000-VALIDATE-AMOUNT
 
-Validates monetary amounts:
+Validates Amount within acceptable range:
 
-**Rule**: Amount must be within the defined minimum and maximum range
+**Rules:**
+- Must be between VAL-MIN-AMOUNT and VAL-MAX-AMOUNT
+- Range: -9,999,999,999,999.99 to +9,999,999,999,999.99
 
-**Validation Steps**:
-1. Move LS-INPUT-VALUE to VAL-TEMP-NUM (numeric conversion)
-2. Check if value is less than VAL-MIN-AMOUNT
-3. Check if value is greater than VAL-MAX-AMOUNT
-4. If out of range, return VAL-INVALID-AMT with VAL-ERR-AMT message
-5. If valid, return VAL-SUCCESS with empty error message
+**Logic:**
+1. Moves LS-INPUT-VALUE to VAL-TEMP-NUM (numeric field)
+2. Compares against VAL-MIN-AMOUNT and VAL-MAX-AMOUNT
+3. If outside range, returns VAL-INVALID-AMT with VAL-ERR-AMT message
+4. If within range, returns VAL-SUCCESS with empty message
 
-**Note**: The actual minimum and maximum values are defined in the PORTVAL copybook.
+**Valid Examples:** 0.00, 1000000.00, -500.50, 9999999999999.99  
+**Invalid Examples:** Values exceeding ±9,999,999,999,999.99
 
-## Calling Interface
+## File I/O
 
-### How to Call PORTVALD
-
-```cobol
-WORKING-STORAGE SECTION.
-01  WS-VALIDATION-REQUEST.
-    05  WS-VAL-TYPE        PIC X(1).
-    05  WS-VAL-INPUT       PIC X(50).
-    05  WS-VAL-RETURN      PIC S9(4) COMP.
-    05  WS-VAL-ERROR       PIC X(50).
-
-PROCEDURE DIVISION.
-    *> Validate a Portfolio ID
-    MOVE 'I' TO WS-VAL-TYPE
-    MOVE 'PORT0001' TO WS-VAL-INPUT
-    CALL 'PORTVALD' USING WS-VALIDATION-REQUEST
-    
-    IF WS-VAL-RETURN = 0
-        DISPLAY 'Portfolio ID is valid'
-    ELSE
-        DISPLAY 'Validation failed: ' WS-VAL-ERROR
-    END-IF
-    
-    *> Validate an Account Number
-    MOVE 'A' TO WS-VAL-TYPE
-    MOVE '1234567890' TO WS-VAL-INPUT
-    CALL 'PORTVALD' USING WS-VALIDATION-REQUEST
-    
-    IF WS-VAL-RETURN = 0
-        DISPLAY 'Account number is valid'
-    ELSE
-        DISPLAY 'Validation failed: ' WS-VAL-ERROR
-    END-IF
-    
-    *> Validate an Investment Type
-    MOVE 'T' TO WS-VAL-TYPE
-    MOVE 'STK' TO WS-VAL-INPUT
-    CALL 'PORTVALD' USING WS-VALIDATION-REQUEST
-    
-    IF WS-VAL-RETURN = 0
-        DISPLAY 'Investment type is valid'
-    ELSE
-        DISPLAY 'Validation failed: ' WS-VAL-ERROR
-    END-IF
-    
-    *> Validate an Amount
-    MOVE 'M' TO WS-VAL-TYPE
-    MOVE '10000.00' TO WS-VAL-INPUT
-    CALL 'PORTVALD' USING WS-VALIDATION-REQUEST
-    
-    IF WS-VAL-RETURN = 0
-        DISPLAY 'Amount is valid'
-    ELSE
-        DISPLAY 'Validation failed: ' WS-VAL-ERROR
-    END-IF
-```
-
-### Return Codes
-
-| Code | Constant | Meaning |
-|------|----------|---------|
-| 0 | VAL-SUCCESS | Validation passed |
-| Non-zero | VAL-INVALID-ID | Portfolio ID validation failed |
-| Non-zero | VAL-INVALID-ACCT | Account number validation failed |
-| Non-zero | VAL-INVALID-TYPE | Investment type validation failed |
-| Non-zero | VAL-INVALID-AMT | Amount validation failed |
-
-**Note**: Specific non-zero values are defined in the PORTVAL copybook.
+This program does not perform any file I/O operations. All data exchange occurs through the linkage section parameter (LS-VALIDATION-REQUEST).
 
 ## Dependencies
 
 ### Copybooks
 
-- **PORTVAL** - Contains validation constants, error messages, return codes, work areas, and range limits
+- **PORTVAL** - Portfolio validation rules containing:
+  - Return code constants (VAL-SUCCESS, VAL-INVALID-*)
+  - Error message constants (VAL-ERR-*)
+  - Validation constants (VAL-MIN-AMOUNT, VAL-MAX-AMOUNT, VAL-ID-PREFIX)
+  - Work areas for validation processing
 
 ### Called Programs
 
-None - this is a leaf-level validation routine.
+None - this program does not call other programs.
 
-### Calling Programs
+### Related Programs
 
-This program is designed to be called by any program that needs to validate portfolio-related data, including:
-- Portfolio maintenance programs
-- Transaction entry programs
-- Data import/export utilities
-- Online inquiry programs
-
-## Validation Rules Summary
-
-| Type | Code | Rule | Format/Values |
-|------|------|------|---------------|
-| Portfolio ID | I | Must start with 'PORT' + 4 digits | `PORTnnnn` |
-| Account Number | A | Must be numeric and non-zero | 10 numeric digits |
-| Investment Type | T | Must be valid type code | STK, BND, MMF, ETF |
-| Amount | M | Must be within min/max range | Defined in PORTVAL |
+Programs that may call PORTVALD for data validation:
+- **PORTMSTR** - Portfolio master file maintenance
+- **PORTTRAN** - Portfolio transaction processing
+- Portfolio inquiry programs
+- Data entry validation routines
+- Batch processing programs that handle portfolio data
 
 ## Technical Notes
 
+### Validation Type Selection
+
+The program uses an EVALUATE statement with 88-level condition names for clear, readable type selection:
+
+```cobol
+EVALUATE TRUE
+    WHEN LS-VAL-ID      PERFORM 1000-VALIDATE-ID
+    WHEN LS-VAL-ACCT    PERFORM 2000-VALIDATE-ACCOUNT
+    WHEN LS-VAL-TYPE    PERFORM 3000-VALIDATE-TYPE
+    WHEN LS-VAL-AMT     PERFORM 4000-VALIDATE-AMOUNT
+    WHEN OTHER          [Error handling]
+END-EVALUATE
+```
+
 ### EXIT PARAGRAPH Usage
 
-The program uses `EXIT PARAGRAPH` to exit validation paragraphs early when validation fails. This COBOL statement:
-- Immediately exits the current paragraph
-- Control returns to the statement following the PERFORM
-- Avoids nested IF statements and improves readability
-
-### Input Value Size
-
-The LS-INPUT-VALUE field is defined as PIC X(50), which accommodates:
-- Portfolio IDs (8 characters)
-- Account numbers (10 characters)
-- Investment types (3 characters)
-- Formatted amounts (up to 50 characters)
-
-Callers should left-justify values and pad with spaces as needed.
+Each validation paragraph uses `EXIT PARAGRAPH` to provide early exit when validation fails. This COBOL statement immediately transfers control to the end of the current paragraph, avoiding nested IF statements and improving readability.
 
 ### Numeric Validation
 
-For amount validation, the program moves the input value to a numeric field (VAL-TEMP-NUM). If the input contains non-numeric characters (other than valid numeric formatting), the MOVE will result in unpredictable values. Callers should ensure amount values are properly formatted before calling.
+The program uses COBOL's built-in `IS NUMERIC` class condition to validate numeric fields. This check verifies that all characters in the field are valid numeric digits (0-9) and optional sign.
+
+### Amount Range
+
+The amount validation uses a very wide range (±9,999,999,999,999.99) to accommodate large institutional portfolios. The S9(13)V99 picture clause provides:
+- 13 integer positions
+- 2 decimal positions
+- Signed (positive or negative)
+
+### Input Value Format
+
+The LS-INPUT-VALUE field is defined as PIC X(50), providing a flexible character buffer that can hold any type of input. For amount validation, the value is moved to VAL-TEMP-NUM for numeric comparison.
 
 ### Thread Safety
 
-This program is reentrant - it uses only:
-- Linkage section data (passed by caller)
-- Working storage that is initialized on each call
+The program initializes VAL-WORK-AREAS at the start of each call, ensuring clean state for each validation. This makes the program suitable for use in multi-threaded environments (e.g., CICS) where working storage is shared.
 
-Multiple callers can use this program simultaneously without interference.
+### Error Message Design
 
-### Extensibility
-
-To add new validation types:
-1. Add new 88-level condition in LS-VALIDATE-TYPE
-2. Add WHEN clause in 0000-MAIN EVALUATE
-3. Create new validation paragraph
-4. Add constants/messages to PORTVAL copybook
+Error messages are defined as constants in the PORTVAL copybook, providing:
+- Consistent messaging across all callers
+- Easy maintenance (change in one place)
+- Translation-ready structure for internationalization

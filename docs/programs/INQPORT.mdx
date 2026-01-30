@@ -1,19 +1,18 @@
 ---
 title: "INQPORT"
-description: "Portfolio Position Inquiry Handler - retrieves and displays current portfolio positions via CICS/VSAM"
+description: "Portfolio Position Inquiry Handler - CICS program that retrieves and displays current portfolio positions from VSAM files"
 ---
 
 ## Overview
 
-INQPORT is a CICS online program that handles portfolio position inquiries. It retrieves position data from a VSAM file and displays it to users via a BMS map. The program is part of the Portfolio Management System's online inquiry subsystem.
+INQPORT is a CICS COBOL program that provides online portfolio position inquiry functionality. It serves as part of the Portfolio Management System's online inquiry subsystem, allowing users to retrieve and view current position data for a specified account.
 
-**Key Functions:**
-- **Position Retrieval**: Reads position records from VSAM file POSFILE using account number as the key
-- **Screen Display**: Formats and sends position data to the POSMAP screen
-- **Error Handling**: Provides user-friendly messages for not-found and error conditions
-- **CICS Integration**: Uses standard CICS commands for file access, screen I/O, and condition handling
+The program performs the following functions:
+- **Position Retrieval** - Reads position data from VSAM file (POSFILE) using account number as the key
+- **Data Formatting** - Formats position data for screen display using BMS maps
+- **Error Handling** - Manages not-found conditions and data access errors with user-friendly messages
 
-The program follows a typical CICS pseudo-conversational pattern, receiving input via COMMAREA and returning control to CICS after processing.
+INQPORT is designed to be invoked from other CICS programs (typically the main menu handler) via CICS LINK or XCTL, receiving the account number through the COMMAREA.
 
 ## Program Structure
 
@@ -27,142 +26,151 @@ graph TD
     E --> G[EXEC CICS RETURN]
     F --> G
     
-    B -.->|ERROR| H[P999-ERROR-ROUTINE]
-    B -.->|NOTFND| F
-    C -.->|Error| H
+    B -.->|HANDLE CONDITION ERROR| H[P999-ERROR-ROUTINE]
+    B -.->|HANDLE CONDITION NOTFND| F
     
     subgraph "Initialization"
-        B --> B1[Initialize WS-POSITION-RECORD]
-        B1 --> B2[Copy DFHCOMMAREA to WS-COMMAREA]
-        B2 --> B3[Set HANDLE CONDITIONS]
+        B --> B1[Initialize Record]
+        B1 --> B2[Copy DFHCOMMAREA]
+        B2 --> B3[Set Up Error Handlers]
     end
     
     subgraph "Data Access"
         C --> C1[Set Account Key]
-        C1 --> C2[READ POSFILE]
-        C2 --> C3[Set Position Flag]
+        C1 --> C2[EXEC CICS READ POSFILE]
+        C2 --> C3{Check RESP}
     end
     
     subgraph "Display"
-        E --> E1[SEND MAP POSMAP]
+        E --> E1[EXEC CICS SEND MAP]
     end
 ```
 
 ## Data Structures
 
-### Working Storage
+### Working-Storage Section
 
 #### Communication Area (WS-COMMAREA)
 
-From INQCOM copybook - used to receive request parameters:
+Copied from INQCOM copybook:
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | INQCOM-AREA | Group | Inquiry communication area |
+| 01 | INQCOM-AREA | - | Communication area structure |
 | 05 | INQCOM-FUNCTION | X(4) | Function code |
-| 88 | INQCOM-MENU | 'MENU' | Return to menu |
-| 88 | INQCOM-PORTFOLIO | 'INQP' | Portfolio inquiry |
-| 88 | INQCOM-HISTORY | 'INQH' | History inquiry |
-| 88 | INQCOM-EXIT | 'EXIT' | Exit system |
+| 88 | INQCOM-MENU | VALUE 'MENU' | Return to menu |
+| 88 | INQCOM-PORTFOLIO | VALUE 'INQP' | Portfolio inquiry |
+| 88 | INQCOM-HISTORY | VALUE 'INQH' | History inquiry |
+| 88 | INQCOM-EXIT | VALUE 'EXIT' | Exit application |
 | 05 | INQCOM-ACCOUNT-NO | X(10) | Account number for inquiry |
-| 05 | INQCOM-RESPONSE-CODE | S9(8) COMP | Response code returned to caller |
+| 05 | INQCOM-RESPONSE-CODE | S9(8) COMP | Response code from operation |
 | 05 | INQCOM-ERROR-MSG | X(80) | Error message text |
 
 #### Position Record (WS-POSITION-RECORD)
 
-From POSREC copybook - VSAM record structure:
+Copied from POSREC copybook:
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | POSITION-RECORD | Group | Position record layout |
-| 05 | POS-KEY | Group | Composite key |
+| 01 | POSITION-RECORD | - | Position record structure |
+| 05 | POS-KEY | - | Composite key group |
 | 10 | POS-PORTFOLIO-ID | X(8) | Portfolio identifier |
 | 10 | POS-DATE | X(8) | Position date (YYYYMMDD) |
-| 10 | POS-INVESTMENT-ID | X(10) | Investment/fund identifier |
-| 05 | POS-DATA | Group | Position values |
+| 10 | POS-INVESTMENT-ID | X(10) | Investment identifier |
+| 05 | POS-DATA | - | Position data group |
 | 10 | POS-QUANTITY | S9(11)V9(4) COMP-3 | Holding quantity (packed decimal) |
 | 10 | POS-COST-BASIS | S9(13)V9(2) COMP-3 | Total cost basis |
 | 10 | POS-MARKET-VALUE | S9(13)V9(2) COMP-3 | Current market value |
 | 10 | POS-CURRENCY | X(3) | Currency code (e.g., USD) |
 | 10 | POS-STATUS | X(1) | Position status |
-| 88 | POS-STATUS-ACTIVE | 'A' | Active position |
-| 88 | POS-STATUS-CLOSED | 'C' | Closed position |
-| 88 | POS-STATUS-PEND | 'P' | Pending position |
-| 05 | POS-AUDIT | Group | Audit trail |
+| 88 | POS-STATUS-ACTIVE | VALUE 'A' | Active position |
+| 88 | POS-STATUS-CLOSED | VALUE 'C' | Closed position |
+| 88 | POS-STATUS-PEND | VALUE 'P' | Pending position |
+| 05 | POS-AUDIT | - | Audit information |
 | 10 | POS-LAST-MAINT-DATE | X(26) | Last maintenance timestamp |
 | 10 | POS-LAST-MAINT-USER | X(8) | Last maintenance user ID |
-| 05 | POS-FILLER | X(50) | Reserved for future use |
 
 #### DB2 Position Area (WS-DB2-POSITION)
 
-Included via `EXEC SQL INCLUDE SQLPOS` - provides DB2 host variables for position data. This structure supports hybrid VSAM/DB2 access patterns.
+Included via `EXEC SQL INCLUDE SQLPOS`. This provides an alternate DB2-based position structure (though current implementation uses VSAM).
 
-#### Processing Flags
+#### Processing Flags (WS-FLAGS)
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 01 | WS-FLAGS | - | Processing flags |
+| 05 | WS-RESPONSE-CODE | S9(8) COMP | CICS response code |
+| 05 | WS-POSITION-FOUND | X | Position found indicator |
+| 88 | POSITION-EXISTS | VALUE 'Y' | Position was found |
+| 88 | NO-POSITION | VALUE 'N' | Position not found |
+
+#### Map Field Labels (WS-MAP-FIELDS)
 
 | Level | Name | Picture | Value | Description |
 |-------|------|---------|-------|-------------|
-| 01 | WS-FLAGS | Group | | Processing flags |
-| 05 | WS-RESPONSE-CODE | S9(8) COMP | | CICS response code |
-| 05 | WS-POSITION-FOUND | X | 'N' | Position found indicator |
-| 88 | POSITION-EXISTS | | 'Y' | Position was found |
-| 88 | NO-POSITION | | 'N' | Position not found |
-
-#### Map Field Labels
-
-| Level | Name | Picture | Value | Description |
-|-------|------|---------|-------|-------------|
-| 01 | WS-MAP-FIELDS | Group | | Screen label constants |
+| 01 | WS-MAP-FIELDS | - | - | Screen labels |
 | 05 | WS-ACCOUNT-LABEL | X(10) | 'Account:' | Account field label |
 | 05 | WS-FUND-LABEL | X(10) | 'Fund ID:' | Fund ID field label |
 | 05 | WS-UNITS-LABEL | X(10) | 'Units:' | Units field label |
-| 05 | WS-COST-LABEL | X(15) | 'Cost Basis:' | Cost basis field label |
-| 05 | WS-VALUE-LABEL | X(15) | 'Market Value:' | Market value field label |
+| 05 | WS-COST-LABEL | X(15) | 'Cost Basis:' | Cost basis label |
+| 05 | WS-VALUE-LABEL | X(15) | 'Market Value:' | Market value label |
 
 ### Linkage Section
 
 #### DFHCOMMAREA
 
-The CICS communication area mirrors the INQCOM structure and is used to pass data between pseudo-conversational transactions.
+Contains the same INQCOM structure used to receive input parameters and return results to the calling program.
 
 ## File I/O
 
 ### VSAM File Access
 
-| File | DD/FCT Name | Operation | Key Field | Description |
-|------|-------------|-----------|-----------|-------------|
-| Position File | POSFILE | READ | POSITION-ACCOUNT | Retrieves position by account |
+| File | DD Name | Operation | Description |
+|------|---------|-----------|-------------|
+| POSFILE | POSFILE | READ | Read position record by account key |
 
-The program uses keyed VSAM access:
-
-```cobol
-EXEC CICS READ FILE('POSFILE')
-          INTO(WS-POSITION-RECORD)
-          RIDFLD(POSITION-ACCOUNT OF WS-POSITION-RECORD)
-          RESP(WS-RESPONSE-CODE)
-END-EXEC
-```
+The program performs a keyed read on POSFILE using the account number from the COMMAREA as the record identifier (RIDFLD).
 
 ## Control Flow
 
 ### Initialization (P100-INIT-PROGRAM)
 
-1. Initialize `WS-POSITION-RECORD` with LOW-VALUES to clear any residual data
-2. Copy `DFHCOMMAREA` to `WS-COMMAREA` for local processing
-3. Set up CICS condition handlers:
-   - `ERROR` → routes to P999-ERROR-ROUTINE
-   - `NOTFND` → routes to P900-NOT-FOUND
+1. **Clear Working Storage**
+   - Initialize WS-POSITION-RECORD to LOW-VALUES
+
+2. **Copy Input Parameters**
+   - Move DFHCOMMAREA to WS-COMMAREA to access input account number
+
+3. **Set Up Condition Handlers**
+   ```cobol
+   EXEC CICS HANDLE CONDITION
+             ERROR(P999-ERROR-ROUTINE)
+             NOTFND(P900-NOT-FOUND)
+   END-EXEC
+   ```
+   This establishes automatic routing for error conditions.
 
 ### Position Retrieval (P200-GET-POSITION)
 
-1. Move account number from COMMAREA to position record key field
-2. Execute CICS READ against POSFILE
-3. Check response code:
-   - `DFHRESP(NORMAL)` → Set `POSITION-EXISTS` flag
-   - Other → Set `NO-POSITION` flag
+1. **Set Key Value**
+   - Copy account number from COMMAREA to position record key field
+
+2. **Read VSAM File**
+   ```cobol
+   EXEC CICS READ FILE('POSFILE')
+             INTO(WS-POSITION-RECORD)
+             RIDFLD(POSITION-ACCOUNT OF WS-POSITION-RECORD)
+             RESP(WS-RESPONSE-CODE)
+   END-EXEC
+   ```
+
+3. **Evaluate Response**
+   - If DFHRESP(NORMAL): Set POSITION-EXISTS flag
+   - Otherwise: Set NO-POSITION flag
 
 ### Display Formatting (P300-FORMAT-DISPLAY)
 
-Sends the position data to the screen using BMS:
+Sends the position data to the terminal using BMS:
 
 ```cobol
 EXEC CICS SEND MAP('POSMAP')
@@ -173,54 +181,24 @@ EXEC CICS SEND MAP('POSMAP')
 END-EXEC
 ```
 
-The POSMAP displays:
-- Account number (input field)
-- Fund ID and Fund Name
-- Units held
+The POSMAP map displays:
+- Account identifier
+- Fund ID and name
+- Unit quantity
 - Cost basis
 - Current market value
-- Navigation instructions (PF3=Exit, PF7/PF8 for paging)
+- Navigation keys (PF3=Exit, PF7=Previous, PF8=Next)
 
-### Not Found Handling (P900-NOT-FOUND)
+### Not Found Handler (P900-NOT-FOUND)
 
-1. Set error message: "Position not found for account"
-2. Copy updated COMMAREA back to DFHCOMMAREA for return to caller
+1. Sets error message: "Position not found for account"
+2. Copies updated COMMAREA back to DFHCOMMAREA for return to caller
 
-### Error Handling (P999-ERROR-ROUTINE)
+### Error Handler (P999-ERROR-ROUTINE)
 
-1. Set error message: "Error accessing position data"
-2. Copy CICS response code to COMMAREA
-3. Return updated COMMAREA to caller
-
-## CICS Commands
-
-| Paragraph | Command | Purpose |
-|-----------|---------|---------|
-| P100-INIT-PROGRAM | `HANDLE CONDITION` | Set up error and not-found handlers |
-| P200-GET-POSITION | `READ FILE` | Read position record from VSAM |
-| P300-FORMAT-DISPLAY | `SEND MAP` | Display position data on screen |
-| Main | `RETURN` | Return control to CICS |
-
-## BMS Maps
-
-The program uses the INQSET mapset containing:
-
-| Map | Purpose | Key Fields |
-|-----|---------|------------|
-| POSMAP | Portfolio Position Display | ACCTIN (input), FUNDOUT, NAMEOUT, UNITOUT, COSTOUT, VALOUT, POSMSG |
-
-### POSMAP Screen Layout
-
-```
-Row 1:  Portfolio Position Inquiry
-Row 3:  Account: [__________]
-Row 5:  Fund ID: [______]    Fund Name: [______________________________]
-Row 7:  Units:   [_______________]
-Row 9:  Cost Basis:    [_______________]
-Row 11: Market Value:  [_______________]
-Row 22: PF3=Exit  PF7=Previous  PF8=Next
-Row 23: [Error Message Area - 78 chars, RED]
-```
+1. Sets error message: "Error accessing position data"
+2. Copies CICS response code to COMMAREA
+3. Returns updated COMMAREA to caller
 
 ## Dependencies
 
@@ -228,83 +206,133 @@ Row 23: [Error Message Area - 78 chars, RED]
 
 | Copybook | Location | Description |
 |----------|----------|-------------|
-| INQCOM | online/ | Inquiry communication area with function codes and account number |
-| POSREC | common/ | Position record layout with key, values, and audit fields |
-| SQLPOS | (DB2) | DB2 host variable structure for position data (via EXEC SQL INCLUDE) |
-
-### BMS Mapsets
-
-| Mapset | Maps | Description |
-|--------|------|-------------|
-| INQSET | POSMAP, MENMAP, HISMAP, ERRMAP | Inquiry system screen definitions |
+| INQCOM | WS-COMMAREA, DFHCOMMAREA | Online inquiry communication area with function codes and account number |
+| POSREC | WS-POSITION-RECORD | Position record structure with key, data, and audit fields |
+| SQLPOS | WS-DB2-POSITION (SQL INCLUDE) | DB2 position table DCLGEN |
 
 ### Called Programs
 
-*None* - This program handles the inquiry directly and returns to CICS.
+This program does not call any external programs. It uses CICS commands for all operations.
 
 ### Related Programs
 
-Programs sharing the same copybooks or mapsets:
+Programs sharing the INQCOM copybook:
+- **INQHIST** - Transaction History Inquiry
+- **INQONLN** - Online Inquiry Main Menu
 
-| Program | Relationship |
-|---------|--------------|
-| INQHIST | Uses INQCOM copybook - transaction history inquiry |
-| INQONLN | Uses INQCOM copybook - main online inquiry controller |
-| RPTPOS00 | Uses POSREC copybook - position reporting batch program |
-| UTLVAL00 | Uses POSREC copybook - validation utility |
+Programs sharing the POSREC copybook:
+- **RPTPOS00** - Position Report Generator (batch)
+- **UTLVAL00** - Validation Utility
 
-## Return Behavior
+## CICS Commands
 
-The program uses pseudo-conversational design:
-- Receives input via DFHCOMMAREA
-- Processes the inquiry
-- Either displays results via SEND MAP or updates COMMAREA with error info
-- Returns to CICS via `EXEC CICS RETURN`
+| Command | Paragraph | Purpose |
+|---------|-----------|---------|
+| `HANDLE CONDITION` | P100-INIT-PROGRAM | Set up error and not-found handlers |
+| `READ FILE` | P200-GET-POSITION | Read position from VSAM POSFILE |
+| `SEND MAP` | P300-FORMAT-DISPLAY | Display position data on terminal |
+| `RETURN` | Main procedure | Return control to CICS |
 
-### Response Codes
+## BMS Map Details
 
-| Code | Meaning |
-|------|---------|
-| DFHRESP(NORMAL) | Position successfully retrieved |
-| DFHRESP(NOTFND) | No position found for account |
-| Other | Error accessing position data |
+The program uses the POSMAP map from the INQSET mapset:
 
-## Transaction Flow
+### Screen Layout (POSMAP)
 
-```mermaid
-sequenceDiagram
-    participant User
-    participant CICS
-    participant INQPORT
-    participant POSFILE
-    
-    User->>CICS: Enter Account Number
-    CICS->>INQPORT: LINK with COMMAREA
-    INQPORT->>INQPORT: P100-INIT-PROGRAM
-    INQPORT->>POSFILE: READ by Account
-    alt Position Found
-        POSFILE-->>INQPORT: Position Record
-        INQPORT->>CICS: SEND MAP (POSMAP)
-        CICS->>User: Display Position
-    else Not Found
-        POSFILE-->>INQPORT: NOTFND
-        INQPORT->>CICS: Update COMMAREA with Error
-        CICS->>User: Display Error Message
-    end
-    INQPORT->>CICS: RETURN
+```
+Row 1:  Portfolio Position Inquiry (Title)
+Row 3:  Account: [__________]
+Row 5:  Fund ID: [______]    Fund Name: [______________________________]
+Row 7:  Units: [_______________]
+Row 9:  Cost Basis: [_______________]
+Row 11: Market Value: [_______________]
+Row 22: PF3=Exit  PF7=Previous  PF8=Next
+Row 23: [Error Message Area - Red]
 ```
 
-## Usage Notes
+### Map Fields
 
-### Packed Decimal Fields
+| Field | Position | Length | Attributes | Description |
+|-------|----------|--------|------------|-------------|
+| ACCTIN | (3,12) | 10 | UNPROT, IC | Account input field |
+| FUNDOUT | (5,12) | 6 | PROT, TURQUOISE | Fund ID display |
+| NAMEOUT | (5,31) | 30 | PROT, TURQUOISE | Fund name display |
+| UNITOUT | (7,12) | 15 | PROT, TURQUOISE | Units display |
+| COSTOUT | (9,17) | 15 | PROT, TURQUOISE | Cost basis display |
+| VALOUT | (11,17) | 15 | PROT, TURQUOISE | Market value display |
+| POSMSG | (23,1) | 78 | PROT, BRT, RED | Error/status message |
 
-The position record uses COMP-3 (packed decimal) format for numeric fields:
-- `POS-QUANTITY`: S9(11)V9(4) - supports up to 11 digits with 4 decimal places
-- `POS-COST-BASIS`: S9(13)V9(2) - supports large monetary values
-- `POS-MARKET-VALUE`: S9(13)V9(2) - supports large monetary values
+## Response Codes
 
-When displaying these values, they should be moved to edited PIC fields for proper formatting with commas and decimal points.
+| Code | Constant | Meaning |
+|------|----------|---------|
+| 0 | DFHRESP(NORMAL) | Successful operation |
+| 13 | DFHRESP(NOTFND) | Record not found in POSFILE |
+| Other | Various | CICS error conditions |
 
-### Currency Handling
+## Usage Example
 
-The `POS-CURRENCY` field (3 characters) stores ISO currency codes (e.g., 'USD', 'EUR'). The display formatting should consider the currency when showing monetary values.
+Calling programs invoke INQPORT via CICS LINK:
+
+```cobol
+WORKING-STORAGE SECTION.
+01  WS-COMMAREA.
+    COPY INQCOM.
+
+PROCEDURE DIVISION.
+    * Set up inquiry request
+    MOVE 'INQP' TO INQCOM-FUNCTION
+    MOVE '1234567890' TO INQCOM-ACCOUNT-NO
+    
+    * Call position inquiry
+    EXEC CICS LINK
+         PROGRAM('INQPORT')
+         COMMAREA(WS-COMMAREA)
+         LENGTH(LENGTH OF WS-COMMAREA)
+    END-EXEC
+    
+    * Check result
+    IF INQCOM-RESPONSE-CODE NOT = 0
+        DISPLAY 'Error: ' INQCOM-ERROR-MSG
+    END-IF
+```
+
+## Technical Notes
+
+### HANDLE CONDITION vs RESP
+The program uses both `HANDLE CONDITION` (for global error routing) and `RESP` option (for explicit response checking). The RESP option takes precedence when specified, allowing paragraph-level control of response handling while maintaining global handlers for unexpected conditions.
+
+### COMP-3 (Packed Decimal) Fields
+The position record uses COMP-3 (packed decimal) for numeric fields like POS-QUANTITY, POS-COST-BASIS, and POS-MARKET-VALUE. This is efficient for storage and arithmetic operations on IBM mainframes:
+- `S9(11)V9(4) COMP-3` stores up to 11 integer digits and 4 decimal places in 8 bytes
+- `S9(13)V9(2) COMP-3` stores up to 13 integer digits and 2 decimal places in 8 bytes
+
+### LOW-VALUES Initialization
+The program initializes WS-POSITION-RECORD to LOW-VALUES (binary zeros) before reading. This ensures any unfilled portions of the record are cleared, preventing display of garbage data if the read fails.
+
+### ERASE Option
+The `SEND MAP` command uses the ERASE option, which clears the screen before displaying the map. This provides a clean display and prevents residual data from previous screens.
+
+## CICS Resource Definitions
+
+```
+DEFINE PROGRAM(INQPORT)
+       GROUP(INQGRP)
+       LANGUAGE(COBOL)
+
+DEFINE FILE(POSFILE)
+       GROUP(INQGRP)
+       DSNAME(your.position.vsam.file)
+       RECORDFORMAT(F)
+       ADD(NO) BROWSE(YES) DELETE(NO) READ(YES) UPDATE(NO)
+
+DEFINE MAPSET(INQSET)
+       GROUP(INQGRP)
+```
+
+## Error Messages
+
+| Message | Condition | Action |
+|---------|-----------|--------|
+| "Position not found for account" | NOTFND condition or RESP ≠ NORMAL | Returned in INQCOM-ERROR-MSG |
+| "Error accessing position data" | ERROR condition | Returned with response code |

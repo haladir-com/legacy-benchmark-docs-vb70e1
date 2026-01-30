@@ -1,19 +1,20 @@
 ---
 title: "UTLVAL00"
-description: "Data Validation Utility - Batch program that performs comprehensive data validation including integrity checks, cross-reference validation, format verification, and balance reconciliation"
+description: "Data Validation Utility - Batch program for comprehensive data validation including integrity checks, cross-reference validation, format verification, and balance reconciliation"
 ---
 
 ## Overview
 
-UTLVAL00 is a batch utility program that performs comprehensive data validation across portfolio-related files. It reads validation control records that specify which types of validation to perform, then executes the appropriate validation routines against the Position Master and Transaction History files.
+UTLVAL00 is a batch utility program that performs comprehensive data validation across portfolio management data files. It provides a flexible, control-file-driven approach to validating data quality through multiple validation types that can be configured and executed in sequence.
 
-The program supports four types of validation:
-- **Integrity** - Validates data consistency within records
-- **Cross-Reference (XREF)** - Validates relationships between related records
-- **Format** - Validates field formats and data types
-- **Balance** - Reconciles calculated totals against control totals
+The program validates data in the Position Master and Transaction History files, producing an error report detailing any issues found. It supports four types of validation:
 
-All validation errors are written to an error report file for review and correction. This utility is typically run as part of data quality monitoring or before major processing runs to ensure data integrity.
+- **INTEGRITY** - Verifies internal data consistency within records
+- **XREF** - Cross-reference validation between related files
+- **FORMAT** - Validates data format compliance
+- **BALANCE** - Reconciles computed totals against control totals
+
+This utility is typically run as part of end-of-day processing or data migration activities to ensure data quality before critical batch processes execute.
 
 ## Program Structure
 
@@ -27,82 +28,83 @@ graph TD
     B --> B2[1200-INIT-PROCESSING]
     B1 -.->|On Error| E[9999-ERROR-HANDLER]
     
-    C --> C1[2100-PROCESS-VALIDATION]
+    C --> C1{Read VALIDATION-CONTROL}
+    C1 -->|EOF| D
+    C1 -->|Record| C2[2100-PROCESS-VALIDATION]
     
-    C1 -->|INTEGRITY| F[2200-CHECK-INTEGRITY]
-    C1 -->|XREF| G[2300-CHECK-XREF]
-    C1 -->|FORMAT| H[2400-CHECK-FORMAT]
-    C1 -->|BALANCE| I[2500-CHECK-BALANCE]
-    C1 -->|OTHER| E
+    C2 --> F{EVALUATE VAL-TYPE}
+    F -->|INTEGRITY| G[2200-CHECK-INTEGRITY]
+    F -->|XREF| H[2300-CHECK-XREF]
+    F -->|FORMAT| I[2400-CHECK-FORMAT]
+    F -->|BALANCE| J[2500-CHECK-BALANCE]
+    F -->|OTHER| E
     
-    F --> F1[2210-CHECK-POSITION-INTEGRITY]
-    F --> F2[2220-CHECK-TRANSACTION-INTEGRITY]
+    G --> G1[2210-CHECK-POSITION-INTEGRITY]
+    G --> G2[2220-CHECK-TRANSACTION-INTEGRITY]
     
-    G --> G1[2310-CHECK-POSITION-XREF]
-    G --> G2[2320-CHECK-TRANSACTION-XREF]
+    H --> H1[2310-CHECK-POSITION-XREF]
+    H --> H2[2320-CHECK-TRANSACTION-XREF]
     
-    H --> H1[2410-CHECK-POSITION-FORMAT]
-    H --> H2[2420-CHECK-TRANSACTION-FORMAT]
+    I --> I1[2410-CHECK-POSITION-FORMAT]
+    I --> I2[2420-CHECK-TRANSACTION-FORMAT]
     
-    I --> I1[2510-ACCUMULATE-POSITIONS]
-    I --> I2[2520-VERIFY-BALANCES]
+    J --> J1[2510-ACCUMULATE-POSITIONS]
+    J --> J2[2520-VERIFY-BALANCES]
+    
+    E --> E1[Write ERROR-REPORT]
 ```
 
 ## Data Structures
 
 ### Working Storage
 
-#### File Status Variables
+#### File Status Codes
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | WS-FILE-STATUS | - | File status group |
-| 05 | WS-VAL-STATUS | PIC XX | Validation control file status |
-| 05 | WS-POS-STATUS | PIC XX | Position master file status |
-| 05 | WS-TRAN-STATUS | PIC XX | Transaction history file status |
-| 05 | WS-RPT-STATUS | PIC XX | Error report file status |
+| 01 | WS-FILE-STATUS | | File status group |
+| 05 | WS-VAL-STATUS | XX | Validation Control file status |
+| 05 | WS-POS-STATUS | XX | Position Master file status |
+| 05 | WS-TRAN-STATUS | XX | Transaction History file status |
+| 05 | WS-RPT-STATUS | XX | Error Report file status |
 
 #### Validation Type Constants
 
 | Level | Name | Picture | Value | Description |
 |-------|------|---------|-------|-------------|
-| 05 | WS-INTEGRITY | PIC X(10) | 'INTEGRITY' | Integrity check type |
-| 05 | WS-XREF | PIC X(10) | 'XREF' | Cross-reference check type |
-| 05 | WS-FORMAT | PIC X(10) | 'FORMAT' | Format check type |
-| 05 | WS-BALANCE | PIC X(10) | 'BALANCE' | Balance check type |
+| 01 | WS-VALIDATION-TYPES | | | Type code constants |
+| 05 | WS-INTEGRITY | X(10) | 'INTEGRITY' | Integrity check type |
+| 05 | WS-XREF | X(10) | 'XREF' | Cross-reference type |
+| 05 | WS-FORMAT | X(10) | 'FORMAT' | Format check type |
+| 05 | WS-BALANCE | X(10) | 'BALANCE' | Balance check type |
 
 #### Processing Flags
 
-| Level | Name | Picture | Default | Description |
-|-------|------|---------|---------|-------------|
-| 05 | WS-END-OF-VAL | PIC X | 'N' | End of validation control file flag |
-| 05 | WS-ERROR-FOUND | PIC X | 'N' | Error found during validation flag |
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 01 | WS-PROCESSING-FLAGS | | Control flags |
+| 05 | WS-END-OF-VAL | X | End of validation control file |
+| 05 | WS-ERROR-FOUND | X | Error detected flag |
 
 #### Validation Totals
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 05 | WS-RECORDS-READ | PIC 9(9) | Count of records read |
-| 05 | WS-RECORDS-VALID | PIC 9(9) | Count of valid records |
-| 05 | WS-RECORDS-ERROR | PIC 9(9) | Count of error records |
-| 05 | WS-TOTAL-AMOUNT | PIC S9(15)V99 | Accumulated total amount |
-| 05 | WS-CONTROL-TOTAL | PIC S9(15)V99 | Expected control total |
+| 01 | WS-VALIDATION-TOTALS | | Statistics counters |
+| 05 | WS-RECORDS-READ | 9(9) | Records read counter |
+| 05 | WS-RECORDS-VALID | 9(9) | Valid records counter |
+| 05 | WS-RECORDS-ERROR | 9(9) | Error records counter |
+| 05 | WS-TOTAL-AMOUNT | S9(15)V99 | Computed total amount |
+| 05 | WS-CONTROL-TOTAL | S9(15)V99 | Expected control total |
 
-#### Error Line Layout
+#### Error Line Format
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | WS-ERROR-LINE | - | Error report line layout |
-| 05 | WS-ERR-TYPE | PIC X(10) | Type of error |
-| 05 | WS-ERR-KEY | PIC X(20) | Key of record in error |
-| 05 | WS-ERR-DESC | PIC X(98) | Error description |
-
-### Processing Flags (88-levels)
-
-| Condition Name | Variable | Value | Description |
-|----------------|----------|-------|-------------|
-| END-OF-VALIDATION | WS-END-OF-VAL | 'Y' | All control records processed |
-| ERROR-FOUND | WS-ERROR-FOUND | 'Y' | At least one error detected |
+| 01 | WS-ERROR-LINE | | Error report line |
+| 05 | WS-ERR-TYPE | X(10) | Validation type |
+| 05 | WS-ERR-KEY | X(20) | Record key |
+| 05 | WS-ERR-DESC | X(98) | Error description |
 
 ### File Section
 
@@ -110,163 +112,172 @@ graph TD
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | VALIDATION-RECORD | - | Control record (80 bytes) |
-| 05 | VAL-TYPE | PIC X(10) | Validation type to perform |
-| 05 | VAL-PARAMETERS | PIC X(70) | Parameters for validation |
+| 01 | VALIDATION-RECORD | | Control file record |
+| 05 | VAL-TYPE | X(10) | Validation type code |
+| 05 | VAL-PARAMETERS | X(70) | Validation parameters |
 
 #### Error Report Record
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | ERROR-RECORD | PIC X(132) | Error report output line |
+| 01 | ERROR-RECORD | X(132) | Error report line |
+
+### Position Record (POSREC Copybook)
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 01 | POSITION-RECORD | | Position master record |
+| 05 | POS-KEY | | Composite key |
+| 10 | POS-PORTFOLIO-ID | X(8) | Portfolio identifier |
+| 10 | POS-DATE | X(8) | Position date (YYYYMMDD) |
+| 10 | POS-INVESTMENT-ID | X(10) | Investment identifier |
+| 05 | POS-DATA | | Position data |
+| 10 | POS-QUANTITY | S9(11)V9(4) COMP-3 | Holding quantity |
+| 10 | POS-COST-BASIS | S9(13)V9(2) COMP-3 | Total cost basis |
+| 10 | POS-MARKET-VALUE | S9(13)V9(2) COMP-3 | Current market value |
+| 10 | POS-STATUS | X(1) | A=Active, C=Closed, P=Pending |
+
+### Transaction Record (TRNREC Copybook)
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 01 | TRANSACTION-RECORD | | Transaction history record |
+| 05 | TRN-KEY | | Composite key |
+| 10 | TRN-DATE | X(8) | Transaction date (YYYYMMDD) |
+| 10 | TRN-TIME | X(6) | Transaction time (HHMMSS) |
+| 10 | TRN-PORTFOLIO-ID | X(8) | Portfolio identifier |
+| 10 | TRN-SEQUENCE-NO | X(6) | Sequence number |
+| 05 | TRN-DATA | | Transaction data |
+| 10 | TRN-TYPE | X(2) | BU=Buy, SL=Sell, TR=Transfer, FE=Fee |
+| 10 | TRN-AMOUNT | S9(13)V9(2) COMP-3 | Transaction amount |
+| 10 | TRN-STATUS | X(1) | P=Pending, D=Done, F=Failed, R=Reversed |
 
 ## File I/O
 
 ### File Definitions
 
-| Logical Name | Physical Name | Organization | Access Mode | Record Key | Description |
-|--------------|---------------|--------------|-------------|------------|-------------|
-| VALIDATION-CONTROL | VALCTL | Sequential | Sequential | - | Input control file specifying validations |
-| POSITION-MASTER | POSMSTRE | Indexed | Dynamic | POS-KEY | Position data to validate |
-| TRANSACTION-HISTORY | TRANHIST | Indexed | Dynamic | TRAN-KEY | Transaction data to validate |
-| ERROR-REPORT | ERRRPT | Sequential | Sequential | - | Output error report |
+| File Name | DD Name | Type | Organization | Access Mode | Key |
+|-----------|---------|------|--------------|-------------|-----|
+| VALIDATION-CONTROL | VALCTL | Input | Sequential | Sequential | N/A |
+| POSITION-MASTER | POSMSTRE | Input | Indexed (VSAM) | Dynamic | POS-KEY |
+| TRANSACTION-HISTORY | TRANHIST | Input | Indexed (VSAM) | Dynamic | TRAN-KEY |
+| ERROR-REPORT | ERRRPT | Output | Sequential | Sequential | N/A |
 
-### File Operations Summary
+### File Operations
 
-| File | Operations | Mode | Paragraphs |
-|------|------------|------|------------|
-| VALIDATION-CONTROL | OPEN, READ, CLOSE | INPUT | 1100, 2000, 3000 |
-| POSITION-MASTER | OPEN, READ, CLOSE | INPUT | 1100, 22xx, 23xx, 24xx, 25xx, 3000 |
-| TRANSACTION-HISTORY | OPEN, READ, CLOSE | INPUT | 1100, 22xx, 23xx, 24xx, 3000 |
-| ERROR-REPORT | OPEN, WRITE, CLOSE | OUTPUT | 1100, 9999, 3000 |
+| Paragraph | File | Operation | Purpose |
+|-----------|------|-----------|---------|
+| 1100-OPEN-FILES | VALIDATION-CONTROL | OPEN INPUT | Read validation requests |
+| 1100-OPEN-FILES | POSITION-MASTER | OPEN INPUT | Validate position data |
+| 1100-OPEN-FILES | TRANSACTION-HISTORY | OPEN INPUT | Validate transaction data |
+| 1100-OPEN-FILES | ERROR-REPORT | OPEN OUTPUT | Write validation errors |
+| 2000-PROCESS | VALIDATION-CONTROL | READ | Get next validation type |
+| 9999-ERROR-HANDLER | ERROR-REPORT | WRITE | Log validation errors |
+| 3000-CLEANUP | All files | CLOSE | Release resources |
 
 ## Control Flow
 
-### 0000-MAIN
-
-Entry point orchestrating the validation process:
-1. Performs initialization
-2. Performs main processing loop
-3. Performs cleanup
-4. Returns to caller
-
 ### 1000-INITIALIZE
 
-Prepares the program for execution:
-1. Opens all files (1100-OPEN-FILES)
-2. Initializes processing counters (1200-INIT-PROCESSING)
-
-### 1100-OPEN-FILES
-
-Opens all required files with error handling:
-- VALIDATION-CONTROL (INPUT) - Control records
-- POSITION-MASTER (INPUT) - Position data
-- TRANSACTION-HISTORY (INPUT) - Transaction data
-- ERROR-REPORT (OUTPUT) - Error output
-
-Each file open is validated; errors trigger 9999-ERROR-HANDLER.
-
-### 1200-INIT-PROCESSING
-
-Initializes validation totals to zero.
+Initialization phase:
+1. **1100-OPEN-FILES**: Opens all four files with error checking
+   - VALIDATION-CONTROL for input (sequential read)
+   - POSITION-MASTER for input (dynamic access)
+   - TRANSACTION-HISTORY for input (dynamic access)
+   - ERROR-REPORT for output
+   - Any file open error triggers 9999-ERROR-HANDLER
+2. **1200-INIT-PROCESSING**: Initializes validation totals to zero
 
 ### 2000-PROCESS
 
 Main processing loop:
-```
-PERFORM UNTIL END-OF-VALIDATION
-    READ VALIDATION-CONTROL
-        AT END: SET END-OF-VALIDATION TO TRUE
-        NOT AT END: PERFORM 2100-PROCESS-VALIDATION
-END-PERFORM
-```
+1. Reads VALIDATION-CONTROL file sequentially
+2. On EOF, sets END-OF-VALIDATION flag
+3. For each record, calls 2100-PROCESS-VALIDATION
+4. Continues until all validation requests processed
 
 ### 2100-PROCESS-VALIDATION
 
-Dispatches to appropriate validation routine based on VAL-TYPE:
-
-| VAL-TYPE | Paragraph | Description |
-|----------|-----------|-------------|
-| INTEGRITY | 2200-CHECK-INTEGRITY | Data integrity checks |
-| XREF | 2300-CHECK-XREF | Cross-reference validation |
-| FORMAT | 2400-CHECK-FORMAT | Format verification |
-| BALANCE | 2500-CHECK-BALANCE | Balance reconciliation |
-| Other | 9999-ERROR-HANDLER | Invalid type error |
+Validation dispatcher:
+- Evaluates VAL-TYPE field against validation constants
+- Routes to appropriate validation routine:
+  - `INTEGRITY` → 2200-CHECK-INTEGRITY
+  - `XREF` → 2300-CHECK-XREF
+  - `FORMAT` → 2400-CHECK-FORMAT
+  - `BALANCE` → 2500-CHECK-BALANCE
+- Invalid type triggers error handler
 
 ### 2200-CHECK-INTEGRITY
 
-Performs data integrity validation:
-1. **2210-CHECK-POSITION-INTEGRITY** - Validates position record integrity
-   - Checks for required fields
-   - Validates numeric fields contain valid numbers
-   - Ensures logical consistency within position records
-   
-2. **2220-CHECK-TRANSACTION-INTEGRITY** - Validates transaction record integrity
-   - Checks for required fields
-   - Validates transaction dates and amounts
-   - Ensures logical consistency within transaction records
+Data integrity validation:
+1. **2210-CHECK-POSITION-INTEGRITY**: Validates position record internal consistency
+   - Verifies required fields are populated
+   - Checks numeric fields for valid values
+   - Validates status codes
+
+2. **2220-CHECK-TRANSACTION-INTEGRITY**: Validates transaction record consistency
+   - Verifies transaction amounts
+   - Checks date/time validity
+   - Validates transaction types and statuses
 
 ### 2300-CHECK-XREF
 
-Performs cross-reference validation:
-1. **2310-CHECK-POSITION-XREF** - Validates position cross-references
-   - Verifies positions reference valid accounts
-   - Checks security IDs exist in reference tables
-   
-2. **2320-CHECK-TRANSACTION-XREF** - Validates transaction cross-references
-   - Verifies transactions reference valid positions
-   - Checks account relationships
+Cross-reference validation:
+1. **2310-CHECK-POSITION-XREF**: Validates position cross-references
+   - Verifies portfolio IDs exist
+   - Validates investment ID references
+
+2. **2320-CHECK-TRANSACTION-XREF**: Validates transaction cross-references
+   - Ensures transactions reference valid positions
+   - Verifies portfolio linkages
 
 ### 2400-CHECK-FORMAT
 
-Performs format verification:
-1. **2410-CHECK-POSITION-FORMAT** - Validates position field formats
-   - Checks date formats
-   - Validates numeric field formats
-   - Verifies code field values
-   
-2. **2420-CHECK-TRANSACTION-FORMAT** - Validates transaction field formats
-   - Checks date and time formats
-   - Validates amount formats
-   - Verifies transaction type codes
+Format validation:
+1. **2410-CHECK-POSITION-FORMAT**: Validates position field formats
+   - Date format validation (YYYYMMDD)
+   - Numeric field format checking
+   - Code field value validation
+
+2. **2420-CHECK-TRANSACTION-FORMAT**: Validates transaction field formats
+   - Date/time format validation
+   - Amount format verification
+   - Type code validation
 
 ### 2500-CHECK-BALANCE
 
-Performs balance reconciliation:
-1. **2510-ACCUMULATE-POSITIONS** - Accumulates position values
-   - Reads all position records
-   - Sums quantities and values
-   - Stores totals in WS-TOTAL-AMOUNT
-   
-2. **2520-VERIFY-BALANCES** - Compares against control totals
-   - Compares WS-TOTAL-AMOUNT to WS-CONTROL-TOTAL
-   - Reports discrepancies
+Balance reconciliation:
+1. **2510-ACCUMULATE-POSITIONS**: Accumulates position values
+   - Sums market values or quantities
+   - Builds computed total in WS-TOTAL-AMOUNT
 
-### 3000-CLEANUP
-
-Closes all files:
-- VALIDATION-CONTROL
-- POSITION-MASTER
-- TRANSACTION-HISTORY
-- ERROR-REPORT
+2. **2520-VERIFY-BALANCES**: Compares against control totals
+   - Validates WS-TOTAL-AMOUNT against WS-CONTROL-TOTAL
+   - Reports discrepancies to error file
 
 ### 9999-ERROR-HANDLER
 
-Centralized error handling:
+Error processing:
 1. Increments WS-RECORDS-ERROR counter
 2. Sets ERROR-FOUND flag to TRUE
 3. Moves error message to WS-ERR-DESC
-4. Writes error line to ERROR-REPORT
+4. Writes formatted error line to ERROR-REPORT
+
+### 3000-CLEANUP
+
+Termination:
+- Closes all four files
+- Program ends after cleanup completes
 
 ## Validation Control File Format
 
-The VALIDATION-CONTROL file contains records specifying which validations to perform:
+The VALIDATION-CONTROL file drives the validation process. Each record specifies a validation type and optional parameters:
 
 ```
 INTEGRITY [parameters]
 XREF      [parameters]
 FORMAT    [parameters]
-BALANCE   [parameters]
+BALANCE   [control-total]
 ```
 
 ### Example Control File
@@ -274,101 +285,91 @@ BALANCE   [parameters]
 ```
 INTEGRITY POSITIONS
 INTEGRITY TRANSACTIONS
-XREF      ALL
-FORMAT    POSITIONS
-FORMAT    TRANSACTIONS
-BALANCE   DAILY
+XREF      PORTFOLIO-LINKS
+FORMAT    DATE-FIELDS
+FORMAT    AMOUNT-FIELDS
+BALANCE   1234567890.12
 ```
 
 ## Error Report Format
 
-The ERROR-REPORT file uses a 132-character fixed-format layout:
-
-| Position | Width | Field | Description |
-|----------|-------|-------|-------------|
-| 1-10 | 10 | Error Type | Type of validation that failed |
-| 11-12 | 2 | Filler | Spacing |
-| 13-32 | 20 | Record Key | Key of record in error |
-| 33-34 | 2 | Filler | Spacing |
-| 35-132 | 98 | Description | Error description text |
-
-### Example Error Report
+The ERROR-REPORT file contains 132-character records:
 
 ```
-INTEGRITY  PORT0001234         Position quantity is negative
-FORMAT     TRN20240315001      Invalid transaction date format
-XREF       PORT0009999         Account reference not found
-BALANCE    CONTROL             Total mismatch: expected 1000000.00, found 999875.50
+TYPE       KEY                  DESCRIPTION
+---------- -------------------- --------------------------------------------------
+INTEGRITY  PORT001/20240320     Invalid status code: X
+XREF       TRN00123456          Transaction references non-existent portfolio
+FORMAT     PORT002/INV001       Invalid date format: 2024-03-20
+BALANCE    TOTAL                Balance mismatch: computed 1000.00, expected 1500.00
 ```
 
 ## Dependencies
 
 ### Copybooks
 
-- **POSREC** - Position record layout (defines POS-KEY and position fields)
-- **TRNREC** - Transaction record layout (defines TRAN-KEY and transaction fields)
-- **RTNCODE** - Return code definitions
-- **ERRHAND** - Error handling structures (defines WS-ERROR-MESSAGE)
+- **POSREC** - Position record structure with key and data fields
+- **TRNREC** - Transaction record structure with key and data fields
+- **RTNCODE** - Return code management definitions
+- **ERRHAND** - Standard error handling definitions
 
 ### Called Programs
 
-None - this is a standalone utility program.
+None - this program does not call external programs.
 
 ### Related Programs
 
 Programs that share copybooks with UTLVAL00:
-
-| Program | Shared Copybooks | Relationship |
-|---------|------------------|--------------|
-| RPTPOS00 | POSREC, TRNREC, RTNCODE, ERRHAND | Position reporting - uses same data files |
-| INQPORT | POSREC | Portfolio inquiry |
-| PORTTRAN | TRNREC, ERRHAND | Portfolio transactions |
-| TSTGEN00 | TRNREC, RTNCODE, ERRHAND | Test data generation |
-| TSTVAL00 | RTNCODE, ERRHAND | Test validation |
-| UTLMNT00 | RTNCODE, ERRHAND | Maintenance utility |
-| UTLMON00 | RTNCODE, ERRHAND | Monitoring utility |
+- **RPTPOS00** - Position reporting (uses POSREC, TRNREC, RTNCODE, ERRHAND)
+- **INQPORT** - Portfolio inquiry (uses POSREC)
+- **PORTTRAN** - Portfolio transactions (uses TRNREC, ERRHAND)
+- **TSTGEN00** - Test data generation (uses TRNREC, RTNCODE, ERRHAND)
+- **UTLMNT00**, **UTLMON00** - Other utilities (use RTNCODE, ERRHAND)
 
 ## Technical Notes
 
 ### Dynamic File Access
 
-The POSITION-MASTER and TRANSACTION-HISTORY files use DYNAMIC access mode, enabling:
-- Sequential reads for full-file validation passes
-- Random reads by key for cross-reference lookups
+The POSITION-MASTER and TRANSACTION-HISTORY files use `ACCESS MODE IS DYNAMIC`, allowing both:
+- Sequential reading for full-file validation
+- Random access by key for cross-reference lookups
 
-### SPECIAL-NAMES
+This flexibility supports efficient validation strategies.
 
-The program uses `CONSOLE IS CONS` in SPECIAL-NAMES, allowing console output via:
-```cobol
-DISPLAY message UPON CONS
-```
+### Control-File-Driven Design
 
-### Validation Strategy
+The validation control file approach provides:
+- **Flexibility**: Different validation combinations per run
+- **Reusability**: Same program for different validation scenarios
+- **Auditability**: Control file documents what was validated
+- **Configurability**: No code changes needed for different validations
 
-The program is data-driven through the VALIDATION-CONTROL file:
-- Multiple validation passes can be specified
-- Validation types can be run selectively
-- Parameters can customize validation behavior
+### Validation Statistics
 
-### Error Accumulation
+The program maintains counters for:
+- `WS-RECORDS-READ`: Total records processed
+- `WS-RECORDS-VALID`: Records passing validation
+- `WS-RECORDS-ERROR`: Records with errors
 
-The program continues processing after errors:
-- Errors are logged to ERROR-REPORT
-- WS-RECORDS-ERROR tracks error count
-- Processing completes all validation types
-- Return code can be set based on error count
+These can be used for summary reporting and process monitoring.
 
-### JCL Requirements
+### Balance Reconciliation
 
-```jcl
-//VALCTL   DD DSN=validation.control.file,DISP=SHR
-//POSMSTRE DD DSN=position.master.file,DISP=SHR
-//TRANHIST DD DSN=transaction.history.file,DISP=SHR
-//ERRRPT   DD DSN=error.report.file,
-//            DISP=(NEW,CATLG),SPACE=(TRK,(10,5)),
-//            DCB=(RECFM=FB,LRECL=132,BLKSIZE=0)
-```
+The balance check compares:
+- `WS-TOTAL-AMOUNT`: Computed from actual data
+- `WS-CONTROL-TOTAL`: Expected total (from control file or external source)
 
-### Source File Note
+This provides assurance that data transformations or loads completed correctly.
 
-The source file contains paragraph definitions for detailed validation routines (2210-2520) but their full implementations are not present in the reviewed source. The documentation above describes the expected behavior based on the program structure and naming conventions.
+### SPECIAL-NAMES Clause
+
+The program uses `CONSOLE IS CONS` in SPECIAL-NAMES, which allows operator communication via the system console. This can be used for status messages or operator intervention.
+
+### Error Handling Strategy
+
+All file open errors and invalid validation types trigger the error handler, which:
+1. Records the error for reporting
+2. Sets the ERROR-FOUND flag
+3. Continues processing (non-fatal approach)
+
+This allows the program to report all errors found rather than stopping at the first one.

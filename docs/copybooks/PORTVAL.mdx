@@ -1,238 +1,318 @@
 ---
 title: "PORTVAL"
-description: "Portfolio Validation Rules and Error Messages - defines return codes, error messages, validation constants, and work areas for portfolio data validation"
+description: "Portfolio Validation Rules and Error Messages - Defines validation return codes, error messages, and constants for portfolio data validation"
 ---
 
 ## Overview
 
-PORTVAL is a copybook that provides a standardized framework for validating portfolio data elements. It defines return codes, error messages, validation constants, and work areas used by portfolio validation routines.
+PORTVAL is a copybook that provides standardized validation rules, return codes, error messages, and constants for validating portfolio data throughout the application. It centralizes validation logic definitions to ensure consistent data quality checks and error reporting across all programs that process portfolio information.
 
-The copybook supports validation of:
-- **Portfolio IDs**: Format validation (must start with 'PORT' prefix)
-- **Account Numbers**: Numeric format validation
-- **Investment Types**: Valid type code checking
-- **Monetary Amounts**: Range validation within system limits
+This copybook is essential for maintaining data integrity in the portfolio management system, providing:
+- Predefined validation return codes for common error conditions
+- User-friendly error messages for validation failures
+- Boundary constants for amount validation
+- Working storage areas for validation processing
 
-By centralizing validation rules and messages in a copybook, the system ensures consistent error handling and makes it easy to update validation logic across all programs.
+## Record Layout
+
+```
++------------------------------------------------------------------+
+| VAL-RETURN-CODES (16 bytes)                                       |
+|   VAL-SUCCESS | VAL-INVALID-ID | VAL-INVALID-ACCT |              |
+|   VAL-INVALID-TYPE | VAL-INVALID-AMT                              |
++------------------------------------------------------------------+
+| VAL-ERROR-MESSAGES (200 bytes)                                    |
+|   VAL-ERR-ID (50) | VAL-ERR-ACCT (50) |                          |
+|   VAL-ERR-TYPE (50) | VAL-ERR-AMT (50)                           |
++------------------------------------------------------------------+
+| VAL-CONSTANTS (36 bytes)                                          |
+|   VAL-MIN-AMOUNT | VAL-MAX-AMOUNT | VAL-ID-PREFIX                |
++------------------------------------------------------------------+
+| VAL-WORK-AREAS (68 bytes)                                         |
+|   VAL-NUMERIC-CHECK | VAL-TEMP-NUM | VAL-ERROR-CODE | VAL-ERROR-MSG|
++------------------------------------------------------------------+
+```
 
 ## Data Structures
 
-### Validation Return Codes (VAL-RETURN-CODES)
+### VAL-RETURN-CODES (Level 01)
 
-Standardized return codes for validation results:
-
-| Level | Name | Picture | Value | Description |
-|-------|------|---------|-------|-------------|
-| 01 | VAL-RETURN-CODES | Group | | Validation return code constants |
-| 05 | VAL-SUCCESS | S9(4) | +0 | Validation passed |
-| 05 | VAL-INVALID-ID | S9(4) | +1 | Portfolio ID format invalid |
-| 05 | VAL-INVALID-ACCT | S9(4) | +2 | Account number format invalid |
-| 05 | VAL-INVALID-TYPE | S9(4) | +3 | Investment type code invalid |
-| 05 | VAL-INVALID-AMT | S9(4) | +4 | Amount outside valid range |
-
-### Validation Error Messages (VAL-ERROR-MESSAGES)
-
-Pre-defined error messages for each validation failure:
+Standardized return codes for validation operations:
 
 | Level | Name | Picture | Value | Description |
 |-------|------|---------|-------|-------------|
-| 01 | VAL-ERROR-MESSAGES | Group | | Error message constants |
-| 05 | VAL-ERR-ID | X(50) | 'Invalid Portfolio ID format' | Portfolio ID error |
-| 05 | VAL-ERR-ACCT | X(50) | 'Invalid Account Number format' | Account number error |
-| 05 | VAL-ERR-TYPE | X(50) | 'Invalid Investment Type' | Investment type error |
-| 05 | VAL-ERR-AMT | X(50) | 'Amount outside valid range' | Amount range error |
+| 05 | VAL-SUCCESS | S9(4) | +0 | Validation passed successfully |
+| 05 | VAL-INVALID-ID | S9(4) | +1 | Portfolio ID format is invalid |
+| 05 | VAL-INVALID-ACCT | S9(4) | +2 | Account number format is invalid |
+| 05 | VAL-INVALID-TYPE | S9(4) | +3 | Investment type code is invalid |
+| 05 | VAL-INVALID-AMT | S9(4) | +4 | Amount is outside valid range |
 
-### Validation Constants (VAL-CONSTANTS)
+### VAL-ERROR-MESSAGES (Level 01)
 
-Business rule constants for validation logic:
+User-friendly error messages corresponding to each validation failure:
 
 | Level | Name | Picture | Value | Description |
 |-------|------|---------|-------|-------------|
-| 01 | VAL-CONSTANTS | Group | | Validation rule constants |
-| 05 | VAL-MIN-AMOUNT | S9(13)V99 | -9999999999999.99 | Minimum valid amount |
-| 05 | VAL-MAX-AMOUNT | S9(13)V99 | +9999999999999.99 | Maximum valid amount |
-| 05 | VAL-ID-PREFIX | X(4) | 'PORT' | Required Portfolio ID prefix |
+| 05 | VAL-ERR-ID | X(50) | 'Invalid Portfolio ID format' | Message for invalid portfolio ID |
+| 05 | VAL-ERR-ACCT | X(50) | 'Invalid Account Number format' | Message for invalid account number |
+| 05 | VAL-ERR-TYPE | X(50) | 'Invalid Investment Type' | Message for invalid investment type |
+| 05 | VAL-ERR-AMT | X(50) | 'Amount outside valid range' | Message for out-of-range amount |
 
-### Validation Work Areas (VAL-WORK-AREAS)
+### VAL-CONSTANTS (Level 01)
 
-Working storage fields for validation processing:
+Validation boundary values and format constants:
+
+| Level | Name | Picture | Value | Description |
+|-------|------|---------|-------|-------------|
+| 05 | VAL-MIN-AMOUNT | S9(13)V99 | -9999999999999.99 | Minimum allowed amount |
+| 05 | VAL-MAX-AMOUNT | S9(13)V99 | +9999999999999.99 | Maximum allowed amount |
+| 05 | VAL-ID-PREFIX | X(4) | 'PORT' | Required prefix for portfolio IDs |
+
+### VAL-WORK-AREAS (Level 01)
+
+Working storage for validation processing:
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | VAL-WORK-AREAS | Group | Validation working storage |
-| 05 | VAL-NUMERIC-CHECK | X(10) | Field for numeric validation testing |
-| 05 | VAL-TEMP-NUM | S9(13)V99 | Temporary numeric field for amount validation |
-| 05 | VAL-ERROR-CODE | S9(4) | Current error code during validation |
-| 05 | VAL-ERROR-MSG | X(50) | Current error message during validation |
+| 05 | VAL-NUMERIC-CHECK | X(10) | Temporary field for numeric validation |
+| 05 | VAL-TEMP-NUM | S9(13)V99 | Temporary numeric field for amount checking |
+| 05 | VAL-ERROR-CODE | S9(4) | Current validation error code |
+| 05 | VAL-ERROR-MSG | X(50) | Current validation error message |
 
 ## Validation Rules
 
 ### Portfolio ID Validation
 
-Portfolio IDs must conform to the following rules:
-1. Must start with the prefix 'PORT' (defined in `VAL-ID-PREFIX`)
-2. Must be followed by exactly 4 numeric digits
-3. Example valid IDs: `PORT0001`, `PORT1234`, `PORT9999`
+Valid portfolio IDs must:
+- Begin with the prefix 'PORT' (defined in VAL-ID-PREFIX)
+- Follow a consistent format (e.g., PORT0001, PORT1234)
 
 ```cobol
-* Check prefix
-IF INPUT-ID(1:4) NOT = VAL-ID-PREFIX
-    MOVE VAL-INVALID-ID TO RETURN-CODE
-    MOVE VAL-ERR-ID TO ERROR-MSG
-END-IF
-
-* Check numeric suffix
-IF INPUT-ID(5:4) IS NOT NUMERIC
-    MOVE VAL-INVALID-ID TO RETURN-CODE
-    MOVE VAL-ERR-ID TO ERROR-MSG
+IF PORT-ID(1:4) NOT = VAL-ID-PREFIX
+    MOVE VAL-INVALID-ID TO VAL-ERROR-CODE
+    MOVE VAL-ERR-ID TO VAL-ERROR-MSG
 END-IF
 ```
 
 ### Account Number Validation
 
-Account numbers must be:
-1. Exactly 10 numeric digits
-2. Non-zero value
+Account numbers must follow the expected format for the system.
 
 ```cobol
-IF ACCOUNT-NUMBER IS NOT NUMERIC
-OR ACCOUNT-NUMBER = ZEROS
-    MOVE VAL-INVALID-ACCT TO RETURN-CODE
-    MOVE VAL-ERR-ACCT TO ERROR-MSG
-END-IF
-```
-
-### Investment Type Validation
-
-Investment type codes must be one of the following valid values:
-
-| Code | Description |
-|------|-------------|
-| STK | Stocks/Equities |
-| BND | Bonds/Fixed Income |
-| MMF | Money Market Funds |
-| ETF | Exchange-Traded Funds |
-
-```cobol
-IF INVEST-TYPE NOT = 'STK'
-   AND NOT = 'BND'
-   AND NOT = 'MMF'
-   AND NOT = 'ETF'
-    MOVE VAL-INVALID-TYPE TO RETURN-CODE
-    MOVE VAL-ERR-TYPE TO ERROR-MSG
+IF ACCOUNT-NO IS NOT NUMERIC
+    MOVE VAL-INVALID-ACCT TO VAL-ERROR-CODE
+    MOVE VAL-ERR-ACCT TO VAL-ERROR-MSG
 END-IF
 ```
 
 ### Amount Validation
 
-Monetary amounts must fall within the system's valid range:
-- **Minimum**: -9,999,999,999,999.99 (`VAL-MIN-AMOUNT`)
-- **Maximum**: +9,999,999,999,999.99 (`VAL-MAX-AMOUNT`)
-
-This range supports values up to approximately ±10 trillion with 2 decimal places.
+Amounts must fall within the defined range:
+- Minimum: -9,999,999,999,999.99 (VAL-MIN-AMOUNT)
+- Maximum: +9,999,999,999,999.99 (VAL-MAX-AMOUNT)
 
 ```cobol
-IF AMOUNT < VAL-MIN-AMOUNT
-OR AMOUNT > VAL-MAX-AMOUNT
-    MOVE VAL-INVALID-AMT TO RETURN-CODE
-    MOVE VAL-ERR-AMT TO ERROR-MSG
+IF WS-AMOUNT < VAL-MIN-AMOUNT OR
+   WS-AMOUNT > VAL-MAX-AMOUNT
+    MOVE VAL-INVALID-AMT TO VAL-ERROR-CODE
+    MOVE VAL-ERR-AMT TO VAL-ERROR-MSG
 END-IF
 ```
 
-## Usage
+### Investment Type Validation
 
-### Including the Copybook
+Investment types must match predefined valid codes.
+
+```cobol
+EVALUATE INV-TYPE
+    WHEN 'STK'
+    WHEN 'BND'
+    WHEN 'MUT'
+    WHEN 'ETF'
+        CONTINUE
+    WHEN OTHER
+        MOVE VAL-INVALID-TYPE TO VAL-ERROR-CODE
+        MOVE VAL-ERR-TYPE TO VAL-ERROR-MSG
+END-EVALUATE
+```
+
+## Usage Examples
+
+### Complete Field Validation
 
 ```cobol
 WORKING-STORAGE SECTION.
     COPY PORTVAL.
+    
+01  WS-VALIDATION-RESULT   PIC S9(4).
+
+PROCEDURE DIVISION.
+VALIDATE-PORTFOLIO-DATA.
+    INITIALIZE VAL-WORK-AREAS
+    MOVE VAL-SUCCESS TO VAL-ERROR-CODE
+    
+    PERFORM VALIDATE-PORTFOLIO-ID
+    IF VAL-ERROR-CODE = VAL-SUCCESS
+        PERFORM VALIDATE-ACCOUNT-NUMBER
+    END-IF
+    IF VAL-ERROR-CODE = VAL-SUCCESS
+        PERFORM VALIDATE-AMOUNT
+    END-IF
+    
+    MOVE VAL-ERROR-CODE TO WS-VALIDATION-RESULT
+    .
+
+VALIDATE-PORTFOLIO-ID.
+    IF PORT-ID(1:4) NOT = VAL-ID-PREFIX
+        MOVE VAL-INVALID-ID TO VAL-ERROR-CODE
+        MOVE VAL-ERR-ID TO VAL-ERROR-MSG
+    END-IF
+    .
+
+VALIDATE-ACCOUNT-NUMBER.
+    MOVE PORT-ACCOUNT-NO TO VAL-NUMERIC-CHECK
+    IF VAL-NUMERIC-CHECK IS NOT NUMERIC
+        MOVE VAL-INVALID-ACCT TO VAL-ERROR-CODE
+        MOVE VAL-ERR-ACCT TO VAL-ERROR-MSG
+    END-IF
+    .
+
+VALIDATE-AMOUNT.
+    IF PORT-TOTAL-VALUE < VAL-MIN-AMOUNT OR
+       PORT-TOTAL-VALUE > VAL-MAX-AMOUNT
+        MOVE VAL-INVALID-AMT TO VAL-ERROR-CODE
+        MOVE VAL-ERR-AMT TO VAL-ERROR-MSG
+    END-IF
+    .
 ```
 
-### Basic Validation Pattern
+### Returning Validation Errors to Caller
 
 ```cobol
-* Validate a portfolio ID
-IF WS-PORTFOLIO-ID(1:4) NOT = VAL-ID-PREFIX
-    MOVE VAL-INVALID-ID TO WS-RETURN-CODE
-    MOVE VAL-ERR-ID TO WS-ERROR-MESSAGE
-    PERFORM ERROR-HANDLING
-END-IF
+VALIDATE-AND-REPORT.
+    PERFORM VALIDATE-PORTFOLIO-DATA
+    
+    EVALUATE VAL-ERROR-CODE
+        WHEN VAL-SUCCESS
+            DISPLAY 'Validation successful'
+        WHEN VAL-INVALID-ID
+            DISPLAY 'Error: ' VAL-ERR-ID
+        WHEN VAL-INVALID-ACCT
+            DISPLAY 'Error: ' VAL-ERR-ACCT
+        WHEN VAL-INVALID-TYPE
+            DISPLAY 'Error: ' VAL-ERR-TYPE
+        WHEN VAL-INVALID-AMT
+            DISPLAY 'Error: ' VAL-ERR-AMT
+    END-EVALUATE
+    .
 ```
 
-### Using with Validation Subroutine
-
-The PORTVALD program provides a callable interface for validation:
+### Using with Error Logging
 
 ```cobol
-* Set up validation request
-MOVE 'I' TO LS-VALIDATE-TYPE    *> 'I' = ID validation
-MOVE WS-PORTFOLIO-ID TO LS-INPUT-VALUE
-
-* Call validation subroutine
-CALL 'PORTVALD' USING LS-VALIDATION-REQUEST
-
-* Check result
-IF LS-RETURN-CODE NOT = VAL-SUCCESS
-    DISPLAY 'Validation failed: ' LS-ERROR-MSG
-    PERFORM ERROR-HANDLING
-END-IF
+LOG-VALIDATION-ERROR.
+    IF VAL-ERROR-CODE NOT = VAL-SUCCESS
+        MOVE 'PORTVALD' TO ERR-PROGRAM
+        MOVE VAL-ERROR-MSG TO ERR-TEXT
+        MOVE VAL-ERROR-CODE TO ERR-CODE
+        PERFORM WRITE-ERROR-LOG
+    END-IF
+    .
 ```
-
-### Validation Type Codes
-
-When calling PORTVALD, use these type codes:
-
-| Code | Constant | Validation Performed |
-|------|----------|---------------------|
-| 'I' | LS-VAL-ID | Portfolio ID format |
-| 'A' | LS-VAL-ACCT | Account number format |
-| 'T' | LS-VAL-TYPE | Investment type code |
-| 'M' | LS-VAL-AMT | Amount range |
 
 ## Programs Using This Copybook
 
-| Program | Purpose | Usage |
-|---------|---------|-------|
-| PORTVALD | Portfolio Validation Subroutine | Uses all structures - return codes, error messages, constants, and work areas to perform validation |
+| Program | Purpose |
+|---------|---------|
+| PORTVALD | Portfolio validation program - main consumer of validation rules |
 
 ## Related Copybooks
 
 | Copybook | Relationship |
 |----------|--------------|
-| PORTFLIO | Portfolio master record - contains fields that are validated using PORTVAL rules |
-| ERRHAND | Error handling - may be used alongside PORTVAL for error logging |
+| PORTFLIO | Portfolio record layout - fields being validated |
+| ERRHAND | Error handling - used with validation errors |
+| RTNCODE | Return code management - complementary return code structure |
 
-## Design Notes
+## Return Code Summary
 
-### Extensibility
+| Code | Constant | Meaning | Error Message |
+|------|----------|---------|---------------|
+| 0 | VAL-SUCCESS | Validation passed | (none) |
+| 1 | VAL-INVALID-ID | Invalid portfolio ID | 'Invalid Portfolio ID format' |
+| 2 | VAL-INVALID-ACCT | Invalid account number | 'Invalid Account Number format' |
+| 3 | VAL-INVALID-TYPE | Invalid investment type | 'Invalid Investment Type' |
+| 4 | VAL-INVALID-AMT | Amount out of range | 'Amount outside valid range' |
 
-To add a new validation type:
-1. Add a new return code constant to `VAL-RETURN-CODES`
-2. Add a corresponding error message to `VAL-ERROR-MESSAGES`
-3. Add any needed constants to `VAL-CONSTANTS`
-4. Update PORTVALD or create a new validation paragraph
+## Best Practices
 
-### Return Code Ordering
+### 1. Validate in Order of Severity
 
-Return codes are assigned sequentially starting from 0:
-- 0 = Success (validation passed)
-- 1-4 = Specific validation failures
+```cobol
+* Validate critical fields first, stop on first error
+PERFORM VALIDATE-REQUIRED-FIELDS
+IF VAL-ERROR-CODE = VAL-SUCCESS
+    PERFORM VALIDATE-FORMAT-RULES
+END-IF
+IF VAL-ERROR-CODE = VAL-SUCCESS
+    PERFORM VALIDATE-BUSINESS-RULES
+END-IF
+```
 
-This ordering allows for simple success checking (`IF RETURN-CODE = VAL-SUCCESS`) and range-based error categorization.
+### 2. Initialize Work Areas Before Validation
 
-### Message Length
+```cobol
+* Always start with clean state
+INITIALIZE VAL-WORK-AREAS
+MOVE VAL-SUCCESS TO VAL-ERROR-CODE
+MOVE SPACES TO VAL-ERROR-MSG
+```
 
-All error messages are defined as `PIC X(50)`, providing:
-- Consistent field sizing across all messages
-- Sufficient space for descriptive error text
-- Easy mapping to display fields and log records
+### 3. Use Constants for Boundaries
 
-### Amount Precision
+```cobol
+* Don't hardcode values - use copybook constants
+IF amount > VAL-MAX-AMOUNT  *> Correct
+IF amount > 9999999999999.99  *> Avoid
+```
 
-The amount validation fields use `PIC S9(13)V99`:
-- 13 integer digits for large values
-- 2 decimal places for currency precision
-- Signed to support both debits and credits
-- Range of ±9,999,999,999,999.99
+### 4. Capture Both Code and Message
 
-This matches the financial field definitions in PORTFLIO and other portfolio-related copybooks.
+```cobol
+* Always set both for complete error context
+MOVE VAL-INVALID-ID TO VAL-ERROR-CODE
+MOVE VAL-ERR-ID TO VAL-ERROR-MSG
+```
+
+## Technical Notes
+
+1. **S9(4) for Return Codes**: Uses signed 4-digit numeric for compatibility with standard return code conventions
+
+2. **S9(13)V99 for Amounts**: Supports amounts up to ±9.9 trillion with 2 decimal places, matching typical financial system requirements
+
+3. **50-Byte Messages**: Error messages are fixed at 50 bytes for consistent record layouts and display formatting
+
+4. **VAL-NUMERIC-CHECK**: The X(10) field allows testing numeric validity of account numbers using `IS NUMERIC` condition
+
+5. **Prefix Validation**: The VAL-ID-PREFIX constant ('PORT') allows easy modification if naming conventions change
+
+6. **Extensibility**: Add new validation codes sequentially (VAL-INVALID-xxx with values +5, +6, etc.) and corresponding messages
+
+## Extending the Copybook
+
+To add new validation rules:
+
+```cobol
+*----------------------------------------------------------------*
+* Add new return code
+*----------------------------------------------------------------*
+       05  VAL-INVALID-DATE    PIC S9(4) VALUE +5.
+
+*----------------------------------------------------------------*
+* Add corresponding error message
+*----------------------------------------------------------------*
+       05  VAL-ERR-DATE        PIC X(50) VALUE
+           'Invalid date format or value'.
+```
+
+Then update the validation logic in consuming programs to handle the new code.

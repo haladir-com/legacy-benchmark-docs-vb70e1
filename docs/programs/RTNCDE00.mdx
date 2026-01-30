@@ -1,55 +1,48 @@
 ---
 title: "RTNCDE00"
-description: "Standard Return Code Handler - manages centralized return code tracking, logging, and analysis across the system"
+description: "Standard Return Code Handler - manages standardized return codes, provides analysis and reporting, and maintains an audit trail via DB2"
 ---
 
 ## Overview
 
-RTNCDE00 is a standard return code handler that provides centralized management of return codes across the batch processing system. The program offers five core functions: initializing return code tracking, setting return codes, retrieving current codes, logging codes to a DB2 audit table, and analyzing historical return code data.
+RTNCDE00 is a standard return code handler that provides centralized management of return codes across the batch processing system. It operates as a callable subprogram that tracks, logs, and analyzes return codes from various programs in the system.
 
-This utility program acts as a shared service called by other programs to maintain consistent return code handling throughout the application. It tracks both the current return code and the highest return code encountered during processing, automatically categorizing codes into severity levels (Success, Warning, Error, Severe).
+The program supports five primary operations: initializing return code tracking, setting new return codes (while tracking the highest value), retrieving current return code state, logging return codes to a DB2 audit table, and analyzing historical return code data for a specified time range.
 
-The program integrates with DB2 to maintain a persistent audit trail of return codes in the RTNCODES table, enabling post-processing analysis and reporting. Programs like RPTAUD00, RPTPOS00, RPTSTA00, and various utility programs use this handler for standardized return code management.
+This utility is essential for maintaining consistent return code handling across the system, providing visibility into program execution results, and enabling historical analysis of processing outcomes for troubleshooting and reporting purposes.
 
 ## Program Structure
 
 ```mermaid
 graph TD
-    A[PROCEDURE DIVISION] --> B{EVALUATE RC-REQUEST-TYPE}
+    A[PROCEDURE DIVISION] --> B{Evaluate Request Type}
     B -->|I - Initialize| C[P100-INIT-RETURN-CODES]
-    B -->|S - Set| D[P200-SET-RETURN-CODE]
-    B -->|G - Get| E[P300-GET-RETURN-CODE]
-    B -->|L - Log| F[P400-LOG-RETURN-CODE]
+    B -->|S - Set Code| D[P200-SET-RETURN-CODE]
+    B -->|G - Get Code| E[P300-GET-RETURN-CODE]
+    B -->|L - Log Code| F[P400-LOG-RETURN-CODE]
     B -->|A - Analyze| G[P500-ANALYZE-CODES]
     
     C --> C1[Initialize RC-CODES-AREA]
-    C --> C2[Clear RC-PROGRAM-ID]
-    C --> C3[Reset codes to 0]
-    C --> C4[Set RC-STATUS-SUCCESS]
+    C --> C2[Set initial values to 0]
+    C --> C3[Set status to SUCCESS]
     
-    D --> D1{RC-NEW-CODE > RC-HIGHEST-CODE?}
-    D1 -->|Yes| D2[Update RC-HIGHEST-CODE]
-    D1 -->|No| D3[Skip update]
-    D2 --> D4[Set RC-CURRENT-CODE]
-    D3 --> D4
-    D4 --> D5[Set status based on code value]
+    D --> D1[Update RC-HIGHEST-CODE if needed]
+    D --> D2[Set RC-CURRENT-CODE]
+    D --> D3[Determine status from code value]
     
-    E --> E1[Copy RC-CURRENT-CODE to RC-RETURN-VALUE]
-    E --> E2[Copy RC-HIGHEST-CODE to RC-HIGHEST-RETURN]
-    E --> E3[Copy RC-STATUS to RC-RETURN-STATUS]
+    E --> E1[Return current code]
+    E --> E2[Return highest code]
+    E --> E3[Return status]
     
-    F --> F1[Get CURRENT-DATE]
-    F --> F2[INSERT into RTNCODES]
-    F --> F3{SQLCODE = 0?}
-    F3 -->|Yes| F4[RC-RESPONSE-CODE = 0]
-    F3 -->|No| F5[RC-RESPONSE-CODE = 8]
+    F --> F1[Get current timestamp]
+    F --> F2[INSERT into RTNCODES table]
+    F --> F3[Set response code]
     
-    G --> G1[SELECT COUNT, MAX, MIN from RTNCODES]
-    G --> G2{SQLCODE = 0?}
-    G2 -->|Yes| G3[RC-RESPONSE-CODE = 0]
-    G2 -->|No| G4[RC-RESPONSE-CODE = 8]
+    G --> G1[SELECT aggregates from RTNCODES]
+    G --> G2[Return analysis results]
     
-    C --> H[GOBACK]
+    H[GOBACK] --> I((End))
+    C --> H
     D --> H
     E --> H
     F --> H
@@ -58,45 +51,65 @@ graph TD
 
 ## Data Structures
 
-### Linkage Section (RTNCODE Copybook)
+### Linkage Section (Input/Output Parameters)
 
-The program receives all parameters through the RC-REQUEST-AREA structure:
+The program receives a request structure through the linkage section, defined in the RTNCODE copybook:
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | RC-REQUEST-AREA | - | Main request area (from RTNCODE copybook) |
-| 05 | RC-REQUEST-TYPE | X | Function code: I=Init, S=Set, G=Get, L=Log, A=Analyze |
-| 05 | RC-PROGRAM-ID | X(8) | Calling program identifier |
+| 01 | RC-REQUEST-AREA | - | Main request structure |
+| 05 | RC-REQUEST-TYPE | X | Request type: `I`, `S`, `G`, `L`, `A` |
+| 05 | RC-PROGRAM-ID | X(8) | Program identifier for tracking |
+| 05 | RC-CODES-AREA | - | Return code tracking area |
 | 10 | RC-CURRENT-CODE | S9(4) COMP | Current return code value |
-| 10 | RC-HIGHEST-CODE | S9(4) COMP | Highest return code encountered |
-| 10 | RC-NEW-CODE | S9(4) COMP | New code to set (input for SET function) |
-| 10 | RC-STATUS | X | Status indicator: S=Success, W=Warning, E=Error, F=Severe |
+| 10 | RC-HIGHEST-CODE | S9(4) COMP | Highest return code seen |
+| 10 | RC-NEW-CODE | S9(4) COMP | New code to set (input for SET) |
+| 10 | RC-STATUS | X | Status indicator: `S`, `W`, `E`, `F` |
 | 05 | RC-MESSAGE | X(80) | Message text for logging |
-| 05 | RC-RESPONSE-CODE | S9(8) COMP | Response code from this program (0=OK, 8=Error) |
+| 05 | RC-RESPONSE-CODE | S9(8) COMP | Response from operation (0=success) |
 
-### Analysis Data (for ANALYZE function)
+### Request Type Values
+
+| Value | 88-Level Condition | Description |
+|-------|-------------------|-------------|
+| `I` | RC-INITIALIZE | Initialize return code tracking |
+| `S` | RC-SET-CODE | Set a new return code |
+| `G` | RC-GET-CODE | Get current return code state |
+| `L` | RC-LOG-CODE | Log return code to DB2 |
+| `A` | RC-ANALYZE | Analyze historical return codes |
+
+### Status Values
+
+| Value | 88-Level Condition | Code Range | Description |
+|-------|-------------------|------------|-------------|
+| `S` | RC-STATUS-SUCCESS | 0 | Successful completion |
+| `W` | RC-STATUS-WARNING | 1-4 | Warning condition |
+| `E` | RC-STATUS-ERROR | 5-8 | Error condition |
+| `F` | RC-STATUS-SEVERE | >8 | Severe/fatal error |
+
+### Analysis Data (for RC-ANALYZE request)
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 10 | RC-START-TIME | X(26) | Start of analysis time range |
-| 10 | RC-END-TIME | X(26) | End of analysis time range |
-| 10 | RC-TOTAL-CODES | S9(8) COMP | Count of return codes in range |
-| 10 | RC-MAX-CODE | S9(4) COMP | Maximum return code found |
-| 10 | RC-MIN-CODE | S9(4) COMP | Minimum return code found |
+| 10 | RC-START-TIME | X(26) | Start of analysis period |
+| 10 | RC-END-TIME | X(26) | End of analysis period |
+| 10 | RC-TOTAL-CODES | S9(8) COMP | Count of return codes found |
+| 10 | RC-MAX-CODE | S9(4) COMP | Maximum return code in period |
+| 10 | RC-MIN-CODE | S9(4) COMP | Minimum return code in period |
 
-### Return Data (for GET function)
+### Return Data (for RC-GET-CODE request)
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 10 | RC-RETURN-VALUE | S9(4) COMP | Retrieved current code |
-| 10 | RC-HIGHEST-RETURN | S9(4) COMP | Retrieved highest code |
-| 10 | RC-RETURN-STATUS | X | Retrieved status |
+| 10 | RC-RETURN-VALUE | S9(4) COMP | Current return code value |
+| 10 | RC-HIGHEST-RETURN | S9(4) COMP | Highest return code tracked |
+| 10 | RC-RETURN-STATUS | X | Current status value |
 
 ### Working Storage
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | WS-CURRENT-TIME | - | Timestamp structure for DB2 logging |
+| 01 | WS-CURRENT-TIME | - | Timestamp structure for logging |
 | 10 | WS-CURRENT-YEAR | 9(4) | Year component |
 | 10 | WS-CURRENT-MONTH | 9(2) | Month component |
 | 10 | WS-CURRENT-DAY | 9(2) | Day component |
@@ -104,180 +117,181 @@ The program receives all parameters through the RC-REQUEST-AREA structure:
 | 05 | WS-CURRENT-MINUTES | 9(2) | Minutes component |
 | 05 | WS-CURRENT-SECONDS | 9(2) | Seconds component |
 | 05 | WS-CURRENT-MILLISEC | 9(2) | Milliseconds component |
-| 01 | WS-DB2-AREA | - | Contains SQLCA for DB2 operations |
-
-## Database Operations
-
-### RTNCODES Table
-
-The program interacts with the RTNCODES DB2 table for logging and analysis:
-
-| Column | Source Field | Description |
-|--------|--------------|-------------|
-| TIMESTAMP | WS-CURRENT-TIME | When the return code was logged |
-| PROGRAM_ID | RC-PROGRAM-ID | Program that generated the code |
-| RETURN_CODE | RC-CURRENT-CODE | The return code value |
-| HIGHEST_CODE | RC-HIGHEST-CODE | Highest code for the session |
-| STATUS_CODE | RC-STATUS | Status category (S/W/E/F) |
-| MESSAGE_TEXT | RC-MESSAGE | Descriptive message |
-
-### SQL Operations
-
-**INSERT (P400-LOG-RETURN-CODE)**:
-```sql
-INSERT INTO RTNCODES
-  (TIMESTAMP, PROGRAM_ID, RETURN_CODE, HIGHEST_CODE, STATUS_CODE, MESSAGE_TEXT)
-VALUES
-  (:WS-CURRENT-TIME, :RC-PROGRAM-ID, :RC-CURRENT-CODE, 
-   :RC-HIGHEST-CODE, :RC-STATUS, :RC-MESSAGE)
-```
-
-**SELECT (P500-ANALYZE-CODES)**:
-```sql
-SELECT COUNT(*), MAX(RETURN_CODE), MIN(RETURN_CODE)
-INTO :RC-TOTAL-CODES, :RC-MAX-CODE, :RC-MIN-CODE
-FROM RTNCODES
-WHERE PROGRAM_ID = :RC-PROGRAM-ID
-  AND TIMESTAMP >= :RC-START-TIME
-  AND TIMESTAMP <= :RC-END-TIME
-```
 
 ## Control Flow
 
-### Initialize (RC-REQUEST-TYPE = 'I')
+### Main Dispatch Logic
 
-**P100-INIT-RETURN-CODES** resets all return code tracking:
-1. Initializes RC-CODES-AREA to binary zeros
-2. Clears RC-PROGRAM-ID to spaces
+The program uses an `EVALUATE TRUE` statement to route requests based on the 88-level conditions defined on RC-REQUEST-TYPE. Each paragraph is executed with `PERFORM ... THRU` to include its corresponding exit paragraph.
+
+### Initialize (P100-INIT-RETURN-CODES)
+
+Resets all return code tracking:
+1. Initializes RC-CODES-AREA to default values
+2. Clears RC-PROGRAM-ID
 3. Sets RC-CURRENT-CODE and RC-HIGHEST-CODE to 0
-4. Sets RC-STATUS to 'S' (Success)
-5. Sets RC-RESPONSE-CODE to 0
+4. Sets status to SUCCESS
+5. Sets response code to 0
 
-### Set Return Code (RC-REQUEST-TYPE = 'S')
+### Set Return Code (P200-SET-RETURN-CODE)
 
-**P200-SET-RETURN-CODE** sets a new return code and tracks the highest:
-1. Compares RC-NEW-CODE to RC-HIGHEST-CODE
-2. Updates RC-HIGHEST-CODE if new code is higher
-3. Moves RC-NEW-CODE to RC-CURRENT-CODE
-4. Sets RC-STATUS based on code value:
+Updates the return code state:
+1. Compares RC-NEW-CODE with RC-HIGHEST-CODE and updates if higher
+2. Moves RC-NEW-CODE to RC-CURRENT-CODE
+3. Determines status based on code value:
+   - 0 → SUCCESS
+   - 1-4 → WARNING
+   - 5-8 → ERROR
+   - Other → SEVERE
+4. Sets response code to 0
 
-| Code Range | Status | Meaning |
-|------------|--------|---------|
-| 0 | RC-STATUS-SUCCESS ('S') | Successful completion |
-| 1-4 | RC-STATUS-WARNING ('W') | Warning condition |
-| 5-8 | RC-STATUS-ERROR ('E') | Error condition |
-| 9+ | RC-STATUS-SEVERE ('F') | Severe/Fatal error |
+### Get Return Code (P300-GET-RETURN-CODE)
 
-### Get Return Code (RC-REQUEST-TYPE = 'G')
-
-**P300-GET-RETURN-CODE** retrieves current tracking values:
+Retrieves current state:
 1. Copies RC-CURRENT-CODE to RC-RETURN-VALUE
 2. Copies RC-HIGHEST-CODE to RC-HIGHEST-RETURN
 3. Copies RC-STATUS to RC-RETURN-STATUS
-4. Sets RC-RESPONSE-CODE to 0
+4. Sets response code to 0
 
-### Log Return Code (RC-REQUEST-TYPE = 'L')
+### Log Return Code (P400-LOG-RETURN-CODE)
 
-**P400-LOG-RETURN-CODE** persists the return code to DB2:
-1. Gets current timestamp using FUNCTION CURRENT-DATE
-2. Executes INSERT into RTNCODES table
-3. Sets RC-RESPONSE-CODE to 0 if successful, 8 if SQL error
+Persists return code to DB2:
+1. Gets current timestamp using `FUNCTION CURRENT-DATE`
+2. Inserts record into RTNCODES table with:
+   - Timestamp
+   - Program ID
+   - Current return code
+   - Highest return code
+   - Status code
+   - Message text
+3. Sets response code based on SQLCODE (0=success, 8=error)
 
-### Analyze Return Codes (RC-REQUEST-TYPE = 'A')
+### Analyze Codes (P500-ANALYZE-CODES)
 
-**P500-ANALYZE-CODES** queries historical return code data:
-1. Executes SELECT with aggregate functions (COUNT, MAX, MIN)
-2. Filters by RC-PROGRAM-ID and time range (RC-START-TIME to RC-END-TIME)
-3. Returns results in RC-TOTAL-CODES, RC-MAX-CODE, RC-MIN-CODE
-4. Sets RC-RESPONSE-CODE to 0 if successful, 8 if SQL error
+Retrieves historical analysis:
+1. Executes SELECT with COUNT, MAX, MIN aggregations
+2. Filters by program ID and time range (RC-START-TIME to RC-END-TIME)
+3. Returns results in:
+   - RC-TOTAL-CODES (count)
+   - RC-MAX-CODE (maximum)
+   - RC-MIN-CODE (minimum)
+4. Sets response code based on SQLCODE (0=success, 8=error)
 
-## Return Code Classification
+## Database Integration
 
-```mermaid
-flowchart LR
-    A[Return Code] --> B{Value?}
-    B -->|0| C[SUCCESS]
-    B -->|1-4| D[WARNING]
-    B -->|5-8| E[ERROR]
-    B -->|9+| F[SEVERE]
-    
-    C --> G["Status = 'S'"]
-    D --> H["Status = 'W'"]
-    E --> I["Status = 'E'"]
-    F --> J["Status = 'F'"]
+### RTNCODES Table
+
+The program interacts with the RTNCODES DB2 table for audit logging and analysis.
+
+**Table Structure (inferred from SQL):**
+
+| Column | Description |
+|--------|-------------|
+| TIMESTAMP | When the return code was logged |
+| PROGRAM_ID | Identifier of the program |
+| RETURN_CODE | The return code value |
+| HIGHEST_CODE | Highest code seen for the program |
+| STATUS_CODE | Status indicator (S/W/E/F) |
+| MESSAGE_TEXT | Associated message text |
+
+**Operations:**
+- **INSERT**: Used by P400-LOG-RETURN-CODE to create audit records
+- **SELECT**: Used by P500-ANALYZE-CODES for aggregation queries
+
+### SQLCA
+
+The program includes the SQL Communication Area (SQLCA) via `EXEC SQL INCLUDE SQLCA END-EXEC` for DB2 error handling. SQLCODE is checked after each SQL operation to determine success (0) or failure (non-zero).
+
+## Return Code Mapping
+
+The program maps numeric return codes to status categories:
+
+```
+┌─────────────────┬─────────────┬──────────────────┐
+│  Return Code    │   Status    │   Description    │
+├─────────────────┼─────────────┼──────────────────┤
+│       0         │   SUCCESS   │  Normal completion│
+│     1 - 4       │   WARNING   │  Minor issues     │
+│     5 - 8       │   ERROR     │  Processing errors│
+│      > 8        │   SEVERE    │  Critical failure │
+└─────────────────┴─────────────┴──────────────────┘
 ```
 
 ## Response Codes
 
-| Code | Meaning |
-|------|---------|
+| Code | Description |
+|------|-------------|
 | 0 | Operation completed successfully |
-| 8 | DB2 error occurred (SQLCODE ≠ 0) |
+| 8 | Database error occurred (SQLCODE ≠ 0) |
 
 ## Dependencies
 
 ### Copybooks
 
-- **RTNCODE** - Return code management data structures and 88-level conditions
+- **RTNCODE** - Return code management structure and 88-level conditions
 
-### DB2 Resources
+### DB2 Objects
 
 - **SQLCA** - SQL Communication Area (included via EXEC SQL INCLUDE)
-- **RTNCODES** - Return code audit table
+- **RTNCODES** - Audit table for return code logging and analysis
 
 ### Related Programs
 
-Programs that use the RTNCODE copybook and may call this handler:
-
-- **RPTAUD00** - Audit reporting
-- **RPTPOS00** - Position reporting  
-- **RPTSTA00** - Status reporting
-- **TSTGEN00** - Test generation
-- **TSTVAL00** - Test validation
-- **UTLMNT00** - Maintenance utility
-- **UTLMON00** - Monitoring utility
-- **UTLVAL00** - Validation utility
-
-## Technical Notes
-
-1. **FUNCTION CURRENT-DATE**: This COBOL intrinsic function returns a 21-character string containing the current date and time in the format YYYYMMDDHHMMSSHHNNNN (where HH is hundredths of seconds). The program maps this to the WS-CURRENT-TIME structure.
-
-2. **COMP Fields**: Binary fields (`S9(4) COMP` and `S9(8) COMP`) are used for return codes and counts for efficient arithmetic and DB2 compatibility.
-
-3. **Level-88 Conditions**: The copybook uses 88-level condition names extensively for readable code:
-   - `RC-INITIALIZE`, `RC-SET-CODE`, etc. for request types
-   - `RC-STATUS-SUCCESS`, `RC-STATUS-WARNING`, etc. for status values
-
-4. **Highest Code Tracking**: The program maintains both current and highest return codes, allowing callers to set multiple codes during processing while preserving the most severe code encountered.
-
-5. **PERFORM THRU**: The program uses `PERFORM paragraph-name THRU paragraph-EXIT` pattern, ensuring each function has a clean exit point.
-
-6. **No File I/O**: This program has no VSAM or sequential file operations; all persistence is through embedded DB2 SQL.
-
-7. **Stateless Design**: The program maintains no internal state between calls. All state is passed through the linkage section, making it suitable for concurrent use by multiple programs.
+Programs that share the RTNCODE copybook:
+- RPTAUD00 - Audit reporting
+- RPTPOS00 - Position reporting
+- RPTSTA00 - Status reporting
+- TSTGEN00 - Test generation
+- TSTVAL00 - Test validation
+- UTLMNT00 - Utility maintenance
+- UTLMON00 - Utility monitoring
+- UTLVAL00 - Utility validation
 
 ## Usage Example
 
-A calling program would typically:
+To track return codes during batch processing:
 
 ```cobol
-* Initialize return code tracking
-MOVE 'I' TO RC-REQUEST-TYPE
-MOVE 'MYPROG00' TO RC-PROGRAM-ID
+* Initialize tracking for a program
+MOVE 'I'        TO RC-REQUEST-TYPE
+MOVE 'MYPGM001' TO RC-PROGRAM-ID
 CALL 'RTNCDE00' USING RC-REQUEST-AREA
 
-* Set a return code during processing
-MOVE 'S' TO RC-REQUEST-TYPE
-MOVE 4 TO RC-NEW-CODE
-MOVE 'Warning: Record count mismatch' TO RC-MESSAGE
+* Set a return code after an operation
+MOVE 'S'        TO RC-REQUEST-TYPE
+MOVE 4          TO RC-NEW-CODE
+MOVE 'Validation warning detected' TO RC-MESSAGE
 CALL 'RTNCDE00' USING RC-REQUEST-AREA
 
 * Log the return code to DB2
-MOVE 'L' TO RC-REQUEST-TYPE
+MOVE 'L'        TO RC-REQUEST-TYPE
 CALL 'RTNCDE00' USING RC-REQUEST-AREA
 
-* Get the highest return code at end
-MOVE 'G' TO RC-REQUEST-TYPE
+* Get final return code state
+MOVE 'G'        TO RC-REQUEST-TYPE
 CALL 'RTNCDE00' USING RC-REQUEST-AREA
-MOVE RC-HIGHEST-RETURN TO RETURN-CODE
+* RC-RETURN-VALUE now contains current code
+* RC-HIGHEST-RETURN contains highest code seen
 ```
+
+To analyze historical return codes:
+
+```cobol
+MOVE 'A'                    TO RC-REQUEST-TYPE
+MOVE 'MYPGM001'             TO RC-PROGRAM-ID
+MOVE '2024-01-01-00.00.00'  TO RC-START-TIME
+MOVE '2024-01-31-23.59.59'  TO RC-END-TIME
+CALL 'RTNCDE00' USING RC-REQUEST-AREA
+* RC-TOTAL-CODES contains count of entries
+* RC-MAX-CODE contains highest code in period
+* RC-MIN-CODE contains lowest code in period
+```
+
+## Technical Notes
+
+- The program uses **PERFORM ... THRU** to execute paragraphs with their corresponding EXIT paragraphs, a common COBOL pattern for structured programming
+- **FUNCTION CURRENT-DATE** is an intrinsic function that returns a 21-character timestamp (YYYYMMDDHHMMSSFF±HHMM format)
+- The program uses **COMP** (binary) fields for numeric values, which is efficient for arithmetic and DB2 compatibility
+- The **GOBACK** statement returns control to the calling program, allowing this to function as a reusable subroutine
+- The "highest code" tracking ensures that the worst outcome is always preserved, even if subsequent operations succeed
+- No explicit COMMIT is issued; the calling program is responsible for transaction management

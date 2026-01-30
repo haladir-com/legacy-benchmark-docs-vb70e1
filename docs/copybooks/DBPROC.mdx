@@ -1,60 +1,79 @@
 ---
 title: "DBPROC"
-description: "DB2 Standard Procedures - provides reusable DB2 error handling structures and common database procedures"
+description: "DB2 Standard Procedures - Provides reusable DB2 connection, disconnection, and error handling routines"
 ---
 
 ## Overview
 
-DBPROC is a copybook that provides standardized DB2 database procedures and error handling structures for COBOL programs. It contains both data definitions for error tracking and executable procedure paragraphs that can be performed by including programs.
+DBPROC is a copybook that provides standardized DB2 database procedures for COBOL programs. It contains both data definitions for error handling and reusable paragraph procedures for common DB2 operations including connection management, disconnection, and error handling.
 
-The copybook serves as a foundation for DB2 operations by providing:
-- **Error message formatting**: Structured area for capturing SQLCODE, SQLSTATE, and error text
-- **Retry logic support**: Configurable retry counters and wait times for transient failures
-- **Standard procedures**: Reusable paragraphs for connection, disconnection, and error handling
+This copybook is unique in that it includes executable PROCEDURE DIVISION paragraphs in addition to data definitions. Programs that COPY this copybook gain access to pre-built, tested routines for DB2 operations, ensuring consistent database handling across the application.
 
-:::note Executable Code
-Unlike most copybooks that contain only data definitions, DBPROC includes executable PROCEDURE DIVISION paragraphs. These paragraphs are copied into the including program and can be PERFORMed directly.
-:::
+Key features:
+- **Connection Management**: Standard connect and disconnect procedures
+- **Error Handling**: Formatted error messages with SQLCODE and SQLSTATE
+- **Retry Logic**: Built-in retry counter and wait time settings
+- **Automatic Rollback**: Error routine includes transaction rollback
+
+## Structure Overview
+
+```
++------------------------------------------------------------------+
+| DATA DIVISION Definitions                                         |
++------------------------------------------------------------------+
+| DB2-ERROR-HANDLING                                                |
+|   DB2-ERROR-MESSAGE (formatted message area)                      |
+|   DB2-SAVE-STATUS, DB2-RETRY-COUNT, DB2-MAX-RETRIES, etc.        |
++------------------------------------------------------------------+
+
++------------------------------------------------------------------+
+| PROCEDURE DIVISION Paragraphs                                     |
++------------------------------------------------------------------+
+| CONNECT-TO-DB2      - Establish DB2 connection                    |
+| DISCONNECT-FROM-DB2 - Commit and disconnect                       |
+| DB2-ERROR-ROUTINE   - Handle SQL errors with rollback             |
+| CHECK-SQL-STATUS    - Quick SQLCODE check                         |
++------------------------------------------------------------------+
+```
 
 ## Data Structures
 
-### DB2 Error Handling (DB2-ERROR-HANDLING)
+### DB2-ERROR-HANDLING (Level 01)
 
-Complete structure for capturing and formatting DB2 errors:
+Main error handling structure containing message formatting and retry controls:
+
+#### DB2-ERROR-MESSAGE (Level 05)
+
+Formatted error message structure (107 bytes total):
 
 | Level | Name | Picture | Value | Description |
 |-------|------|---------|-------|-------------|
-| 01 | DB2-ERROR-HANDLING | Group | | Error handling work area |
-| 05 | DB2-ERROR-MESSAGE | Group | | Formatted error message (107 bytes) |
-| 10 | FILLER | X(9) | 'SQLCODE: ' | Message prefix |
-| 10 | DB2-SQLCODE-TXT | X(6) | | SQLCODE as text |
-| 10 | FILLER | X(9) | ' STATE: ' | State label |
-| 10 | DB2-STATE | X(5) | | SQLSTATE value |
-| 10 | FILLER | X(8) | ' ERROR: ' | Error label |
-| 10 | DB2-ERROR-TEXT | X(70) | | Error description text |
-| 05 | DB2-SAVE-STATUS | X(5) | | Saved SQLSTATE for recovery |
+| 10 | FILLER | X(9) | 'SQLCODE: ' | Label prefix |
+| 10 | DB2-SQLCODE-TXT | X(6) | - | SQLCODE value as text |
+| 10 | FILLER | X(9) | ' STATE: ' | SQLSTATE label |
+| 10 | DB2-STATE | X(5) | - | SQLSTATE value |
+| 10 | FILLER | X(8) | ' ERROR: ' | Error text label |
+| 10 | DB2-ERROR-TEXT | X(70) | - | Error description |
+
+**Formatted Output Example:**
+```
+SQLCODE: -803   STATE: 23505 ERROR: Duplicate key violation on insert
+```
+
+#### Control Fields (Level 05)
+
+| Level | Name | Picture | Value | Description |
+|-------|------|---------|-------|-------------|
+| 05 | DB2-SAVE-STATUS | X(5) | - | Saved SQLSTATE for recovery |
 | 05 | DB2-RETRY-COUNT | S9(4) COMP | 0 | Current retry attempt |
 | 05 | DB2-MAX-RETRIES | S9(4) COMP | 3 | Maximum retry attempts |
 | 05 | DB2-RETRY-WAIT | S9(4) COMP | 100 | Wait time between retries (centiseconds) |
 
-### Error Message Format
-
-The `DB2-ERROR-MESSAGE` field produces a formatted string like:
-
-```
-SQLCODE: -803   STATE: 23505 ERROR: Duplicate key violation on INSERT
-```
-
-This format provides:
-- Quick identification of the SQL error code
-- SQL state for standardized error classification
-- Human-readable error description
-
-## Procedures
+## Procedure Paragraphs
 
 ### CONNECT-TO-DB2
 
-Establishes a connection to the DB2 database.
+Establishes a connection to the DB2 subsystem.
 
 ```cobol
 CONNECT-TO-DB2.
@@ -69,17 +88,15 @@ CONNECT-TO-DB2.
 ```
 
 **Behavior:**
-- Connects to the POSMVP database (hardcoded)
-- On failure, sets error text and invokes error routine
-- Should be performed during program initialization
+1. Executes `CONNECT TO POSMVP` SQL statement
+2. If SQLCODE ≠ 0, sets error text and invokes error routine
+3. On success, connection is established for subsequent SQL operations
 
-**Prerequisites:**
-- SQLCA must be included
-- ERRHAND copybook must be included (for ERR-PROGRAM, ERR-TEXT)
+**Database:** Connects to the POSMVP DB2 subsystem (Portfolio Management System)
 
 ### DISCONNECT-FROM-DB2
 
-Gracefully disconnects from the DB2 database.
+Commits pending work and disconnects from DB2.
 
 ```cobol
 DISCONNECT-FROM-DB2.
@@ -94,15 +111,17 @@ DISCONNECT-FROM-DB2.
 ```
 
 **Behavior:**
-- Commits any pending work before disconnecting
-- Releases the database connection
-- Should be performed during program termination
+1. Commits all pending database changes
+2. Resets (terminates) the DB2 connection
+3. Does not check SQLCODE - assumes success
 
-**Note:** This procedure does not check SQLCODE after execution. Calling programs should check SQLCODE if error detection is needed.
+:::note
+Consider adding error checking after COMMIT if transaction integrity is critical.
+:::
 
 ### DB2-ERROR-ROUTINE
 
-Central error handling procedure for DB2 failures.
+Central error handling routine for all DB2 errors.
 
 ```cobol
 DB2-ERROR-ROUTINE.
@@ -120,20 +139,20 @@ DB2-ERROR-ROUTINE.
 ```
 
 **Behavior:**
-1. Captures SQLCODE and SQLSTATE into error message structure
-2. Rolls back the current unit of work
-3. Sets program identifier to 'DB2ERROR'
-4. Copies formatted error message to ERR-TEXT
-5. Calls ERRPROC for centralized error logging
+1. Captures SQLCODE and SQLSTATE into formatted message
+2. Rolls back the current transaction
+3. Sets error program identifier to 'DB2ERROR'
+4. Copies formatted message to error text field
+5. Calls ERRPROC for centralized error logging/handling
 
-**Prerequisites:**
-- SQLCA must be included
-- ERRHAND copybook must be included
-- ERRPROC program must be available in the load library
+**Dependencies:**
+- Requires SQLCA to be included for SQLCODE/SQLSTATE
+- Requires ERRHAND copybook for ERR-PROGRAM, ERR-TEXT, ERR-MESSAGE
+- Requires ERRPROC program for error processing
 
 ### CHECK-SQL-STATUS
 
-Simple SQLCODE checker that invokes error routine on failure.
+Quick inline check for SQL errors.
 
 ```cobol
 CHECK-SQL-STATUS.
@@ -143,48 +162,44 @@ CHECK-SQL-STATUS.
     .
 ```
 
-**Usage:**
+**Behavior:**
+1. Checks if SQLCODE is non-zero
+2. If error detected, invokes DB2-ERROR-ROUTINE
+
+**Use Case:** Call after any SQL statement to automatically handle errors:
+
 ```cobol
 EXEC SQL
-    INSERT INTO PORTFOLIO ...
+    SELECT * FROM PORTFOLIO
+    WHERE PORT_ID = :WS-PORT-ID
 END-EXEC
 PERFORM CHECK-SQL-STATUS
 ```
 
-**Note:** This procedure treats any non-zero SQLCODE as an error, including warning codes (+100, etc.). For more granular handling, check SQLCODE directly.
+## Usage Examples
 
-## Usage
-
-### Including the Copybook
+### Basic Program Structure
 
 ```cobol
 WORKING-STORAGE SECTION.
     EXEC SQL INCLUDE SQLCA END-EXEC.
     COPY DBPROC.
     COPY ERRHAND.
-```
 
-**Important:** DBPROC must be included after SQLCA (for SQLCODE/SQLSTATE) and requires ERRHAND (for ERR-PROGRAM, ERR-TEXT, ERR-MESSAGE).
-
-### Basic Usage Pattern
-
-```cobol
 PROCEDURE DIVISION.
 0000-MAIN.
     PERFORM CONNECT-TO-DB2
-    
-    PERFORM PROCESS-DATA
-    
+    PERFORM 1000-PROCESS-DATA
     PERFORM DISCONNECT-FROM-DB2
-    GOBACK
-    .
+    GOBACK.
 
-PROCESS-DATA.
+1000-PROCESS-DATA.
     EXEC SQL
-        SELECT * FROM PORTFOLIO
+        SELECT PORTFOLIO_NAME
+        INTO :WS-PORT-NAME
+        FROM PORTFOLIO_MASTER
         WHERE PORTFOLIO_ID = :WS-PORT-ID
     END-EXEC
-    
     PERFORM CHECK-SQL-STATUS
     .
 ```
@@ -197,22 +212,22 @@ PERFORM-WITH-RETRY.
     
     PERFORM UNTIL DB2-RETRY-COUNT >= DB2-MAX-RETRIES
         EXEC SQL
-            UPDATE PORTFOLIO SET ...
+            UPDATE PORTFOLIO_MASTER
+            SET TOTAL_VALUE = :WS-NEW-VALUE
+            WHERE PORTFOLIO_ID = :WS-PORT-ID
         END-EXEC
         
-        IF SQLCODE = 0
-            EXIT PERFORM
-        END-IF
-        
-        IF SQLCODE = -911 OR SQLCODE = -913
-            *> Deadlock or timeout - retry
-            ADD 1 TO DB2-RETRY-COUNT
-            CALL 'DELAY' USING DB2-RETRY-WAIT
-        ELSE
-            *> Other error - don't retry
-            PERFORM DB2-ERROR-ROUTINE
-            EXIT PERFORM
-        END-IF
+        EVALUATE SQLCODE
+            WHEN 0
+                EXIT PERFORM
+            WHEN -911
+            WHEN -913
+                ADD 1 TO DB2-RETRY-COUNT
+                CALL 'CEEINTV' USING DB2-RETRY-WAIT
+            WHEN OTHER
+                PERFORM DB2-ERROR-ROUTINE
+                EXIT PERFORM
+        END-EVALUATE
     END-PERFORM
     .
 ```
@@ -220,21 +235,23 @@ PERFORM-WITH-RETRY.
 ### Custom Error Handling
 
 ```cobol
-CUSTOM-INSERT.
+HANDLE-SPECIFIC-ERRORS.
     EXEC SQL
-        INSERT INTO PORTFOLIO VALUES (...)
+        INSERT INTO TRANSACTIONS
+        VALUES (:WS-TRANS-REC)
     END-EXEC
     
     EVALUATE SQLCODE
         WHEN 0
             CONTINUE
         WHEN -803
-            *> Duplicate key - handle specifically
-            MOVE 'Portfolio already exists' TO DB2-ERROR-TEXT
+            MOVE 'Duplicate transaction ID' TO DB2-ERROR-TEXT
+            PERFORM DB2-ERROR-ROUTINE
+        WHEN -530
+            MOVE 'Invalid portfolio reference' TO DB2-ERROR-TEXT
             PERFORM DB2-ERROR-ROUTINE
         WHEN OTHER
-            *> All other errors
-            MOVE 'Insert failed' TO DB2-ERROR-TEXT
+            MOVE 'Unexpected insert error' TO DB2-ERROR-TEXT
             PERFORM DB2-ERROR-ROUTINE
     END-EVALUATE
     .
@@ -242,57 +259,122 @@ CUSTOM-INSERT.
 
 ## Programs Using This Copybook
 
-| Program | Purpose | Usage |
-|---------|---------|-------|
-| HISTLD00 | History Data Loader | Uses error handling and retry logic for batch loading |
-| DB2CMT | DB2 Commit Controller | Uses error structures for commit/rollback tracking |
-| DB2CONN | DB2 Connection Manager | Uses connection procedures and error handling |
-| DB2ERR | DB2 Error Handler | Uses error message formatting and severity classification |
-| DB2STAT | DB2 Statistics Collector | Uses error handling for statistics operations |
+| Program | Purpose |
+|---------|---------|
+| HISTLD00 | History loader - loads transaction history to DB2 |
+| DB2CMT | DB2 commit processing utility |
+| DB2CONN | DB2 connection manager |
+| DB2ERR | DB2 error handler |
+| DB2STAT | DB2 statistics collector |
 
 ## Related Copybooks
 
 | Copybook | Relationship |
 |----------|--------------|
-| SQLCA | **Required** - Provides SQLCODE, SQLSTATE, SQLERRMC used by DBPROC procedures |
-| ERRHAND | **Required** - Provides ERR-PROGRAM, ERR-TEXT, ERR-MESSAGE used by DB2-ERROR-ROUTINE |
-| DBTBLS | Optional - DB2 table definitions that may be used alongside DBPROC |
+| SQLCA | Required - provides SQLCODE and SQLSTATE fields |
+| ERRHAND | Required - provides ERR-PROGRAM, ERR-TEXT, ERR-MESSAGE |
+| DBTBLS | Related - DB2 table record definitions |
 
-## Design Notes
+## Required Dependencies
 
-### Hardcoded Database Name
+For DBPROC to function correctly, include these in your program:
 
-The `CONNECT-TO-DB2` procedure connects to 'POSMVP' by default. To connect to a different database:
-
-1. **Option 1**: Modify the copybook for your environment
-2. **Option 2**: Don't use `CONNECT-TO-DB2`; write custom connection logic
-3. **Option 3**: Use DB2CONN program which accepts database name as parameter
-
-### Automatic Rollback
-
-The `DB2-ERROR-ROUTINE` automatically performs a ROLLBACK before logging. This ensures:
-- Database consistency after errors
-- Clean state before potential retry
-- No orphaned locks
-
-If you need to preserve uncommitted work, check SQLCODE and handle errors without calling `DB2-ERROR-ROUTINE`.
-
-### Retry Configuration
-
-Default retry settings:
-- **DB2-MAX-RETRIES**: 3 attempts
-- **DB2-RETRY-WAIT**: 100 centiseconds (1 second)
-
-These can be modified at runtime:
 ```cobol
-MOVE 5 TO DB2-MAX-RETRIES      *> Increase to 5 attempts
-MOVE 200 TO DB2-RETRY-WAIT     *> Increase wait to 2 seconds
+WORKING-STORAGE SECTION.
+*  Required: SQL Communication Area
+    EXEC SQL INCLUDE SQLCA END-EXEC.
+    
+*  Required: DB2 procedures and error handling data
+    COPY DBPROC.
+    
+*  Required: Error handling for DB2-ERROR-ROUTINE
+    COPY ERRHAND.
 ```
 
-### Error Message Size
+## Best Practices
 
-The `DB2-ERROR-TEXT` field is 70 characters. Longer error descriptions will be truncated. For detailed error information, use the SQLERRMC field from SQLCA or call DB2ERR for comprehensive diagnostics.
+### 1. Always Include SQLCA First
 
-### Thread Safety
+```cobol
+* SQLCA must be included before DBPROC
+EXEC SQL INCLUDE SQLCA END-EXEC.
+COPY DBPROC.
+```
 
-The working storage fields in DBPROC are not thread-safe. In CICS or multi-threaded environments, each thread should have its own copy of the working storage, which COBOL provides automatically through separate working storage instances.
+### 2. Check SQL Status After Each Statement
+
+```cobol
+EXEC SQL SELECT ... END-EXEC
+PERFORM CHECK-SQL-STATUS
+
+EXEC SQL UPDATE ... END-EXEC
+PERFORM CHECK-SQL-STATUS
+```
+
+### 3. Use Meaningful Error Text
+
+```cobol
+* Set context before calling error routine
+MOVE 'Failed updating customer balance' TO DB2-ERROR-TEXT
+PERFORM DB2-ERROR-ROUTINE
+```
+
+### 4. Save SQLSTATE for Specific Handling
+
+```cobol
+EXEC SQL UPDATE ... END-EXEC
+MOVE SQLSTATE TO DB2-SAVE-STATUS
+
+IF DB2-SAVE-STATUS = '23505'
+    PERFORM HANDLE-DUPLICATE-KEY
+ELSE
+    PERFORM CHECK-SQL-STATUS
+END-IF
+```
+
+## Technical Notes
+
+1. **CONNECT TO POSMVP**: The subsystem name 'POSMVP' is hardcoded. For different environments, consider using a variable or separate copybooks per environment.
+
+2. **Automatic Rollback**: DB2-ERROR-ROUTINE always performs ROLLBACK. If partial commits are needed, handle errors differently.
+
+3. **COMP Fields**: Retry control fields use S9(4) COMP for efficient arithmetic and compatibility with Language Environment services.
+
+4. **Error Message Format**: The 107-byte DB2-ERROR-MESSAGE is designed to fit in standard 80-column displays and log records.
+
+5. **Procedure Paragraphs in Copybook**: This is a common COBOL pattern for reusable code. The paragraphs become part of the including program's PROCEDURE DIVISION.
+
+6. **ERRPROC Dependency**: The DB2-ERROR-ROUTINE calls 'ERRPROC' program. Ensure this program is available in the load library.
+
+7. **Thread Safety**: For multi-threaded environments (e.g., CICS), each task has its own working storage, so the retry counters are task-specific.
+
+## Common SQLCODEs Handled
+
+| SQLCODE | SQLSTATE | Meaning | Typical Action |
+|---------|----------|---------|----------------|
+| 0 | 00000 | Success | Continue |
+| 100 | 02000 | Not found | Handle as business logic |
+| -803 | 23505 | Duplicate key | Retry with different key or report |
+| -811 | 21000 | Multiple rows | Fix query or handle as error |
+| -911 | 40001 | Deadlock/timeout | Retry transaction |
+| -913 | 57033 | Resource unavailable | Retry after wait |
+| -30081 | 08001 | Connection error | Reconnect or abort |
+
+## Extending the Copybook
+
+To add new procedures, append to the copybook:
+
+```cobol
+*----------------------------------------------------------------*
+* Custom: Commit with checkpoint
+*----------------------------------------------------------------*
+ COMMIT-WITH-CHECKPOINT.
+     EXEC SQL
+         COMMIT WORK
+     END-EXEC
+     IF SQLCODE NOT = 0
+         MOVE 'Commit failed' TO DB2-ERROR-TEXT
+         PERFORM DB2-ERROR-ROUTINE
+     END-IF
+     .
+```

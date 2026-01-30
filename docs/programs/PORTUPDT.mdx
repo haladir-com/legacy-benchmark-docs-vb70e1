@@ -1,18 +1,20 @@
 ---
 title: "PORTUPDT"
-description: "Portfolio update batch program that processes update requests to modify existing portfolio records"
+description: "Portfolio Update Program - batch processing of portfolio record updates"
 ---
 
 ## Overview
 
-PORTUPDT is a batch program that processes portfolio update requests from an input file. The program reads update requests containing portfolio keys, action codes, and new values, then applies the specified updates to the corresponding records in the indexed portfolio master file.
+PORTUPDT is a batch program that processes portfolio update requests. It reads update transactions from an input file and applies changes to existing portfolio records in the master file. The program supports updating different fields based on an action code in the update request.
 
-This program is part of the portfolio maintenance subsystem and works alongside PORTADD, PORTREAD, and PORTDEL to provide complete portfolio lifecycle management. Key features include:
+Key features:
+- **Batch Update Processing**: Reads sequential file of update requests
+- **VSAM Random Access**: Uses random access to efficiently locate and update specific portfolio records
+- **Multiple Update Types**: Supports status changes, client name updates, and portfolio value adjustments
+- **Error Handling**: Tracks and reports records not found and update failures
+- **Statistics Reporting**: Displays counts of successful updates and errors at completion
 
-- **Flexible Update Types**: Supports updates to portfolio status, client name, and total value through action codes
-- **Batch Processing**: Reads a sequential file of update requests and processes them against the indexed portfolio master file
-- **Data Type Handling**: Properly converts alphanumeric input to numeric format for value updates
-- **Error Tracking**: Counts and reports successful updates and errors at job completion
+This program is typically run as part of portfolio maintenance batch jobs to apply bulk changes to portfolio records.
 
 ## Program Structure
 
@@ -21,37 +23,39 @@ graph TD
     A[0000-MAIN] --> B[1000-INITIALIZE]
     A --> C[2000-PROCESS]
     A --> D[3000-TERMINATE]
+    A --> E[GOBACK]
     
-    B -->|Open files| E[PORTFOLIO-FILE I-O]
-    B -->|Open files| F[UPDATE-FILE INPUT]
-    B -->|Error?| G{File Status Check}
-    G -->|Failed| D
+    B --> B1[INITIALIZE WS-WORK-AREAS]
+    B --> B2[OPEN I-O PORTFOLIO-FILE]
+    B --> B3[OPEN INPUT UPDATE-FILE]
+    B -->|Error| B4[Display Error]
+    B4 --> D
     
-    C -->|Loop until EOF| H[READ UPDATE-FILE]
-    H -->|AT END| I[Set END-OF-FILE]
-    H -->|NOT AT END| J[2100-PROCESS-UPDATE]
+    C --> C1[READ UPDATE-FILE]
+    C1 -->|AT END| C2[Set END-OF-FILE]
+    C1 -->|NOT AT END| C3[2100-PROCESS-UPDATE]
     
-    J -->|Set key| K[MOVE UPDT-KEY TO PORT-KEY]
-    J -->|Read master| L[READ PORTFOLIO-FILE]
-    J -->|Found?| M{Status Check}
-    M -->|Success| N[2200-APPLY-UPDATE]
-    M -->|Not Found| O[Increment Error Count]
+    C3 --> C4[Move UPDT-KEY to PORT-KEY]
+    C3 --> C5[READ PORTFOLIO-FILE]
+    C5 -->|Success| C6[2200-APPLY-UPDATE]
+    C5 -->|Not Found| C7[Increment ERROR-COUNT]
     
-    N -->|Evaluate action| P{UPDT-ACTION}
-    P -->|S| Q[Update PORT-STATUS]
-    P -->|N| R[Update PORT-CLIENT-NAME]
-    P -->|V| S[Update PORT-TOTAL-VALUE]
+    C6 --> C8{EVALUATE UPDT-ACTION}
+    C8 -->|S - Status| C9[Update PORT-STATUS]
+    C8 -->|N - Name| C10[Update PORT-CLIENT-NAME]
+    C8 -->|V - Value| C11[Update PORT-TOTAL-VALUE]
     
-    N -->|REWRITE| T[REWRITE PORT-RECORD]
-    T -->|Success?| U{Status Check}
-    U -->|OK| V[Increment Update Count]
-    U -->|Failed| W[Increment Error Count]
+    C9 & C10 & C11 --> C12[REWRITE PORT-RECORD]
+    C12 -->|Success| C13[Increment UPDATE-COUNT]
+    C12 -->|Error| C14[Increment ERROR-COUNT]
     
-    D -->|Close all| X[Display Statistics]
+    D --> D1[CLOSE All Files]
+    D --> D2[Display Statistics]
+    D --> D3[Set RETURN-CODE]
     
     subgraph "Files"
-        Y[(PORTFOLIO-FILE<br/>Indexed)]
-        Z[UPDATE-FILE<br/>Sequential Input]
+        F1[PORTFOLIO-FILE<br/>VSAM Indexed]
+        F2[UPDATE-FILE<br/>Sequential Input]
     end
 ```
 
@@ -59,7 +63,7 @@ graph TD
 
 ### File Section
 
-#### PORT-RECORD (from PORTFLIO copybook)
+#### PORTFOLIO-FILE (PORTFLIO Copybook)
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
@@ -67,94 +71,107 @@ graph TD
 | 05 | PORT-KEY | - | Composite primary key |
 | 10 | PORT-ID | X(8) | Portfolio identifier |
 | 10 | PORT-ACCOUNT-NO | X(10) | Account number |
-| 05 | PORT-CLIENT-INFO | - | Client information group |
+| 05 | PORT-CLIENT-INFO | - | Client information |
 | 10 | PORT-CLIENT-NAME | X(30) | Client name |
 | 10 | PORT-CLIENT-TYPE | X(1) | Client type code |
-| 05 | PORT-PORTFOLIO-INFO | - | Portfolio information group |
-| 10 | PORT-CREATE-DATE | 9(8) | Creation date (YYYYMMDD) |
+| 05 | PORT-PORTFOLIO-INFO | - | Portfolio information |
+| 10 | PORT-CREATE-DATE | 9(8) | Creation date |
 | 10 | PORT-LAST-MAINT | 9(8) | Last maintenance date |
 | 10 | PORT-STATUS | X(1) | Portfolio status |
-| 05 | PORT-FINANCIAL-INFO | - | Financial information group |
+| 05 | PORT-FINANCIAL-INFO | - | Financial data |
 | 10 | PORT-TOTAL-VALUE | S9(13)V99 COMP-3 | Total portfolio value |
 | 10 | PORT-CASH-BALANCE | S9(13)V99 COMP-3 | Cash balance |
-| 05 | PORT-AUDIT-INFO | - | Audit information group |
+| 05 | PORT-AUDIT-INFO | - | Audit information |
 | 10 | PORT-LAST-USER | X(8) | Last user to modify |
 | 10 | PORT-LAST-TRANS | 9(8) | Last transaction date |
 | 05 | PORT-FILLER | X(50) | Reserved space |
 
-**Client Type Condition Names (88-levels):**
+##### Client Type Values (PORT-CLIENT-TYPE)
 
-| Condition | Value | Description |
-|-----------|-------|-------------|
-| PORT-INDIVIDUAL | 'I' | Individual account |
-| PORT-CORPORATE | 'C' | Corporate account |
-| PORT-TRUST | 'T' | Trust account |
+| Value | 88-Level Name | Meaning |
+|-------|---------------|---------|
+| `'I'` | PORT-INDIVIDUAL | Individual account |
+| `'C'` | PORT-CORPORATE | Corporate account |
+| `'T'` | PORT-TRUST | Trust account |
 
-**Portfolio Status Condition Names (88-levels):**
+##### Portfolio Status Values (PORT-STATUS)
 
-| Condition | Value | Description |
-|-----------|-------|-------------|
-| PORT-ACTIVE | 'A' | Active portfolio |
-| PORT-CLOSED | 'C' | Closed portfolio |
-| PORT-SUSPENDED | 'S' | Suspended portfolio |
+| Value | 88-Level Name | Meaning |
+|-------|---------------|---------|
+| `'A'` | PORT-ACTIVE | Active portfolio |
+| `'C'` | PORT-CLOSED | Closed portfolio |
+| `'S'` | PORT-SUSPENDED | Suspended portfolio |
 
-#### UPDATE-RECORD
+#### UPDATE-FILE
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
 | 01 | UPDATE-RECORD | - | Update request record |
 | 05 | UPDT-KEY | - | Key of record to update |
-| 10 | UPDT-ID | X(8) | Portfolio identifier |
+| 10 | UPDT-ID | X(8) | Portfolio ID |
 | 10 | UPDT-ACCT-NO | X(10) | Account number |
 | 05 | UPDT-ACTION | X(1) | Update action code |
 | 05 | UPDT-NEW-VALUE | X(50) | New value to apply |
 
-**Update Action Codes (88-levels):**
+##### Update Action Codes (UPDT-ACTION)
 
-| Condition | Value | Description | Target Field |
-|-----------|-------|-------------|--------------|
-| UPDT-STATUS | 'S' | Update status | PORT-STATUS |
-| UPDT-VALUE | 'V' | Update total value | PORT-TOTAL-VALUE |
-| UPDT-NAME | 'N' | Update client name | PORT-CLIENT-NAME |
+| Value | 88-Level Name | Target Field | Description |
+|-------|---------------|--------------|-------------|
+| `'S'` | UPDT-STATUS | PORT-STATUS | Update portfolio status |
+| `'V'` | UPDT-VALUE | PORT-TOTAL-VALUE | Update total value |
+| `'N'` | UPDT-NAME | PORT-CLIENT-NAME | Update client name |
 
 ### Working Storage
 
-#### WS-CONSTANTS
+#### Constants
 
 | Level | Name | Picture | Value | Description |
 |-------|------|---------|-------|-------------|
-| 05 | WS-PROGRAM-NAME | X(8) | 'PORTUPDT' | Program identifier |
+| 01 | WS-CONSTANTS | - | - | Program constants |
+| 05 | WS-PROGRAM-NAME | X(8) | `'PORTUPDT'` | Program identifier |
 | 05 | WS-SUCCESS | S9(4) | +0 | Success return code |
 | 05 | WS-ERROR | S9(4) | +8 | Error return code |
 
-#### WS-SWITCHES
+#### File Status Switches
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
+| 01 | WS-SWITCHES | - | Status switches |
 | 05 | WS-FILE-STATUS | X(2) | Portfolio file status |
 | 05 | WS-UPDT-STATUS | X(2) | Update file status |
-| 05 | WS-END-OF-FILE-SW | X | End of file indicator |
+| 05 | WS-END-OF-FILE-SW | X | EOF indicator |
 
-**File Status Condition Names (88-levels):**
+##### Portfolio File Status (WS-FILE-STATUS)
 
-| Field | Condition | Value | Description |
-|-------|-----------|-------|-------------|
-| WS-FILE-STATUS | WS-SUCCESS-STATUS | '00' | Successful operation |
-| WS-FILE-STATUS | WS-EOF-STATUS | '10' | End of file |
-| WS-FILE-STATUS | WS-REC-NOT-FND | '23' | Record not found |
-| WS-UPDT-STATUS | WS-UPDT-SUCCESS | '00' | Successful operation |
-| WS-UPDT-STATUS | WS-UPDT-EOF | '10' | End of file |
-| WS-END-OF-FILE-SW | END-OF-FILE | 'Y' | End of file reached |
-| WS-END-OF-FILE-SW | NOT-END-OF-FILE | 'N' | More records to process |
+| Value | 88-Level Name | Meaning |
+|-------|---------------|---------|
+| `'00'` | WS-SUCCESS-STATUS | Successful operation |
+| `'10'` | WS-EOF-STATUS | End of file |
+| `'23'` | WS-REC-NOT-FND | Record not found |
 
-#### WS-WORK-AREAS
+##### Update File Status (WS-UPDT-STATUS)
 
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 05 | WS-UPDATE-COUNT | 9(7) | Count of successful updates |
-| 05 | WS-ERROR-COUNT | 9(7) | Count of errors |
-| 05 | WS-RETURN-CODE | S9(4) | Program return code |
-| 05 | WS-NUMERIC-WORK | S9(13)V99 | Numeric conversion work field |
+| Value | 88-Level Name | Meaning |
+|-------|---------------|---------|
+| `'00'` | WS-UPDT-SUCCESS | Successful operation |
+| `'10'` | WS-UPDT-EOF | End of file |
+
+##### End of File Switch (WS-END-OF-FILE-SW)
+
+| Value | 88-Level Name | Meaning |
+|-------|---------------|---------|
+| `'Y'` | END-OF-FILE | End of file reached |
+| `'N'` | NOT-END-OF-FILE | More records to process |
+
+#### Work Areas
+
+| Level | Name | Picture | Initial | Description |
+|-------|------|---------|---------|-------------|
+| 01 | WS-WORK-AREAS | - | - | Work area group |
+| 05 | WS-UPDATE-COUNT | 9(7) | ZERO | Successful updates |
+| 05 | WS-ERROR-COUNT | 9(7) | ZERO | Processing errors |
+| 05 | WS-RETURN-CODE | S9(4) | +0 | Program return code |
+| 05 | WS-NUMERIC-WORK | S9(13)V99 | - | Numeric conversion area |
 
 ## File I/O
 
@@ -162,191 +179,261 @@ graph TD
 
 | Property | Value |
 |----------|-------|
-| Assign To | PORTFILE |
-| Organization | Indexed (VSAM KSDS) |
-| Access Mode | Random |
-| Record Key | PORT-KEY |
+| DD Name | PORTFILE |
+| Organization | INDEXED (VSAM KSDS) |
+| Access Mode | RANDOM |
+| Record Key | PORT-KEY (PORT-ID + PORT-ACCOUNT-NO) |
 | File Status | WS-FILE-STATUS |
-| Open Mode | I-O (read and rewrite) |
+| Open Mode | I-O (Input-Output) |
 
-The portfolio master file is opened for I-O access to allow both reading records and rewriting them with updated values.
+The portfolio file is opened for I-O to allow both READ and REWRITE operations.
 
 ### UPDATE-FILE
 
 | Property | Value |
 |----------|-------|
-| Assign To | UPDTFILE |
-| Organization | Sequential |
+| DD Name | UPDTFILE |
+| Organization | SEQUENTIAL |
 | File Status | WS-UPDT-STATUS |
 | Open Mode | INPUT |
 
-Input file containing update requests to process.
+Sequential input file containing update requests.
 
-### I/O Operations Summary
+### File Operations Summary
 
-| Paragraph | File | Operation | Description |
-|-----------|------|-----------|-------------|
-| 1000-INITIALIZE | PORTFOLIO-FILE | OPEN I-O | Open for read/rewrite |
-| 1000-INITIALIZE | UPDATE-FILE | OPEN INPUT | Open for reading |
-| 2000-PROCESS | UPDATE-FILE | READ | Read next update request |
-| 2100-PROCESS-UPDATE | PORTFOLIO-FILE | READ | Read record to update |
-| 2200-APPLY-UPDATE | PORTFOLIO-FILE | REWRITE | Write updated record |
-| 3000-TERMINATE | Both files | CLOSE | Close all files |
+| Paragraph | File | Operation |
+|-----------|------|-----------|
+| 1000-INITIALIZE | PORTFOLIO-FILE | OPEN I-O |
+| 1000-INITIALIZE | UPDATE-FILE | OPEN INPUT |
+| 2000-PROCESS | UPDATE-FILE | READ |
+| 2100-PROCESS-UPDATE | PORTFOLIO-FILE | READ (random) |
+| 2200-APPLY-UPDATE | PORTFOLIO-FILE | REWRITE |
+| 3000-TERMINATE | Both files | CLOSE |
 
 ## Control Flow
 
 ### 0000-MAIN
 
-Entry point that orchestrates the batch update process:
-1. Performs initialization (open files, initialize counters)
-2. Loops through update requests until end of file
-3. Performs termination (close files, report statistics)
-4. Returns to operating system via GOBACK
+The main entry point that orchestrates the update process:
+1. **PERFORM 1000-INITIALIZE**: Set up files and work areas
+2. **PERFORM 2000-PROCESS UNTIL END-OF-FILE**: Process all update requests
+3. **PERFORM 3000-TERMINATE**: Close files and report statistics
+4. **GOBACK**: Return to caller/operating system
 
 ### 1000-INITIALIZE
 
-1. **Initialize Work Areas**: Clears all counters and work fields using INITIALIZE
-2. **Open Files**: Opens both files with appropriate modes:
-   - PORTFOLIO-FILE as I-O (for read and rewrite)
-   - UPDATE-FILE as INPUT
-3. **Check File Status**: If any file fails to open:
-   - Displays error message with file status codes
-   - Sets return code to error (8)
-   - Performs termination to close any opened files
+Performs program initialization:
+1. **INITIALIZE WS-WORK-AREAS**: Clears counters and work fields
+2. **OPEN files**: Opens PORTFOLIO-FILE for I-O and UPDATE-FILE for INPUT
+3. **Error check**: If either file fails to open:
+   - Displays error message with file statuses
+   - Sets WS-RETURN-CODE to WS-ERROR (8)
+   - Performs 3000-TERMINATE to clean up
 
 ### 2000-PROCESS
 
-Main processing loop that reads update requests:
-1. **Read Update File**: Reads next update request record
-2. **Check for EOF**: If AT END, sets END-OF-FILE flag to true
-3. **Process Record**: If NOT AT END, performs 2100-PROCESS-UPDATE
+Reads and processes update requests in a loop:
+1. **READ UPDATE-FILE**: Reads next update request
+   - AT END: Sets END-OF-FILE flag to stop loop
+   - NOT AT END: Performs 2100-PROCESS-UPDATE
 
 ### 2100-PROCESS-UPDATE
 
 Processes a single update request:
-1. **Set Key**: Moves UPDT-KEY to PORT-KEY for lookup
-2. **Read Master**: Reads portfolio record using the key
-3. **Check Status**: 
-   - If successful (WS-SUCCESS-STATUS), performs apply update
-   - Otherwise, increments error count and displays message
+1. **MOVE UPDT-KEY TO PORT-KEY**: Sets up key for portfolio lookup
+2. **READ PORTFOLIO-FILE**: Random read using the key
+3. **Check status**:
+   - **WS-SUCCESS-STATUS**: Record found, perform 2200-APPLY-UPDATE
+   - **Otherwise**: Record not found, increment WS-ERROR-COUNT, display message
 
 ### 2200-APPLY-UPDATE
 
-Applies the update based on action code:
-
-1. **Evaluate Action**: Uses EVALUATE TRUE to determine update type:
-   - **UPDT-STATUS ('S')**: Moves UPDT-NEW-VALUE directly to PORT-STATUS
-   - **UPDT-NAME ('N')**: Moves UPDT-NEW-VALUE directly to PORT-CLIENT-NAME
-   - **UPDT-VALUE ('V')**: Converts UPDT-NEW-VALUE to WS-NUMERIC-WORK, then moves to PORT-TOTAL-VALUE (handles alphanumeric to COMP-3 conversion)
-
-2. **Rewrite Record**: Issues REWRITE for PORT-RECORD
-
-3. **Check Status**:
-   - If successful, increments update count
-   - If failed, increments error count and displays message
+Applies the update to the portfolio record:
+1. **EVALUATE TRUE** based on UPDT-ACTION:
+   - **UPDT-STATUS (`'S'`)**: Moves UPDT-NEW-VALUE to PORT-STATUS
+   - **UPDT-NAME (`'N'`)**: Moves UPDT-NEW-VALUE to PORT-CLIENT-NAME
+   - **UPDT-VALUE (`'V'`)**: Converts UPDT-NEW-VALUE to numeric and moves to PORT-TOTAL-VALUE
+2. **REWRITE PORT-RECORD**: Updates the record in the file
+3. **Check status**:
+   - **Success**: Increment WS-UPDATE-COUNT
+   - **Error**: Increment WS-ERROR-COUNT, display failure message
 
 ### 3000-TERMINATE
 
-Cleanup and reporting:
-1. **Close Files**: Closes both files
-2. **Display Statistics**:
-   - Updates processed
-   - Errors occurred
-3. **Set Return Code**: Moves WS-RETURN-CODE to system RETURN-CODE
+Performs cleanup and reporting:
+1. **CLOSE all files**: Closes PORTFOLIO-FILE and UPDATE-FILE
+2. **Display statistics**:
+   - Updates processed count
+   - Errors occurred count
+3. **MOVE WS-RETURN-CODE TO RETURN-CODE**: Sets job return code
+
+## Update Types
+
+### Status Update (`'S'`)
+
+Updates the portfolio status field. Valid status values:
+- `'A'` - Active
+- `'C'` - Closed
+- `'S'` - Suspended
+
+**Example update record:**
+```
+PORT0001 1234567890S A
+```
+This sets portfolio PORT0001/1234567890 to Active status.
+
+### Name Update (`'N'`)
+
+Updates the client name field (up to 30 characters from the 50-character input).
+
+**Example update record:**
+```
+PORT0001 1234567890N JOHN DOE ENTERPRISES LLC
+```
+
+### Value Update (`'V'`)
+
+Updates the total portfolio value. The value is converted from alphanumeric to packed decimal.
+
+**Example update record:**
+```
+PORT0001 1234567890V 000000125000000
+```
+This sets the portfolio value to 1,250,000.00.
+
+## Processing Flow Diagram
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                   PORTUPDT Processing                        │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  UPDATE-FILE ──────► Read Request                            │
+│       │                   │                                  │
+│       │                   ▼                                  │
+│       │         ┌─────────────────┐                         │
+│       │         │ Lookup in       │                         │
+│       │         │ PORTFOLIO-FILE  │                         │
+│       │         └────────┬────────┘                         │
+│       │                  │                                   │
+│       │         ┌────────┴────────┐                         │
+│       │         │                 │                         │
+│       │         ▼                 ▼                         │
+│       │      Found           Not Found                       │
+│       │         │                 │                         │
+│       │         ▼                 ▼                         │
+│       │   Apply Update      Log Error                       │
+│       │         │                                           │
+│       │         ▼                                           │
+│       │   REWRITE Record                                    │
+│       │         │                                           │
+│       │         ▼                                           │
+│       │   Update Statistics                                 │
+│       │                                                      │
+│       └──────► Next Request (loop until EOF)                │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Sample JCL
+
+```jcl
+//PORTUPDT EXEC PGM=PORTUPDT
+//STEPLIB  DD DSN=your.loadlib,DISP=SHR
+//PORTFILE DD DSN=your.portfolio.vsam.file,DISP=SHR
+//UPDTFILE DD DSN=your.update.requests,DISP=SHR
+//SYSOUT   DD SYSOUT=*
+```
+
+## Sample Update File
+
+```
+PORT0001 1234567890S A                                          
+PORT0002 9876543210N ACME CORPORATION                           
+PORT0003 5555555555V 000000250000000                            
+PORT0001 1234567890N SMITH, JOHN Q.                             
+```
+
+Each record contains:
+- Positions 1-8: Portfolio ID
+- Positions 9-18: Account Number
+- Position 19: Action Code (S/N/V)
+- Positions 20-69: New Value
 
 ## Dependencies
 
 ### Copybooks
 
-- [PORTFLIO](/docs/copybooks/PORTFLIO) - Portfolio master record layout with client, portfolio, financial, and audit information
+- **PORTFLIO** - Portfolio master record layout with client, financial, and audit information
 
 ### Called Programs
 
-This program does not call any external programs.
+None - PORTUPDT is a standalone batch program.
 
 ### Related Programs
 
-Programs that share the PORTFLIO copybook:
-- [PORTADD](/docs/programs/PORTADD) - Portfolio addition program
-- [PORTDEL](/docs/programs/PORTDEL) - Portfolio deletion program
-- [PORTREAD](/docs/programs/PORTREAD) - Portfolio read/inquiry program
-- [PORTTEST](/docs/programs/PORTTEST) - Portfolio testing program
-- [TSTGEN00](/docs/programs/TSTGEN00) - Test data generation
+- **PORTDEL** - Portfolio deletion program
+- **PORTADD** - Portfolio creation program (if exists)
+- **PORTMSTR** - Portfolio master maintenance
 
 ## Return Codes
 
-| Code | Description |
-|------|-------------|
-| 0 | Successful completion (may include some record-level errors) |
-| 8 | Error occurred (file open failure) |
+| Code | Meaning |
+|------|---------|
+| 0 | Successful completion (may include not-found errors) |
+| 8 | Error during processing (file open failure) |
 
-## Processing Statistics
+## Console Output
 
-At job completion, the program displays:
+The program produces console output for monitoring:
 
+**Error Messages:**
+- `Error opening files: PORT=xx UPDT=xx` - File open failure
+- `Record not found: [key]` - Update request for non-existent record
+- `Update failed for: [key]` - REWRITE operation failed
+
+**Statistics (at termination):**
 ```
-Updates processed: NNNNNNN
-Errors occurred:   NNNNNNN
-```
-
-## Input File Format
-
-The UPDATE-FILE contains fixed-length records with the following layout:
-
-| Position | Length | Field | Description |
-|----------|--------|-------|-------------|
-| 1-8 | 8 | UPDT-ID | Portfolio ID |
-| 9-18 | 10 | UPDT-ACCT-NO | Account number |
-| 19 | 1 | UPDT-ACTION | Action code (S/V/N) |
-| 20-69 | 50 | UPDT-NEW-VALUE | New value |
-
-### Example Update Records
-
-```
-PORT0001ACCT000001SASuspend portfolio status
-PORT0002ACCT000002NJOHN DOE CORPORATION        Update client name
-PORT0003ACCT000003V00000000123456.78          Update total value
-```
-
-## JCL Example
-
-```jcl
-//PORTUPDT EXEC PGM=PORTUPDT
-//STEPLIB  DD  DSN=your.loadlib,DISP=SHR
-//PORTFILE DD  DSN=your.portfolio.master,DISP=SHR
-//UPDTFILE DD  DSN=your.update.requests,DISP=SHR
-//SYSOUT   DD  SYSOUT=*
+Updates processed: 0000125
+Errors occurred:   0000003
 ```
 
 ## Technical Notes
 
-### REWRITE Statement
+### COBOL Constructs Used
 
-The COBOL `REWRITE` statement updates the current record in an indexed file. The record must first be successfully read (making it the "current" record) before it can be rewritten. The key field (PORT-KEY) cannot be modified during a rewrite operation.
+- **INDEXED File with RANDOM Access**: The PORTFOLIO-FILE uses random access mode to directly locate records by key for efficient update processing.
 
-### Numeric Conversion
+- **REWRITE Statement**: Updates an existing record in an indexed file. The record must first be successfully read before it can be rewritten (establishes record currency).
 
-When processing value updates (UPDT-VALUE), the program uses a two-step conversion:
-1. Moves the alphanumeric UPDT-NEW-VALUE to WS-NUMERIC-WORK (S9(13)V99)
-2. Moves WS-NUMERIC-WORK to PORT-TOTAL-VALUE (S9(13)V99 COMP-3)
+- **OPEN I-O**: Opens the file for both input and output operations, required for read-then-update processing.
 
-This ensures proper conversion from display format to packed decimal format.
+- **EVALUATE TRUE**: Multi-way branch based on 88-level condition names. Determines which field to update based on UPDT-ACTION code.
 
-### VSAM File Status Codes
+- **Numeric Conversion**: For value updates, the alphanumeric UPDT-NEW-VALUE is moved to WS-NUMERIC-WORK (a numeric field) before moving to the COMP-3 PORT-TOTAL-VALUE field.
 
-| Code | Meaning |
-|------|---------|
-| 00 | Successful operation |
-| 10 | End of file |
-| 23 | Record not found |
+- **PERFORM UNTIL**: Loop construct that continues processing until the END-OF-FILE condition becomes true.
 
-### Error Recovery
+### File Status Codes
 
-The program continues processing after individual record errors (not-found or rewrite failures), allowing maximum throughput while tracking all issues. Only file open failures cause immediate termination.
+| Status | Meaning |
+|--------|---------|
+| `'00'` | Successful operation |
+| `'10'` | End of file (sequential read) |
+| `'23'` | Record not found (random read) |
 
-### Field Validation
+### Data Conversion
 
-The current implementation does not validate the new value before applying updates. Production environments may want to add validation for:
-- Status code values (should be 'A', 'C', or 'S')
-- Numeric format for value updates
-- Client name length and character validation
+When updating the total value (action `'V'`):
+1. UPDT-NEW-VALUE (PIC X(50)) is moved to WS-NUMERIC-WORK (PIC S9(13)V99)
+2. WS-NUMERIC-WORK is then moved to PORT-TOTAL-VALUE (PIC S9(13)V99 COMP-3)
+
+This two-step conversion ensures proper handling of the alphanumeric-to-packed-decimal conversion.
+
+### Processing Characteristics
+
+- **In-place updates**: Records are read and rewritten in the same location
+- **Single-field updates**: Each update request modifies only one field
+- **No validation**: The program does not validate new values (e.g., status codes)
+- **Sequential processing**: Update requests are processed in file order
+- **No duplicate handling**: Multiple updates to the same record are allowed

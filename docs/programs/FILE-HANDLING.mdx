@@ -1,108 +1,112 @@
 ---
-title: "FILE-HANDLING"
-description: "Template for VSAM and Sequential file handling - provides standard patterns for COBOL file operations"
+title: "FILEHNDL (FILE-HANDLING)"
+description: "Template program demonstrating standard patterns for VSAM KSDS and sequential file handling with error management"
 ---
-
-:::info Template Program
-This is a **template program** designed to be copied and customized for new development. It demonstrates standard patterns for VSAM and sequential file handling in COBOL.
-:::
 
 ## Overview
 
-FILE-HANDLING (FILEHNDL) is a template program that provides standardized patterns for working with both VSAM KSDS files and sequential files in COBOL. It demonstrates best practices for file definition, status checking, error handling, and common I/O operations.
+FILEHNDL is a template program that demonstrates standard patterns for handling both VSAM KSDS (Key-Sequenced Data Set) files and sequential files in COBOL. It provides reusable code patterns for common file operations including reading, writing, and error handling.
 
-The template includes three file types commonly used in batch processing:
-- **VSAM KSDS** - For indexed, keyed access to master files
-- **Sequential Input** - For reading transaction or parameter files
-- **Sequential Output** - For writing reports or extract files
+The template includes three file definitions covering the most common file types: a VSAM indexed file with dynamic access, a sequential input file, and a sequential output file. Each file has associated status fields with 88-level conditions for easy status checking.
 
-Developers should copy this template and customize the record layouts, processing logic, and error handling for their specific requirements.
+This template is designed to be copied and customized by developers when creating new programs that require file handling. It establishes consistent patterns for file operations and error handling across the system.
+
+:::note Template Program
+This is a **template program** intended to be copied and modified for specific applications. The processing paragraphs (2110-PROCESS-VSAM-RECORD, 2310-PROCESS-INPUT-RECORD) are referenced but not implemented, serving as placeholders for application-specific logic.
+:::
 
 ## Program Structure
 
 ```mermaid
 graph TD
     A[0000-MAIN] --> B[1000-INITIALIZE]
-    B --> C[2000-PROCESS]
-    C --> D[3000-TERMINATE]
-    D --> E[GOBACK]
+    B --> B1[Initialize status fields]
+    B --> B2[OPEN files]
+    B --> B3[9000-CHECK-FILE-STATUS]
     
-    B --> B1[Initialize WS-FILE-STATUS]
-    B --> B2[OPEN INPUT VSAM-FILE]
-    B --> B3[OPEN INPUT INPUT-FILE]
-    B --> B4[OPEN OUTPUT OUTPUT-FILE]
-    B --> B5[9000-CHECK-FILE-STATUS]
+    A --> C[2000-PROCESS]
+    C --> D[2100-READ-VSAM]
+    C --> E[2200-WRITE-VSAM]
+    C --> F[2300-READ-SEQUENTIAL]
     
-    C --> C1[2100-READ-VSAM]
-    C --> C2[2200-WRITE-VSAM]
-    C --> C3[2300-READ-SEQUENTIAL]
+    D --> D1[READ with KEY]
+    D1 -->|INVALID KEY| G[9100-VSAM-ERROR]
+    D1 -->|Success| D2[2110-PROCESS-VSAM-RECORD]
     
-    C1 --> C1A{VSAM-SUCCESS?}
-    C1A -->|Yes| C1B[2110-PROCESS-VSAM-RECORD]
-    C1A -->|No| C1C[9100-VSAM-ERROR]
+    E --> E1[WRITE record]
+    E1 -->|INVALID KEY| G
     
-    C3 --> C3A{AT END?}
-    C3A -->|Yes| C3B[Set INPUT-EOF]
-    C3A -->|No| C3C[2310-PROCESS-INPUT-RECORD]
+    F --> F1[READ sequential]
+    F1 -->|AT END| F2[Set INPUT-EOF]
+    F1 -->|NOT AT END| F3[2310-PROCESS-INPUT-RECORD]
     
-    D --> D1[CLOSE all files]
-    D --> D2[9000-CHECK-FILE-STATUS]
+    A --> H[3000-TERMINATE]
+    H --> H1[CLOSE all files]
+    H --> H2[9000-CHECK-FILE-STATUS]
+    H --> I[GOBACK]
+    
+    G --> G1[Display error]
+    G --> G2[Set RETURN-CODE = 8]
+    G --> H
 ```
 
 ## Data Structures
 
-### VSAM Record (File Section)
+### VSAM File Record
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | VSAM-RECORD | - | VSAM file record (100 bytes) |
+| 01 | VSAM-RECORD | - | VSAM KSDS record (100 bytes) |
 | 05 | VSAM-RECORD-KEY | X(10) | Primary record key |
 | 05 | VSAM-RECORD-DATA | X(90) | Record data area |
 
-### Sequential Input Record (File Section)
+### Sequential File Records
+
+| File | Record Name | Picture | Description |
+|------|-------------|---------|-------------|
+| INPUT-FILE | INPUT-RECORD | X(80) | 80-byte input record |
+| OUTPUT-FILE | OUTPUT-RECORD | X(80) | 80-byte output record |
+
+### File Status Fields
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | INPUT-RECORD | X(80) | Input file record |
-
-### Sequential Output Record (File Section)
-
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 01 | OUTPUT-RECORD | X(80) | Output file record |
-
-### Working Storage - File Status
-
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
+| 01 | WS-FILE-STATUS | - | File status group |
 | 05 | WS-VSAM-STATUS | X(2) | VSAM file status |
 | 05 | WS-INPUT-STATUS | X(2) | Input file status |
 | 05 | WS-OUTPUT-STATUS | X(2) | Output file status |
 
-### File Status Conditions (88-Levels)
+### VSAM Status Conditions
 
-| Condition | Value | Meaning |
-|-----------|-------|---------|
-| VSAM-SUCCESS | '00' | Successful VSAM operation |
-| VSAM-EOF | '10' | End of file reached |
-| VSAM-DUP-KEY | '22' | Duplicate key on WRITE |
-| VSAM-NOT-FOUND | '23' | Record not found on READ |
-| INPUT-SUCCESS | '00' | Successful input operation |
-| INPUT-EOF | '10' | End of input file |
-| OUTPUT-SUCCESS | '00' | Successful output operation |
+| Value | 88-Level Condition | Description |
+|-------|-------------------|-------------|
+| `00` | VSAM-SUCCESS | Operation successful |
+| `10` | VSAM-EOF | End of file reached |
+| `22` | VSAM-DUP-KEY | Duplicate key on write |
+| `23` | VSAM-NOT-FOUND | Record not found on read |
 
-### VSAM Work Areas
+### Sequential Status Conditions
+
+| Value | 88-Level Condition | Description |
+|-------|-------------------|-------------|
+| `00` | INPUT-SUCCESS | Input operation successful |
+| `10` | INPUT-EOF | End of input file |
+| `00` | OUTPUT-SUCCESS | Output operation successful |
+
+### Working Storage
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 05 | WS-VSAM-KEY | X(10) | Work area for key manipulation |
+| 05 | WS-VSAM-KEY | X(10) | Work area for VSAM key |
 
-## File Definitions
+## File I/O
 
-### VSAM-FILE (VSAM KSDS)
+### VSAM-FILE
 
-| Attribute | Value |
-|-----------|-------|
+A VSAM KSDS (Key-Sequenced Data Set) file with dynamic access.
+
+| Property | Value |
+|----------|-------|
 | Logical Name | VSAM-FILE |
 | DD Name | VSAMFILE |
 | Organization | INDEXED |
@@ -111,275 +115,292 @@ graph TD
 | Record Length | 100 bytes |
 | File Status | WS-VSAM-STATUS |
 
-**Dynamic access mode** allows both sequential and random access to the VSAM file using the same SELECT statement.
+**Access Mode DYNAMIC** allows both:
+- Random access by key (READ with KEY IS)
+- Sequential access (READ NEXT)
 
-### INPUT-FILE (Sequential)
+### INPUT-FILE
 
-| Attribute | Value |
-|-----------|-------|
+A sequential input file for reading data.
+
+| Property | Value |
+|----------|-------|
 | Logical Name | INPUT-FILE |
 | DD Name | INFILE |
 | Organization | SEQUENTIAL |
 | Access Mode | SEQUENTIAL |
+| Open Mode | INPUT |
 | Recording Mode | F (Fixed) |
 | Record Length | 80 bytes |
 | File Status | WS-INPUT-STATUS |
 
-### OUTPUT-FILE (Sequential)
+### OUTPUT-FILE
 
-| Attribute | Value |
-|-----------|-------|
+A sequential output file for writing data.
+
+| Property | Value |
+|----------|-------|
 | Logical Name | OUTPUT-FILE |
 | DD Name | OUTFILE |
 | Organization | SEQUENTIAL |
 | Access Mode | SEQUENTIAL |
+| Open Mode | OUTPUT |
 | Recording Mode | F (Fixed) |
 | Record Length | 80 bytes |
 | File Status | WS-OUTPUT-STATUS |
 
-## Template Patterns
+## Control Flow
 
-### Pattern 1: VSAM Keyed READ
+### Main Processing (0000-MAIN)
 
+Standard three-phase structure:
+1. Calls 1000-INITIALIZE for setup
+2. Calls 2000-PROCESS for main processing
+3. Calls 3000-TERMINATE for cleanup
+4. Returns via GOBACK
+
+### Initialize (1000-INITIALIZE)
+
+Prepares the processing environment:
+1. Initializes WS-FILE-STATUS to spaces
+2. Opens VSAM-FILE for INPUT
+3. Opens INPUT-FILE for INPUT
+4. Opens OUTPUT-FILE for OUTPUT
+5. Calls 9000-CHECK-FILE-STATUS to verify opens
+
+### Process (2000-PROCESS)
+
+Contains example file operation paragraphs:
+
+#### 2100-READ-VSAM - VSAM Random Read
 ```cobol
-2100-READ-VSAM.
-    MOVE LOW-VALUES TO VSAM-RECORD-KEY
-    
-    READ VSAM-FILE KEY IS VSAM-RECORD-KEY
-        INVALID KEY
-            PERFORM 9100-VSAM-ERROR
-    END-READ
-    
-    IF VSAM-SUCCESS
-        PERFORM 2110-PROCESS-VSAM-RECORD
-    END-IF
-    .
-```
-
-**Usage Notes:**
-- Set VSAM-RECORD-KEY before the READ
-- Use `KEY IS` clause for explicit key specification
-- Handle INVALID KEY for not-found conditions
-- Check VSAM-SUCCESS before processing
-
-### Pattern 2: VSAM WRITE
-
-```cobol
-2200-WRITE-VSAM.
-    WRITE VSAM-RECORD
-        INVALID KEY
-            PERFORM 9100-VSAM-ERROR
-    END-WRITE
-    .
-```
-
-**Usage Notes:**
-- Populate VSAM-RECORD before WRITE
-- INVALID KEY catches duplicate key errors
-- Check for VSAM-DUP-KEY ('22') status
-
-### Pattern 3: Sequential READ
-
-```cobol
-2300-READ-SEQUENTIAL.
-    READ INPUT-FILE
-        AT END
-            SET INPUT-EOF TO TRUE
-        NOT AT END
-            PERFORM 2310-PROCESS-INPUT-RECORD
-    END-READ
-    .
-```
-
-**Usage Notes:**
-- Use AT END/NOT AT END for end-of-file handling
-- Set a flag (INPUT-EOF) for loop control
-- Process record only on NOT AT END
-
-### Pattern 4: File Status Checking
-
-```cobol
-9000-CHECK-FILE-STATUS.
-    IF NOT VSAM-SUCCESS AND NOT VSAM-EOF
+MOVE LOW-VALUES TO VSAM-RECORD-KEY
+READ VSAM-FILE KEY IS VSAM-RECORD-KEY
+    INVALID KEY
         PERFORM 9100-VSAM-ERROR
-    END-IF
-    
-    IF NOT INPUT-SUCCESS AND NOT INPUT-EOF
-        PERFORM 9200-SEQ-ERROR
-    END-IF
-    
-    IF NOT OUTPUT-SUCCESS
-        PERFORM 9200-SEQ-ERROR
-    END-IF
-    .
+END-READ
+IF VSAM-SUCCESS
+    PERFORM 2110-PROCESS-VSAM-RECORD
+END-IF
 ```
 
-**Usage Notes:**
-- Always check file status after OPEN and CLOSE
-- Allow for expected conditions (EOF)
-- Centralize status checking logic
+**Pattern:** Use `KEY IS` clause for random access by key. The `INVALID KEY` phrase handles not-found and other error conditions.
 
-## Error Handling
+#### 2200-WRITE-VSAM - VSAM Write
+```cobol
+WRITE VSAM-RECORD
+    INVALID KEY
+        PERFORM 9100-VSAM-ERROR
+END-WRITE
+```
 
-### 9100-VSAM-ERROR
+**Pattern:** The `INVALID KEY` phrase catches duplicate key errors (status 22) and other write failures.
+
+#### 2300-READ-SEQUENTIAL - Sequential Read
+```cobol
+READ INPUT-FILE
+    AT END
+        SET INPUT-EOF TO TRUE
+    NOT AT END
+        PERFORM 2310-PROCESS-INPUT-RECORD
+END-READ
+```
+
+**Pattern:** Use `AT END` / `NOT AT END` phrases for sequential reading with end-of-file detection.
+
+### Terminate (3000-TERMINATE)
+
+Closes all files and verifies close operations:
+1. Closes VSAM-FILE, INPUT-FILE, OUTPUT-FILE
+2. Calls 9000-CHECK-FILE-STATUS to verify closes
+
+### Error Handling (9000-CHECK-FILE-STATUS)
+
+Validates file status after operations:
+1. Checks VSAM status (ignores success and EOF)
+2. Checks INPUT status (ignores success and EOF)
+3. Checks OUTPUT status (ignores success)
+
+Calls appropriate error handler for any failures.
+
+### VSAM Error Handler (9100-VSAM-ERROR)
 
 Handles VSAM file errors:
-1. Displays error message with file status
+1. Displays error message with file status code
 2. Sets RETURN-CODE to 8
-3. Performs cleanup (3000-TERMINATE)
-4. Exits program via GOBACK
+3. Performs 3000-TERMINATE to close files
+4. Exits via GOBACK
 
-### 9200-SEQ-ERROR
+### Sequential Error Handler (9200-SEQ-ERROR)
 
 Handles sequential file errors:
-1. Displays error message with both input and output status
+1. Displays error message with both status codes
 2. Sets RETURN-CODE to 8
-3. Performs cleanup (3000-TERMINATE)
-4. Exits program via GOBACK
+3. Performs 3000-TERMINATE to close files
+4. Exits via GOBACK
 
-## Return Codes
-
-| Code | Meaning |
-|------|---------|
-| 0 | Successful completion |
-| 8 | File error occurred |
-
-## Customization Points
-
-When using this template, customize the following:
-
-### 1. Record Layouts
-
-Replace the generic record definitions:
-
-```cobol
-* Replace this:
-01  VSAM-RECORD.
-    05  VSAM-RECORD-KEY          PIC X(10).
-    05  VSAM-RECORD-DATA         PIC X(90).
-
-* With your specific layout:
-01  CUSTOMER-RECORD.
-    05  CUST-KEY.
-        10  CUST-ID              PIC X(8).
-        10  CUST-TYPE            PIC XX.
-    05  CUST-NAME                PIC X(30).
-    05  CUST-ADDRESS             PIC X(60).
-```
-
-### 2. Processing Logic
-
-Implement the stub paragraphs:
-
-```cobol
-2110-PROCESS-VSAM-RECORD.
-    * Add your VSAM record processing logic here
-    .
-
-2310-PROCESS-INPUT-RECORD.
-    * Add your input record processing logic here
-    .
-```
-
-### 3. Main Processing Loop
-
-Modify 2000-PROCESS for your workflow:
-
-```cobol
-2000-PROCESS.
-    PERFORM UNTIL INPUT-EOF
-        READ INPUT-FILE
-            AT END
-                SET INPUT-EOF TO TRUE
-            NOT AT END
-                PERFORM 2100-LOOKUP-VSAM
-                PERFORM 2200-UPDATE-RECORD
-                PERFORM 2300-WRITE-OUTPUT
-        END-READ
-    END-PERFORM
-    .
-```
-
-### 4. File Open Modes
-
-Adjust open modes as needed:
-
-| Operation | Open Mode |
-|-----------|-----------|
-| Read only | INPUT |
-| Write new | OUTPUT |
-| Read and update | I-O |
-| Append | EXTEND |
-
-## File Status Reference
+## File Status Codes Reference
 
 ### Common VSAM Status Codes
 
-| Status | Meaning |
-|--------|---------|
-| 00 | Successful completion |
-| 02 | Duplicate alternate key (non-unique) |
-| 10 | End of file |
-| 21 | Sequence error |
-| 22 | Duplicate primary key |
-| 23 | Record not found |
-| 24 | Key outside boundary |
-| 35 | File not found |
-| 39 | File attribute mismatch |
-| 41 | File already open |
-| 42 | File not open |
-| 46 | No current record (sequential read) |
-| 47 | Read not allowed (wrong open mode) |
-| 48 | Write not allowed (wrong open mode) |
-| 49 | Delete/Rewrite not allowed |
+| Status | Category | Description |
+|--------|----------|-------------|
+| 00 | Success | Operation completed successfully |
+| 02 | Success | Duplicate alternate key (non-unique) |
+| 10 | End | End of file reached |
+| 21 | Error | Sequence error on write |
+| 22 | Error | Duplicate primary key |
+| 23 | Error | Record not found |
+| 24 | Error | Boundary violation |
+| 35 | Error | File not found |
+| 39 | Error | File attributes conflict |
+| 41 | Error | File already open |
+| 42 | Error | File not open |
+| 46 | Error | No current record (sequential read) |
+| 47 | Error | File not open for input |
+| 48 | Error | File not open for output |
+| 49 | Error | Rewrite/Delete without prior read |
 
 ### Common Sequential Status Codes
 
-| Status | Meaning |
-|--------|---------|
-| 00 | Successful completion |
-| 04 | Record length mismatch |
-| 05 | File not present (optional file) |
-| 10 | End of file |
-| 30 | Permanent I/O error |
-| 34 | Disk full |
-| 35 | File not found |
-| 37 | Open mode not supported |
-| 41 | File already open |
-| 42 | File not open |
+| Status | Category | Description |
+|--------|----------|-------------|
+| 00 | Success | Operation completed successfully |
+| 10 | End | End of file reached |
+| 30 | Error | Permanent I/O error |
+| 34 | Error | Boundary violation (disk full) |
+| 35 | Error | File not found |
+| 37 | Error | Invalid open mode |
+| 41 | Error | File already open |
+| 42 | Error | File not open |
 
-## Technical Notes
+## Return Codes
 
-1. **DYNAMIC Access Mode**: Allows mixing random (READ KEY) and sequential (READ NEXT) operations on the same VSAM file without reopening.
+| Code | Description |
+|------|-------------|
+| 0 | Processing completed successfully |
+| 8 | File error occurred |
 
-2. **BLOCK CONTAINS 0**: Lets the system determine optimal blocking based on device and buffer characteristics.
+## Template Customization Points
 
-3. **RECORDING MODE F**: Specifies fixed-length records. Use V for variable-length.
+When using this template, customize the following:
 
-4. **LOW-VALUES for Key**: Moving LOW-VALUES to a key positions to the beginning of the file for sequential browsing.
+### Placeholder Paragraphs
 
-5. **File Status Best Practice**: Always define and check FILE STATUS for every file. This is essential for proper error handling.
+These paragraphs are referenced but not implemented:
 
-6. **INVALID KEY vs AT END**: Use INVALID KEY for keyed operations (READ KEY, WRITE, REWRITE, DELETE). Use AT END for sequential READ.
+| Paragraph | Purpose |
+|-----------|---------|
+| 2110-PROCESS-VSAM-RECORD | Process successfully read VSAM record |
+| 2310-PROCESS-INPUT-RECORD | Process successfully read input record |
 
-7. **Stub Paragraphs**: The template references 2110-PROCESS-VSAM-RECORD and 2310-PROCESS-INPUT-RECORD which must be implemented when customizing.
+### File Definitions
+
+Modify as needed:
+- Record layouts (VSAM-RECORD, INPUT-RECORD, OUTPUT-RECORD)
+- Record lengths
+- Key fields and positions
+- Additional files
+
+### Open Modes
+
+Adjust based on requirements:
+- VSAM-FILE: INPUT, OUTPUT, I-O, or EXTEND
+- Sequential files: INPUT, OUTPUT, I-O, or EXTEND
 
 ## JCL Example
 
 ```jcl
 //FILEHNDL EXEC PGM=FILEHNDL
-//STEPLIB  DD DSN=your.loadlib,DISP=SHR
-//VSAMFILE DD DSN=your.vsam.cluster,DISP=SHR
-//INFILE   DD DSN=your.input.file,DISP=SHR
-//OUTFILE  DD DSN=your.output.file,
-//            DISP=(NEW,CATLG,DELETE),
-//            SPACE=(TRK,(10,5)),
-//            DCB=(RECFM=FB,LRECL=80,BLKSIZE=0)
-//SYSOUT   DD SYSOUT=*
+//STEPLIB  DD  DSN=your.loadlib,DISP=SHR
+//VSAMFILE DD  DSN=your.vsam.cluster,DISP=SHR
+//INFILE   DD  DSN=your.input.file,DISP=SHR
+//OUTFILE  DD  DSN=your.output.file,
+//             DISP=(NEW,CATLG,DELETE),
+//             SPACE=(TRK,(10,5)),
+//             DCB=(RECFM=FB,LRECL=80,BLKSIZE=0)
+//SYSOUT   DD  SYSOUT=*
 ```
 
-## Related Templates
+## Code Patterns
 
-- **standard-program.cbl** - Basic COBOL program structure template
-- **db2-handling.cbl** - DB2 database access template
-- **error-handling.cbl** - Error handling patterns template
+### Pattern: VSAM Random Read with Status Check
+
+```cobol
+MOVE search-key TO VSAM-RECORD-KEY
+READ VSAM-FILE KEY IS VSAM-RECORD-KEY
+    INVALID KEY
+        EVALUATE TRUE
+            WHEN VSAM-NOT-FOUND
+                PERFORM not-found-processing
+            WHEN OTHER
+                PERFORM 9100-VSAM-ERROR
+        END-EVALUATE
+END-READ
+IF VSAM-SUCCESS
+    PERFORM process-record
+END-IF
+```
+
+### Pattern: VSAM Sequential Browse
+
+```cobol
+MOVE starting-key TO VSAM-RECORD-KEY
+START VSAM-FILE KEY >= VSAM-RECORD-KEY
+    INVALID KEY
+        PERFORM no-records-found
+END-START
+
+PERFORM UNTIL VSAM-EOF
+    READ VSAM-FILE NEXT RECORD
+        AT END
+            SET VSAM-EOF TO TRUE
+        NOT AT END
+            PERFORM process-record
+    END-READ
+END-PERFORM
+```
+
+### Pattern: VSAM Update (Read-Modify-Rewrite)
+
+```cobol
+MOVE search-key TO VSAM-RECORD-KEY
+READ VSAM-FILE KEY IS VSAM-RECORD-KEY
+    INVALID KEY
+        PERFORM 9100-VSAM-ERROR
+END-READ
+
+IF VSAM-SUCCESS
+    MOVE new-data TO VSAM-RECORD-DATA
+    REWRITE VSAM-RECORD
+        INVALID KEY
+            PERFORM 9100-VSAM-ERROR
+    END-REWRITE
+END-IF
+```
+
+### Pattern: Sequential File Copy
+
+```cobol
+PERFORM UNTIL INPUT-EOF
+    READ INPUT-FILE
+        AT END
+            SET INPUT-EOF TO TRUE
+        NOT AT END
+            MOVE INPUT-RECORD TO OUTPUT-RECORD
+            WRITE OUTPUT-RECORD
+    END-READ
+END-PERFORM
+```
+
+## Technical Notes
+
+- **ACCESS MODE DYNAMIC** on VSAM files enables both random (KEY IS) and sequential (NEXT RECORD) access in the same program
+- **BLOCK CONTAINS 0 RECORDS** allows the system to determine optimal blocking factor
+- **RECORDING MODE IS F** specifies fixed-length records for sequential files
+- The **INVALID KEY** phrase on VSAM operations catches all error conditions (status 21-49)
+- The **AT END** / **NOT AT END** phrases handle end-of-file detection for sequential reads
+- **LOW-VALUES** is used to position to the beginning of a VSAM file
+- File status is a 2-character field; always check both characters for complete error information
+- The template uses 88-level conditions for readable status checking instead of comparing literal values
+- Error handlers call 3000-TERMINATE before GOBACK to ensure proper file closure

@@ -1,18 +1,18 @@
 ---
 title: "ERRPROC"
-description: "Standard error processing subroutine that logs errors to a sequential file and displays formatted error messages"
+description: "Standard Error Processing Subroutine - callable service for logging and displaying errors"
 ---
 
 ## Overview
 
-ERRPROC is a reusable subroutine that provides centralized error handling for the portfolio management system. The program accepts error information through a linkage section parameter, formats it into a standard error message structure, writes it to a sequential error log file, and displays the error information to the system console.
+ERRPROC is a reusable subroutine that provides centralized error processing services. It accepts error information from calling programs through the linkage section, logs the error to a sequential error log file, and displays formatted error information to the system console.
 
-This program serves as the standard error logging mechanism across the application, ensuring consistent error recording and display formatting. By centralizing error processing in a single subroutine, the system achieves:
+The program serves as a standardized error handling service that can be called by any application program needing to:
+- Log errors to a persistent error log file
+- Display formatted error messages to operators
+- Maintain consistent error categorization and severity levels
 
-- **Consistent Error Formatting**: All errors follow the same structure and display format
-- **Centralized Logging**: All errors are written to a single error log file for easy monitoring
-- **Severity Tracking**: Error severity levels are captured and returned to calling programs
-- **Audit Trail**: Timestamped error records support troubleshooting and compliance requirements
+By centralizing error processing in a single subroutine, the system ensures consistent error handling, logging formats, and severity code management across all applications.
 
 ## Program Structure
 
@@ -22,98 +22,117 @@ graph TD
     B --> C[1000-INITIALIZE]
     B --> D[2000-PROCESS-ERROR]
     B --> E[3000-TERMINATE]
+    B --> F[GOBACK]
     
-    C -->|Get timestamp| F[ACCEPT TIME STAMP]
-    C -->|Open file| G[OPEN EXTEND ERROR-LOG]
+    C --> C1[INITIALIZE WS-WORK-AREAS]
+    C --> C2[ACCEPT TIME STAMP]
+    C --> C3[OPEN EXTEND ERROR-LOG]
     
-    D -->|Format message| H[Move fields to ERR-MESSAGE]
-    D --> I[2100-WRITE-LOG]
-    D --> J[2200-DISPLAY-ERROR]
-    D -->|Set return code| K[MOVE LS-SEVERITY TO LS-RETURN-CODE]
+    D --> D1[Build ERR-MESSAGE from linkage]
+    D --> D2[2100-WRITE-LOG]
+    D --> D3[2200-DISPLAY-ERROR]
+    D --> D4[Set LS-RETURN-CODE]
     
-    I -->|Write| L[WRITE ERROR-LOG-RECORD]
-    J -->|Console| M[DISPLAY error info]
+    D2 --> D2A[MOVE ERR-MESSAGE TO LOG-DATA]
+    D2 --> D2B[WRITE ERROR-LOG-RECORD]
     
-    E --> N[CLOSE ERROR-LOG]
+    D3 --> D3A[DISPLAY formatted error]
     
-    subgraph "Error Log"
-        O[(ERROR-LOG)]
+    E --> E1[CLOSE ERROR-LOG]
+    
+    subgraph "ERROR-LOG (Sequential)"
+        G[ERROR-LOG-RECORD]
     end
     
-    L -.->|Append| O
+    D2B -->|Write| G
 ```
 
 ## Data Structures
 
 ### Working Storage
 
-#### WS-WORK-AREAS
+#### Work Areas
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
 | 01 | WS-WORK-AREAS | - | Working storage group |
 | 05 | WS-LOG-STATUS | X(2) | File status code for ERROR-LOG |
-| 05 | WS-FORMATTED-TIME | X(26) | System timestamp in formatted form |
+| 05 | WS-FORMATTED-TIME | X(26) | Formatted timestamp from system |
 
-#### ERR-MESSAGE (from ERRHAND copybook)
+#### Error Categories (from ERRHAND copybook)
+
+| Level | Name | Picture | Value | Description |
+|-------|------|---------|-------|-------------|
+| 01 | ERR-CATEGORIES | - | - | Category code constants |
+| 05 | ERR-CAT-VSAM | X(2) | `'VS'` | VSAM file error |
+| 05 | ERR-CAT-VALID | X(2) | `'VL'` | Validation error |
+| 05 | ERR-CAT-PROC | X(2) | `'PR'` | Processing error |
+| 05 | ERR-CAT-SYSTEM | X(2) | `'SY'` | System error |
+
+#### Standard Return Codes (from ERRHAND copybook)
+
+| Level | Name | Picture | Value | Description |
+|-------|------|---------|-------|-------------|
+| 01 | ERR-RETURN-CODES | - | - | Standard return code constants |
+| 05 | ERR-SUCCESS | S9(4) COMP | +0 | Successful completion |
+| 05 | ERR-WARNING | S9(4) COMP | +4 | Warning condition |
+| 05 | ERR-ERROR | S9(4) COMP | +8 | Error condition |
+| 05 | ERR-SEVERE | S9(4) COMP | +12 | Severe error |
+| 05 | ERR-TERMINAL | S9(4) COMP | +16 | Terminal/fatal error |
+
+#### Error Message Structure (from ERRHAND copybook)
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | ERR-MESSAGE | - | Standard error message structure |
-| 05 | ERR-TIMESTAMP | - | Error timestamp group |
+| 01 | ERR-MESSAGE | - | Error message work area |
+| 05 | ERR-TIMESTAMP | X(18) | Timestamp group |
 | 10 | ERR-DATE | X(10) | Error date |
 | 10 | ERR-TIME | X(8) | Error time |
-| 05 | ERR-PROGRAM | X(8) | Program name |
+| 05 | ERR-PROGRAM | X(8) | Source program name |
 | 05 | ERR-CATEGORY | X(2) | Error category code |
-| 05 | ERR-CODE | X(4) | Specific error code |
+| 05 | ERR-CODE | X(4) | Application error code |
 | 05 | ERR-SEVERITY | S9(4) COMP | Severity level |
 | 05 | ERR-TEXT | X(80) | Error message text |
 | 05 | ERR-DETAILS | X(256) | Extended error details |
 
-### File Section
+#### VSAM Status Handling (from ERRHAND copybook)
 
-#### ERROR-LOG-RECORD
+| Level | Name | Picture | Value | Description |
+|-------|------|---------|-------|-------------|
+| 01 | ERR-VSAM-STATUSES | - | - | VSAM status code constants |
+| 05 | ERR-VSAM-SUCCESS | X(2) | `'00'` | Successful operation |
+| 05 | ERR-VSAM-DUPKEY | X(2) | `'22'` | Duplicate key |
+| 05 | ERR-VSAM-NOTFND | X(2) | `'23'` | Record not found |
+| 05 | ERR-VSAM-EOF | X(2) | `'10'` | End of file |
 
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 01 | ERROR-LOG-RECORD | - | Error log file record |
-| 05 | LOG-DATA | X(400) | Error message data area |
+| Level | Name | Picture | Value | Description |
+|-------|------|---------|-------|-------------|
+| 01 | ERR-VSAM-MSGS | - | - | VSAM error message texts |
+| 05 | ERR-VSAM-22 | X(80) | `'Duplicate record key'` | Message for status 22 |
+| 05 | ERR-VSAM-23 | X(80) | `'Record not found'` | Message for status 23 |
+| 05 | ERR-OTHER | X(80) | `'Unexpected VSAM error'` | Generic VSAM error |
 
 ### Linkage Section
 
-The program receives error information through a single parameter structure:
-
-#### LS-ERROR-REQUEST
+The `LS-ERROR-REQUEST` structure is passed by calling programs:
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | LS-ERROR-REQUEST | - | Error request structure |
+| 01 | LS-ERROR-REQUEST | - | Error request input/output structure |
 | 05 | LS-PROGRAM-ID | X(8) | Calling program name |
 | 05 | LS-CATEGORY | X(2) | Error category code |
-| 05 | LS-ERROR-CODE | X(4) | Specific error code |
-| 05 | LS-SEVERITY | S9(4) COMP | Error severity level |
+| 05 | LS-ERROR-CODE | X(4) | Application-specific error code |
+| 05 | LS-SEVERITY | S9(4) COMP | Severity level (input) |
 | 05 | LS-ERROR-TEXT | X(80) | Error message text |
 | 05 | LS-ERROR-DETAILS | X(256) | Extended error details |
 | 05 | LS-RETURN-CODE | S9(4) COMP | Return code (output) |
 
-### Error Categories (from ERRHAND copybook)
+### File Section
 
-| Code | Constant | Description |
-|------|----------|-------------|
-| VS | ERR-CAT-VSAM | VSAM file error |
-| VL | ERR-CAT-VALID | Validation error |
-| PR | ERR-CAT-PROC | Processing error |
-| SY | ERR-CAT-SYSTEM | System error |
-
-### Standard Severity Levels (from ERRHAND copybook)
-
-| Value | Constant | Description |
-|-------|----------|-------------|
-| 0 | ERR-SUCCESS | Success (no error) |
-| 4 | ERR-WARNING | Warning condition |
-| 8 | ERR-ERROR | Error condition |
-| 12 | ERR-SEVERE | Severe error |
-| 16 | ERR-TERMINAL | Terminal error |
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 01 | ERROR-LOG-RECORD | - | Error log file record |
+| 05 | LOG-DATA | X(400) | Error log data area |
 
 ## File I/O
 
@@ -121,75 +140,62 @@ The program receives error information through a single parameter structure:
 
 | Property | Value |
 |----------|-------|
-| Assign To | ERRLOG |
-| Organization | Sequential |
-| Recording Mode | Fixed (F) |
-| Block Contains | 0 (system-determined) |
-| Record Length | 400 characters |
-| Access Mode | Sequential |
-| Open Mode | EXTEND (append) |
+| DD Name | ERRLOG |
+| Organization | SEQUENTIAL |
+| Recording Mode | F (Fixed) |
+| Record Length | 400 bytes |
+| Access Mode | EXTEND (append) |
 | File Status | WS-LOG-STATUS |
 
-The error log file is opened in EXTEND mode, ensuring that new error records are appended to the existing log without overwriting historical data. This preserves the complete error history for troubleshooting and audit purposes.
+The error log file is opened in EXTEND mode, which positions the file pointer at the end so new records are appended rather than overwriting existing records. This preserves the complete error history.
 
-### I/O Operations Summary
+### File Operations
 
 | Paragraph | Operation | Description |
 |-----------|-----------|-------------|
 | 1000-INITIALIZE | OPEN EXTEND | Opens file for appending |
-| 2100-WRITE-LOG | WRITE ERROR-LOG-RECORD | Writes formatted error record |
+| 2100-WRITE-LOG | WRITE | Writes the error log record |
 | 3000-TERMINATE | CLOSE | Closes the error log file |
 
 ## Control Flow
 
 ### 0000-MAIN
 
-Entry point that orchestrates the three processing phases in sequence:
-1. Initialize (clear work areas, get timestamp, open file)
-2. Process error (format message, write log, display)
-3. Terminate (close file)
-
-Returns to the calling program via GOBACK after processing completes.
+The main entry point that orchestrates the three processing phases:
+1. Initialize - Set up work areas, get timestamp, open file
+2. Process - Build error message, write to log, display to console
+3. Terminate - Close the file
+4. Return to caller via GOBACK
 
 ### 1000-INITIALIZE
 
-1. **Initialize Work Areas**: Clears WS-WORK-AREAS using the INITIALIZE statement.
-
-2. **Capture Timestamp**: Uses `ACCEPT WS-FORMATTED-TIME FROM TIME STAMP` to get the current system timestamp for the error record.
-
-3. **Open Error Log**: Opens ERROR-LOG in EXTEND mode. If the open fails, displays an error message but continues processing (the error will still be displayed to the console).
+Performs startup activities:
+1. **INITIALIZE WS-WORK-AREAS**: Clears working storage fields
+2. **ACCEPT WS-FORMATTED-TIME FROM TIME STAMP**: Retrieves the current system timestamp in ISO format (26 characters)
+3. **OPEN EXTEND ERROR-LOG**: Opens the error log file in extend mode for appending
+4. **Error Check**: If file open fails, displays error message with status code (but continues processing)
 
 ### 2000-PROCESS-ERROR
 
-Formats the error message and coordinates logging and display:
-
-1. **Build Error Message**: Maps linkage section fields to the ERR-MESSAGE structure from the ERRHAND copybook:
-   - WS-FORMATTED-TIME → ERR-TIMESTAMP
-   - LS-PROGRAM-ID → ERR-PROGRAM
-   - LS-CATEGORY → ERR-CATEGORY
-   - LS-ERROR-CODE → ERR-CODE
-   - LS-SEVERITY → ERR-SEVERITY
-   - LS-ERROR-TEXT → ERR-TEXT
-   - LS-ERROR-DETAILS → ERR-DETAILS
-
-2. **Write to Log**: Performs 2100-WRITE-LOG to write the error to the log file.
-
-3. **Display Error**: Performs 2200-DISPLAY-ERROR to show the error on the console.
-
-4. **Set Return Code**: Copies LS-SEVERITY to LS-RETURN-CODE to communicate the error severity back to the calling program.
+Builds and processes the error message:
+1. **Build ERR-MESSAGE**: Moves data from linkage section to the ERR-MESSAGE structure:
+   - Timestamp from working storage
+   - Program ID, category, error code, severity from linkage
+   - Error text and details from linkage
+2. **PERFORM 2100-WRITE-LOG**: Writes the error to the log file
+3. **PERFORM 2200-DISPLAY-ERROR**: Displays the error to the console
+4. **Set return code**: Copies the severity level to LS-RETURN-CODE
 
 ### 2100-WRITE-LOG
 
-1. **Format Record**: Moves ERR-MESSAGE to LOG-DATA in the file record.
-
-2. **Write Record**: Writes ERROR-LOG-RECORD to the file.
-
-3. **Error Handling**: If the write fails, displays an error message with the file status code.
+Writes the error record to the log file:
+1. **MOVE ERR-MESSAGE TO LOG-DATA**: Copies the formatted error message to the file record
+2. **WRITE ERROR-LOG-RECORD**: Writes the record to the file
+3. **Error Check**: If write fails, displays error message with status code
 
 ### 2200-DISPLAY-ERROR
 
-Displays a formatted error message to the system console with clear visual separators:
-
+Displays a formatted error message to the system console (SYSOUT):
 ```
 ====================================================
 ERROR DETECTED: [timestamp]
@@ -204,108 +210,133 @@ DETAILS:       [error-details]
 
 ### 3000-TERMINATE
 
-Closes the ERROR-LOG file.
+Closes the error log file.
+
+## Usage Example
+
+Calling programs should use ERRPROC as follows:
+
+```cobol
+WORKING-STORAGE SECTION.
+    COPY ERRHAND.
+    
+01  WS-ERROR-REQUEST.
+    05  WS-PROGRAM-ID      PIC X(8).
+    05  WS-CATEGORY        PIC X(2).
+    05  WS-ERROR-CODE      PIC X(4).
+    05  WS-SEVERITY        PIC S9(4) COMP.
+    05  WS-ERROR-TEXT      PIC X(80).
+    05  WS-ERROR-DETAILS   PIC X(256).
+    05  WS-RETURN-CODE     PIC S9(4) COMP.
+
+PROCEDURE DIVISION.
+    ...
+    * Log a VSAM error
+    MOVE 'PORTMSTR' TO WS-PROGRAM-ID
+    MOVE ERR-CAT-VSAM TO WS-CATEGORY
+    MOVE '0023' TO WS-ERROR-CODE
+    MOVE ERR-ERROR TO WS-SEVERITY
+    MOVE 'Portfolio record not found' TO WS-ERROR-TEXT
+    MOVE 'Key: PORT001, File: PORTFILE, Status: 23'
+      TO WS-ERROR-DETAILS
+    
+    CALL 'ERRPROC' USING WS-ERROR-REQUEST
+    
+    * Check return code (will match severity passed in)
+    IF WS-RETURN-CODE >= ERR-SEVERE
+        PERFORM ERROR-ABORT-PROCESSING
+    END-IF
+    ...
+```
+
+## Console Output Example
+
+When ERRPROC is called, it displays output like this:
+
+```
+====================================================
+ERROR DETECTED: 2024-03-20-14.35.22.123456
+PROGRAM:       PORTMSTR
+CATEGORY:      VS
+CODE:          0023
+SEVERITY:      +0008
+MESSAGE:       Portfolio record not found
+DETAILS:       Key: PORT001, File: PORTFILE, Status: 23
+====================================================
+```
 
 ## Dependencies
 
 ### Copybooks
 
-- [ERRHAND](/docs/copybooks/ERRHAND) - Standard error handling definitions including ERR-MESSAGE structure, error categories, and severity constants
+- **ERRHAND** - Standard error handling definitions including:
+  - Error category codes (VSAM, validation, processing, system)
+  - Standard return codes (0, 4, 8, 12, 16)
+  - Error message structure
+  - VSAM status codes and messages
 
 ### Called Programs
 
-This program does not call any external programs.
-
-### Calling Programs
-
-ERRPROC is designed to be called as a subroutine by any program requiring error logging:
-
-```cobol
-CALL 'ERRPROC' USING LS-ERROR-REQUEST
-```
+None - ERRPROC is a leaf-level service module.
 
 ### Related Programs
 
-Programs that share the ERRHAND copybook and may call ERRPROC:
-- [BCHCTL00](/docs/programs/BCHCTL00), [HISTLD00](/docs/programs/HISTLD00), [PRCSEQ00](/docs/programs/PRCSEQ00), [RCVPRC00](/docs/programs/RCVPRC00) - Batch processing programs
-- [RPTAUD00](/docs/programs/RPTAUD00), [RPTPOS00](/docs/programs/RPTPOS00), [RPTSTA00](/docs/programs/RPTSTA00) - Report generation programs
-- [DB2CMT](/docs/programs/DB2CMT), [DB2CONN](/docs/programs/DB2CONN), [DB2ERR](/docs/programs/DB2ERR), [DB2STAT](/docs/programs/DB2STAT) - Database utility programs
-- [PORTTEST](/docs/programs/PORTTEST), [PORTTRAN](/docs/programs/PORTTRAN) - Portfolio processing programs
-- [TSTGEN00](/docs/programs/TSTGEN00), [TSTVAL00](/docs/programs/TSTVAL00) - Test programs
-- [UTLMNT00](/docs/programs/UTLMNT00), [UTLMON00](/docs/programs/UTLMON00), [UTLVAL00](/docs/programs/UTLVAL00) - Utility programs
+- **RPTAUD00** - May read error log files for reporting purposes
+- **AUDPROC** - Companion audit logging service
+
+Any program that needs to log errors will call ERRPROC. Programs using the ERRHAND copybook are potential callers.
 
 ## Return Codes
 
-The return code is set to the same value as the input severity level:
+The return code is set to match the input severity level:
 
-| Code | Description |
-|------|-------------|
-| 0 | Success (informational logging) |
-| 4 | Warning condition logged |
-| 8 | Error condition logged |
-| 12 | Severe error logged |
-| 16 | Terminal error logged |
-
-## Usage Example
-
-```cobol
-       WORKING-STORAGE SECTION.
-       01  WS-ERROR-REQUEST.
-           05  WS-PROGRAM-ID      PIC X(8).
-           05  WS-CATEGORY        PIC X(2).
-           05  WS-ERROR-CODE      PIC X(4).
-           05  WS-SEVERITY        PIC S9(4) COMP.
-           05  WS-ERROR-TEXT      PIC X(80).
-           05  WS-ERROR-DETAILS   PIC X(256).
-           05  WS-RETURN-CODE     PIC S9(4) COMP.
-       
-       PROCEDURE DIVISION.
-           * Log a VSAM file error
-           MOVE 'MYPROGRAM'      TO WS-PROGRAM-ID
-           MOVE 'VS'             TO WS-CATEGORY
-           MOVE '0023'           TO WS-ERROR-CODE
-           MOVE 8                TO WS-SEVERITY
-           MOVE 'Record not found in master file' 
-                                 TO WS-ERROR-TEXT
-           MOVE 'Key value: ACCT12345, File: CUSTMAST'
-                                 TO WS-ERROR-DETAILS
-           
-           CALL 'ERRPROC' USING WS-ERROR-REQUEST
-           
-           IF WS-RETURN-CODE >= 8
-               PERFORM ERROR-RECOVERY
-           END-IF.
-```
-
-## Console Output Example
-
-When ERRPROC processes an error, the following output is displayed:
-
-```
-====================================================
-ERROR DETECTED: 2024-03-20-14.30.45.123456
-PROGRAM:       MYPROGRAM
-CATEGORY:      VS
-CODE:          0023
-SEVERITY:      +0008
-MESSAGE:       Record not found in master file
-DETAILS:       Key value: ACCT12345, File: CUSTMAST
-====================================================
-```
+| Input Severity | Return Code | Meaning |
+|----------------|-------------|---------|
+| 0 | 0 | Information/Success |
+| 4 | 4 | Warning |
+| 8 | 8 | Error |
+| 12 | 12 | Severe error |
+| 16 | 16 | Terminal/Fatal error |
 
 ## Technical Notes
 
-### ACCEPT FROM TIME STAMP
+### COBOL Constructs Used
 
-The `ACCEPT FROM TIME STAMP` statement retrieves the current system date and time in a 26-character format (typically `YYYY-MM-DD-HH.MM.SS.NNNNNN`). This provides microsecond precision for error log chronological ordering.
+- **ACCEPT FROM TIME STAMP**: An IBM extension that retrieves the current system timestamp in a 26-character ISO format (`YYYY-MM-DD-HH.MM.SS.FFFFFF`). This provides microsecond precision for error timestamps.
 
-### OPEN EXTEND Mode
+- **OPEN EXTEND**: Opens a sequential file for output, positioning at the end of existing data. New records are appended rather than overwriting. Essential for error logs where historical records must be preserved.
 
-Opening a sequential file in EXTEND mode positions the file at the end for writing, preserving all existing records. This is essential for error log integrity, ensuring that:
-- New error records are always appended
-- Historical error data is never overwritten
-- Multiple program invocations can write to the same error log
+- **INITIALIZE**: Sets all elementary items in a group to their default values (spaces for alphanumeric, zeros for numeric). Used here to clear working storage before use.
 
-### Error Recovery Strategy
+- **DISPLAY**: Writes output to SYSOUT (typically the job log or console). Multiple DISPLAY statements create the formatted error output visible to operators.
 
-If the error log file cannot be opened or written to, ERRPROC continues processing and displays the error to the console. This ensures that error information is still visible even if logging fails, following a "fail-safe" approach to error handling.
+- **PROCEDURE DIVISION USING**: Defines the linkage section parameter that the program receives when called. The calling program passes LS-ERROR-REQUEST by reference.
+
+- **GOBACK**: Returns control to the calling program while preserving the run unit.
+
+### Configuration Section
+
+The program specifies IBM z/OS as both source and object computer:
+```cobol
+SOURCE-COMPUTER. IBM-ZOS.
+OBJECT-COMPUTER. IBM-ZOS.
+```
+
+### Error Category Usage
+
+| Category | Code | Use For |
+|----------|------|---------|
+| VSAM | `'VS'` | File I/O errors, status codes |
+| Validation | `'VL'` | Data validation failures |
+| Processing | `'PR'` | Business logic errors |
+| System | `'SY'` | System-level errors, resources |
+
+### Severity Level Guidelines
+
+| Severity | When to Use |
+|----------|-------------|
+| 0 (Success) | Informational logging only |
+| 4 (Warning) | Recoverable issues, processing continues |
+| 8 (Error) | Significant issue, may affect results |
+| 12 (Severe) | Critical issue, recommend stopping |
+| 16 (Terminal) | Fatal error, must abort processing |

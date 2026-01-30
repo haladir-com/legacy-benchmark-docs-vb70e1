@@ -1,24 +1,21 @@
 ---
 title: "ERRHANDL"
-description: "Template for standard error handling patterns - provides reusable code patterns for warning, error, severe, and abend scenarios"
+description: "Template for Standard Error Handling Patterns - Demonstrates warning, error, severe, and abend handling techniques"
 ---
-
-:::info Template Program
-This is a **template program** designed to demonstrate standard error handling patterns. It is not intended to be executed directly but rather to be used as a reference when implementing error handling in new COBOL programs. Copy and adapt the relevant paragraphs to your specific needs.
-:::
 
 ## Overview
 
-ERRHANDL is a template program that provides standardized error handling patterns for COBOL batch programs. It demonstrates best practices for handling different severity levels of errors: warnings, errors, severe errors, and unrecoverable conditions requiring abnormal termination (abend).
+ERRHANDL is a template program that demonstrates standard error handling patterns for COBOL applications on IBM z/OS. It provides a reference implementation showing how to properly handle different severity levels of errors, from warnings through critical abends.
 
-The template establishes a consistent approach to error management that includes:
-- Standard return code constants aligned with mainframe conventions (0, 4, 8, 12, 16)
-- Error counting and tracking by severity level
-- A structured error message format for logging
-- Hierarchical final return code determination based on highest severity encountered
-- Controlled abend initiation for unrecoverable situations
+This program is not intended to be executed directly in production but serves as a coding template and educational resource. Developers can copy these patterns into their own programs to ensure consistent error handling across the application suite.
 
-By using this template as a starting point, developers ensure consistent error handling behavior across the application portfolio.
+Key patterns demonstrated:
+- **Warning Handling**: Non-critical issues that allow processing to continue
+- **Error Handling**: Significant problems that may affect results but don't stop processing
+- **Severe Handling**: Major errors that compromise processing integrity
+- **Abend Handling**: Unrecoverable conditions requiring controlled program termination
+
+The template also shows how to track error counts by severity and determine an appropriate final return code based on the worst condition encountered.
 
 ## Program Structure
 
@@ -27,55 +24,48 @@ graph TD
     A[0000-MAIN] --> B[1000-INITIALIZE]
     A --> C[2000-PROCESS]
     A --> D[3000-TERMINATE]
-    A --> E[GOBACK]
+    D --> E[8000-CHECK-FINAL-STATUS]
     
-    B --> B1[Initialize Error Flags]
-    B --> B2[Initialize Error Counts]
-    B --> B3[Set NO-ERROR]
-    B --> B4[Set NO-ABEND]
+    C --> F[8010-HANDLE-WARNING]
+    C --> G[8020-HANDLE-ERROR]
+    C --> H[8030-HANDLE-SEVERE]
+    C --> I[8040-HANDLE-ABEND]
     
-    C --> C1[8010-HANDLE-WARNING]
-    C --> C2[8020-HANDLE-ERROR]
-    C --> C3[8030-HANDLE-SEVERE]
-    C --> C4[8040-HANDLE-ABEND]
+    F --> J[8100-LOG-ERROR]
+    G --> J
+    H --> J
+    I --> J
+    I --> K[8500-INITIATE-ABEND]
     
-    C1 --> L[8100-LOG-ERROR]
-    C2 --> L
-    C3 --> L
-    C4 --> L
-    C4 --> AB[8500-INITIATE-ABEND]
-    AB --> AB1[CALL CEE3ABD]
+    K --> L[CALL CEE3ABD]
     
-    D --> D1[8000-CHECK-FINAL-STATUS]
-    D1 --> D2{Severe Count > 0?}
-    D2 -->|Yes| D3[RC = 12]
-    D2 -->|No| D4{Error Count > 0?}
-    D4 -->|Yes| D5[RC = 8]
-    D4 -->|No| D6{Warning Count > 0?}
-    D6 -->|Yes| D7[RC = 4]
-    D6 -->|No| D8[RC = 0]
+    E --> M{Severe Count > 0?}
+    M -->|Yes| N[RC = 12]
+    M -->|No| O{Error Count > 0?}
+    O -->|Yes| P[RC = 8]
+    O -->|No| Q{Warning Count > 0?}
+    Q -->|Yes| R[RC = 4]
+    Q -->|No| S[RC = 0]
 ```
 
 ## Data Structures
 
-### Return Code Constants
+### Standard Return Codes
 
 | Level | Name | Picture | Value | Description |
 |-------|------|---------|-------|-------------|
-| 01 | WS-RETURN-CODES | - | - | Standard return code values |
 | 05 | RC-SUCCESS | S9(4) COMP | +0 | Successful completion |
-| 05 | RC-WARNING | S9(4) COMP | +4 | Warning condition |
-| 05 | RC-ERROR | S9(4) COMP | +8 | Error condition |
-| 05 | RC-SEVERE | S9(4) COMP | +12 | Severe error |
+| 05 | RC-WARNING | S9(4) COMP | +4 | Warning conditions occurred |
+| 05 | RC-ERROR | S9(4) COMP | +8 | Error conditions occurred |
+| 05 | RC-SEVERE | S9(4) COMP | +12 | Severe errors occurred |
 | 05 | RC-CRITICAL | S9(4) COMP | +16 | Critical/abend condition |
 
 ### Error Message Structure
 
 | Level | Name | Picture | Value | Description |
 |-------|------|---------|-------|-------------|
-| 01 | WS-ERROR-MSG | - | - | Formatted error message |
-| 05 | WS-ERROR-PREFIX | X(8) | 'ERH' | Program/module prefix |
-| 05 | WS-ERROR-NUMBER | 9(4) | ZEROS | Error number |
+| 05 | WS-ERROR-PREFIX | X(8) | 'ERH' | Program/error prefix identifier |
+| 05 | WS-ERROR-NUMBER | 9(4) | ZEROS | Numeric error code |
 | 05 | FILLER | X | '-' | Separator |
 | 05 | WS-ERROR-TEXT | X(50) | SPACES | Error description |
 | 05 | FILLER | X | SPACES | Separator |
@@ -83,259 +73,261 @@ graph TD
 
 ### Error Tracking Flags
 
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 01 | WS-ERROR-FLAGS | - | Error state flags |
-| 05 | WS-PROCESSING-ERROR | X | Error occurred indicator |
-| - | NO-ERROR | 88 ('N') | No error has occurred |
-| - | ERROR-OCCURRED | 88 ('Y') | An error has occurred |
-| 05 | WS-ABEND-FLAG | X | Abend required indicator |
-| - | PERFORM-ABEND | 88 ('Y') | Abend should be initiated |
-| - | NO-ABEND | 88 ('N') | Normal termination |
+| Level | Name | Picture | 88-Levels | Description |
+|-------|------|---------|-----------|-------------|
+| 05 | WS-PROCESSING-ERROR | X | NO-ERROR='N', ERROR-OCCURRED='Y' | Error occurred indicator |
+| 05 | WS-ABEND-FLAG | X | PERFORM-ABEND='Y', NO-ABEND='N' | Abend required indicator |
 
 ### Error Counts
 
 | Level | Name | Picture | Value | Description |
 |-------|------|---------|-------|-------------|
-| 01 | WS-ERROR-COUNTS | - | - | Error counters by severity |
-| 05 | WS-WARNING-COUNT | S9(4) COMP | ZEROS | Count of warnings |
-| 05 | WS-ERROR-COUNT | S9(4) COMP | ZEROS | Count of errors |
-| 05 | WS-SEVERE-COUNT | S9(4) COMP | ZEROS | Count of severe errors |
+| 05 | WS-WARNING-COUNT | S9(4) COMP | ZEROS | Count of warning conditions |
+| 05 | WS-ERROR-COUNT | S9(4) COMP | ZEROS | Count of error conditions |
+| 05 | WS-SEVERE-COUNT | S9(4) COMP | ZEROS | Count of severe conditions |
 
 ### Predefined Error Messages
 
-| Level | Name | Message Text |
-|-------|------|--------------|
-| 05 | ERR-001 | 'INVALID INPUT PARAMETER RECEIVED' |
-| 05 | ERR-002 | 'REQUIRED FIELD IS MISSING' |
-| 05 | ERR-003 | 'FILE OPERATION FAILED' |
+| Name | Code | Message |
+|------|------|---------|
+| ERR-001 | 1 | INVALID INPUT PARAMETER RECEIVED |
+| ERR-002 | 2 | REQUIRED FIELD IS MISSING |
+| ERR-003 | 3 | FILE OPERATION FAILED |
 
 ## Control Flow
 
-### 0000-MAIN - Main Entry Point
+### 0000-MAIN
 
-Orchestrates the standard program flow:
-1. Calls 1000-INITIALIZE for setup
-2. Calls 2000-PROCESS for main processing (demonstrates error handling)
-3. Calls 3000-TERMINATE for cleanup and final return code
+Main control paragraph demonstrating standard program structure:
+1. Performs 1000-INITIALIZE to set up error tracking
+2. Performs 2000-PROCESS to demonstrate error scenarios
+3. Performs 3000-TERMINATE to set final return code
 4. Returns via GOBACK
 
-### 1000-INITIALIZE - Initialization
+### 1000-INITIALIZE
 
-Prepares error handling structures:
-1. Initializes WS-ERROR-FLAGS and WS-ERROR-COUNTS to default values
-2. Sets NO-ERROR to TRUE (no errors yet)
-3. Sets NO-ABEND to TRUE (normal termination expected)
+Initializes error handling structures:
+1. Initializes WS-ERROR-FLAGS and WS-ERROR-COUNTS to starting values
+2. Sets NO-ERROR flag to TRUE
+3. Sets NO-ABEND flag to TRUE
 
-### 2000-PROCESS - Processing Examples
+### 2000-PROCESS
 
 Demonstrates all four error handling patterns:
-1. Calls 8010-HANDLE-WARNING (warning example)
-2. Calls 8020-HANDLE-ERROR (error example)
-3. Calls 8030-HANDLE-SEVERE (severe error example)
-4. Calls 8040-HANDLE-ABEND (abend example)
+1. Calls 8010-HANDLE-WARNING for warning example
+2. Calls 8020-HANDLE-ERROR for error example
+3. Calls 8030-HANDLE-SEVERE for severe example
+4. Calls 8040-HANDLE-ABEND for abend example
 
-:::note Template Usage
-In actual programs, these PERFORM statements would be conditionally executed based on the processing logic, not called sequentially as shown here.
+:::note
+In production code, these would be conditionally invoked based on actual error conditions, not called sequentially.
 :::
 
-### 3000-TERMINATE - Termination
+### 3000-TERMINATE
 
-Finalizes program execution:
-1. Calls 8000-CHECK-FINAL-STATUS to set the appropriate return code
+Performs final status determination:
+1. Calls 8000-CHECK-FINAL-STATUS to set appropriate return code
 
-## Error Handling Patterns
+### 8000-CHECK-FINAL-STATUS
 
-### 8000-CHECK-FINAL-STATUS - Return Code Determination
-
-Determines the final return code based on the highest severity encountered:
+Determines final return code using hierarchical severity checking:
 
 ```
 IF WS-SEVERE-COUNT > ZERO
-    MOVE RC-SEVERE TO RETURN-CODE      (12)
+    RETURN-CODE = 12 (RC-SEVERE)
 ELSE IF WS-ERROR-COUNT > ZERO
-    MOVE RC-ERROR TO RETURN-CODE       (8)
+    RETURN-CODE = 8 (RC-ERROR)
 ELSE IF WS-WARNING-COUNT > ZERO
-    MOVE RC-WARNING TO RETURN-CODE     (4)
+    RETURN-CODE = 4 (RC-WARNING)
 ELSE
-    MOVE RC-SUCCESS TO RETURN-CODE     (0)
+    RETURN-CODE = 0 (RC-SUCCESS)
 ```
 
-This hierarchical approach ensures the return code reflects the worst condition encountered during processing.
+This ensures the return code reflects the most severe condition encountered.
 
-### 8010-HANDLE-WARNING - Warning Pattern
+### 8010-HANDLE-WARNING
 
-Handles recoverable warning conditions:
+Pattern for handling warning conditions:
 1. Increments WS-WARNING-COUNT
 2. Sets WS-ERROR-SEVERITY to 'WARNING'
-3. Sets error number and message
-4. Calls 8100-LOG-ERROR to record the warning
-5. **Processing continues** after a warning
+3. Sets error number and text
+4. Calls 8100-LOG-ERROR to output message
 
-**When to use**: Data quality issues that don't prevent processing, optional fields missing, minor validation failures.
+**Use Case**: Data quality issues, soft validation failures, deprecated feature usage.
 
-### 8020-HANDLE-ERROR - Error Pattern
+### 8020-HANDLE-ERROR
 
-Handles significant errors:
+Pattern for handling error conditions:
 1. Increments WS-ERROR-COUNT
 2. Sets ERROR-OCCURRED flag to TRUE
 3. Sets WS-ERROR-SEVERITY to 'ERROR'
-4. Sets error number and message
-5. Calls 8100-LOG-ERROR to record the error
-6. **Processing may continue** but final RC will be non-zero
+4. Sets error number and text
+5. Calls 8100-LOG-ERROR to output message
 
-**When to use**: Business rule violations, data validation failures, expected exceptions.
+**Use Case**: Record validation failures, missing required data, business rule violations.
 
-### 8030-HANDLE-SEVERE - Severe Error Pattern
+### 8030-HANDLE-SEVERE
 
-Handles critical errors:
+Pattern for handling severe errors:
 1. Increments WS-SEVERE-COUNT
 2. Sets ERROR-OCCURRED flag to TRUE
 3. Sets WS-ERROR-SEVERITY to 'SEVERE'
-4. Sets error number and message
-5. Calls 8100-LOG-ERROR to record the error
-6. **Consider stopping processing** when severe errors occur
+4. Sets error number and text
+5. Calls 8100-LOG-ERROR to output message
 
-**When to use**: File access failures, database errors, system resource issues.
+**Use Case**: File I/O failures, database errors, resource exhaustion.
 
-### 8040-HANDLE-ABEND - Abend Pattern
+### 8040-HANDLE-ABEND
 
-Handles unrecoverable conditions requiring abnormal termination:
+Pattern for handling critical/abend conditions:
 1. Sets PERFORM-ABEND flag to TRUE
 2. Sets WS-ERROR-SEVERITY to 'CRITICAL'
-3. Sets error number (999) and message
-4. Calls 8100-LOG-ERROR to record the condition
-5. Calls 8500-INITIATE-ABEND to terminate the program
+3. Sets error number to 999
+4. Sets error text to indicate unrecoverable condition
+5. Calls 8100-LOG-ERROR to output message
+6. Calls 8500-INITIATE-ABEND to terminate program
 
-**When to use**: Data corruption detected, security violations, unrecoverable system errors.
+**Use Case**: Unrecoverable system errors, data corruption detection, security violations.
 
-### 8100-LOG-ERROR - Error Logging
+### 8100-LOG-ERROR
 
-Common logging routine used by all handlers:
-```cobol
-DISPLAY WS-ERROR-PREFIX '-' WS-ERROR-NUMBER ': '
-        WS-ERROR-SEVERITY
-DISPLAY WS-ERROR-TEXT
-```
+Common error logging routine:
+1. Displays error prefix, number, and severity
+2. Displays error text
 
-Produces output like:
+Output format:
 ```
 ERH-0001: WARNING
 INVALID INPUT PARAMETER RECEIVED
 ```
 
-### 8500-INITIATE-ABEND - Controlled Abend
+### 8500-INITIATE-ABEND
 
-Initiates a controlled abnormal termination:
-1. Displays 'ABNORMAL TERMINATION INITIATED'
-2. Calls LE routine `CEE3ABD` with RC-CRITICAL (16) and option 3
+Controlled abend routine:
+1. Displays "ABNORMAL TERMINATION INITIATED" message
+2. Calls Language Environment routine CEE3ABD to force controlled abend
 
-The `CEE3ABD` call terminates the program with:
-- Return code 16
-- Option 3: Produces a dump for debugging
+## CEE3ABD - Language Environment Abend
 
-## Dependencies
+The program uses IBM's Language Environment callable service for controlled abnormal termination:
 
-### Copybooks
+```cobol
+CALL 'CEE3ABD' USING RC-CRITICAL, 3
+```
 
-This template program does not use external copybooks. All data structures are defined inline to serve as copy-ready examples.
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| Abend Code | RC-CRITICAL (16) | User abend code |
+| Cleanup | 3 | Perform full cleanup before abend |
 
-### Called Programs
-
-| Program | Purpose |
-|---------|---------|
-| CEE3ABD | Language Environment abend routine |
-
-### Related Programs
-
-Programs that could benefit from these error handling patterns:
-- All batch programs in the portfolio system
-- Utility programs
-- Report generators
-- Data validation programs
+This provides a cleaner termination than STOP RUN with an abend, ensuring proper resource cleanup.
 
 ## Return Codes
 
 | Code | Constant | Meaning |
 |------|----------|---------|
 | 0 | RC-SUCCESS | No errors or warnings |
-| 4 | RC-WARNING | Warnings occurred but processing completed |
-| 8 | RC-ERROR | Errors occurred |
-| 12 | RC-SEVERE | Severe errors occurred |
-| 16 | RC-CRITICAL | Critical error, abnormal termination |
+| 4 | RC-WARNING | One or more warnings occurred |
+| 8 | RC-ERROR | One or more errors occurred |
+| 12 | RC-SEVERE | One or more severe errors occurred |
+| 16 | RC-CRITICAL | Critical error requiring abend |
 
-## Usage Guidelines
+## Dependencies
 
-### Adapting for New Programs
+### Copybooks
 
-1. **Copy Return Code Constants**: Use the WS-RETURN-CODES structure in all programs
-2. **Copy Error Message Structure**: Adapt WS-ERROR-MSG with your program's prefix
-3. **Copy Error Tracking**: Use WS-ERROR-FLAGS and WS-ERROR-COUNTS
-4. **Add Program-Specific Messages**: Extend ERROR-MESSAGES with your error texts
-5. **Implement Handlers**: Copy the 8xxx paragraphs and customize as needed
-6. **Use CHECK-FINAL-STATUS**: Always call 8000-CHECK-FINAL-STATUS before GOBACK
+None - this is a self-contained template.
 
-### Best Practices
+### Called Programs
 
-1. **Always log errors** before taking action
-2. **Count errors by severity** for metrics and final return code
-3. **Use meaningful error numbers** for troubleshooting
-4. **Include context** in error messages (file names, record keys, etc.)
-5. **Only abend for truly unrecoverable conditions**
-6. **Test all error paths** during development
+- **CEE3ABD** - IBM Language Environment routine for controlled program termination
 
-### Example: Integrating with File Processing
+### Related Programs
+
+This template provides patterns that can be incorporated into any COBOL program. Similar error handling structures exist in:
+- ERRPROC - Error processing utility
+- ERRHAND copybook - Error handling definitions
+- DB2ERR - DB2 error handler
+
+## Usage Pattern
+
+To use these patterns in your program:
+
+### 1. Copy Return Code Definitions
 
 ```cobol
-READ INPUT-FILE
+01  WS-RETURN-CODES.
+    05  RC-SUCCESS     PIC S9(4) COMP VALUE +0.
+    05  RC-WARNING     PIC S9(4) COMP VALUE +4.
+    05  RC-ERROR       PIC S9(4) COMP VALUE +8.
+    05  RC-SEVERE      PIC S9(4) COMP VALUE +12.
+    05  RC-CRITICAL    PIC S9(4) COMP VALUE +16.
+```
+
+### 2. Add Error Tracking
+
+```cobol
+01  WS-ERROR-FLAGS.
+    05  WS-PROCESSING-ERROR    PIC X VALUE 'N'.
+        88  NO-ERROR           VALUE 'N'.
+        88  ERROR-OCCURRED     VALUE 'Y'.
+        
+01  WS-ERROR-COUNTS.
+    05  WS-WARNING-COUNT  PIC S9(4) COMP VALUE ZEROS.
+    05  WS-ERROR-COUNT    PIC S9(4) COMP VALUE ZEROS.
+    05  WS-SEVERE-COUNT   PIC S9(4) COMP VALUE ZEROS.
+```
+
+### 3. Handle Errors at Point of Detection
+
+```cobol
+READ CUSTOMER-FILE
     AT END
         SET END-OF-FILE TO TRUE
     NOT AT END
-        PERFORM VALIDATE-RECORD
-        IF VALIDATION-ERROR
-            PERFORM 8020-HANDLE-ERROR
+        IF CUST-STATUS NOT = 'A'
+            ADD 1 TO WS-WARNING-COUNT
+            DISPLAY 'Warning: Inactive customer ' CUST-ID
         END-IF
 END-READ
+
+IF WS-FILE-STATUS NOT = '00'
+    ADD 1 TO WS-ERROR-COUNT
+    SET ERROR-OCCURRED TO TRUE
+    DISPLAY 'Error: File status ' WS-FILE-STATUS
+END-IF
 ```
 
-### Example: Integrating with DB2
+### 4. Set Final Return Code
 
 ```cobol
-EXEC SQL
-    SELECT ...
-END-EXEC
-
-EVALUATE SQLCODE
-    WHEN 0
-        CONTINUE
-    WHEN 100
-        PERFORM 8010-HANDLE-WARNING
-    WHEN -803
-        PERFORM 8020-HANDLE-ERROR
-    WHEN OTHER
-        IF SQLCODE < -900
-            PERFORM 8040-HANDLE-ABEND
-        ELSE
-            PERFORM 8030-HANDLE-SEVERE
-        END-IF
-END-EVALUATE
+3000-TERMINATE.
+    EVALUATE TRUE
+        WHEN WS-SEVERE-COUNT > 0
+            MOVE RC-SEVERE TO RETURN-CODE
+        WHEN WS-ERROR-COUNT > 0
+            MOVE RC-ERROR TO RETURN-CODE
+        WHEN WS-WARNING-COUNT > 0
+            MOVE RC-WARNING TO RETURN-CODE
+        WHEN OTHER
+            MOVE RC-SUCCESS TO RETURN-CODE
+    END-EVALUATE.
 ```
 
 ## Technical Notes
 
-- **COMP (Binary)**: Return code constants use COMP for efficient comparison and assignment to RETURN-CODE
-- **88-Level Conditions**: Provides readable flag testing with SET verb
-- **CEE3ABD**: IBM Language Environment routine for controlled abend; option 3 produces a formatted dump
-- **Hierarchical RC Logic**: Ensures the highest severity determines the final return code
-- **DISPLAY for Logging**: Uses DISPLAY for simplicity; production programs should use a logging utility or write to a log file
-- **Error Number Convention**: Use ranges (e.g., 1-99 warnings, 100-199 errors, 200+ severe) for easy classification
+1. **COMP Fields for Return Codes**: Uses S9(4) COMP for efficient storage and compatibility with the RETURN-CODE special register
 
-## Template Customization Checklist
+2. **88-Level Conditions**: Uses condition names (ERROR-OCCURRED, PERFORM-ABEND) for readable IF statements and SET operations
 
-- [ ] Change WS-ERROR-PREFIX to your program ID
-- [ ] Define program-specific error messages
-- [ ] Adjust error number ranges for your needs
-- [ ] Replace DISPLAY with your logging mechanism
-- [ ] Add additional context fields to WS-ERROR-MSG if needed
-- [ ] Consider adding timestamps to error messages
-- [ ] Integrate with enterprise logging/monitoring systems
+3. **Hierarchical Error Checking**: The 8000-CHECK-FINAL-STATUS paragraph uses nested IFs to ensure the highest severity determines the final return code
+
+4. **CEE3ABD vs STOP RUN**: CEE3ABD provides controlled termination with proper Language Environment cleanup, preferable to STOP RUN for abend scenarios
+
+5. **Error Counting Pattern**: Separate counters by severity allow for detailed error reporting and analysis
+
+6. **DISPLAY for Logging**: Uses DISPLAY statements for simplicity; production systems may use WTO (Write to Operator) or logging APIs
+
+7. **Template Structure**: The 8xxx paragraph numbering convention reserves this range for error handling, keeping error logic separate from business logic
+
+8. **Error Message Table**: Predefined messages (ERR-001, ERR-002, ERR-003) provide consistency; extend as needed for application-specific errors

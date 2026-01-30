@@ -1,325 +1,278 @@
 ---
 title: "HISTREC"
-description: "History record structure copybook for tracking changes to portfolio, position, and transaction records"
+description: "History Record Structure - Copybook defining the layout for tracking changes to portfolio, position, and transaction records with before/after images"
 ---
 
 ## Overview
 
-HISTREC (History Record) is a copybook that defines the standard structure for history records in the portfolio management system. It provides a comprehensive audit trail by capturing before and after images of data changes, along with metadata about when and why changes occurred.
+HISTREC is a copybook that defines the record structure for the history/audit trail file. It captures changes made to portfolio data by storing before and after images of modified records, along with metadata about when, why, and by whom the changes were made.
 
 This copybook is essential for:
-- **Audit Compliance**: Maintaining a complete record of all data modifications
-- **Change Tracking**: Recording what changed, when, and by whom
-- **Data Recovery**: Storing before/after images to support rollback scenarios
-- **Historical Analysis**: Enabling point-in-time data reconstruction
+- **Audit compliance** - Maintaining a complete record of all data changes
+- **Data recovery** - Enabling point-in-time restoration using before images
+- **Change tracking** - Recording who changed what and when
+- **Regulatory reporting** - Supporting SOX, SEC, and other compliance requirements
 
-## Structure Diagram
-
-```mermaid
-graph TD
-    A[HISTORY-RECORD] --> B[HIST-KEY]
-    A --> C[HIST-DATA]
-    A --> D[HIST-AUDIT]
-    A --> E[HIST-FILLER]
-    
-    B --> B1[HIST-PORTFOLIO-ID]
-    B --> B2[HIST-DATE]
-    B --> B3[HIST-TIME]
-    B --> B4[HIST-SEQ-NO]
-    
-    C --> C1[HIST-RECORD-TYPE]
-    C --> C2[HIST-ACTION-CODE]
-    C --> C3[HIST-BEFORE-IMAGE]
-    C --> C4[HIST-AFTER-IMAGE]
-    C --> C5[HIST-REASON-CODE]
-    
-    D --> D1[HIST-PROCESS-DATE]
-    D --> D2[HIST-PROCESS-USER]
-```
-
-## Data Definitions
-
-### HISTORY-RECORD (Level 01)
-
-The main record structure for history entries. Total record length: approximately 920 bytes.
-
-### HIST-KEY - Record Key
-
-The composite key uniquely identifies each history record.
-
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 05 | HIST-KEY | - | Composite primary key (26 bytes) |
-| 10 | HIST-PORTFOLIO-ID | X(8) | Portfolio identifier |
-| 10 | HIST-DATE | X(8) | History date (YYYYMMDD format) |
-| 10 | HIST-TIME | X(6) | History time (HHMMSS format) |
-| 10 | HIST-SEQ-NO | X(4) | Sequence number for same timestamp |
-
-**Key Structure:**
-
-```
-HIST-KEY (26 bytes)
-├── HIST-PORTFOLIO-ID (8)  - e.g., "PORT0001"
-├── HIST-DATE (8)          - e.g., "20240315"
-├── HIST-TIME (6)          - e.g., "143025"
-└── HIST-SEQ-NO (4)        - e.g., "0001"
-```
-
-The sequence number ensures uniqueness when multiple changes occur within the same second.
-
-### HIST-DATA - Change Data
-
-Contains the details of what changed.
-
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 05 | HIST-DATA | - | Change data group |
-| 10 | HIST-RECORD-TYPE | X(2) | Type of record that changed |
-| 10 | HIST-ACTION-CODE | X(1) | Type of action performed |
-| 10 | HIST-BEFORE-IMAGE | X(400) | Record content before change |
-| 10 | HIST-AFTER-IMAGE | X(400) | Record content after change |
-| 10 | HIST-REASON-CODE | X(4) | Reason for the change |
-
-#### HIST-RECORD-TYPE Values (88-levels)
-
-| Condition | Value | Description |
-|-----------|-------|-------------|
-| HIST-TYPE-PORT | 'PT' | Portfolio master record |
-| HIST-TYPE-POS | 'PS' | Position record |
-| HIST-TYPE-TRN | 'TR' | Transaction record |
-
-#### HIST-ACTION-CODE Values (88-levels)
-
-| Condition | Value | Description |
-|-----------|-------|-------------|
-| HIST-ACTION-ADD | 'A' | Record was added |
-| HIST-ACTION-CHG | 'C' | Record was changed |
-| HIST-ACTION-DEL | 'D' | Record was deleted |
-
-**Before/After Image Usage:**
-
-| Action | HIST-BEFORE-IMAGE | HIST-AFTER-IMAGE |
-|--------|-------------------|------------------|
-| Add | Spaces (empty) | New record content |
-| Change | Original record | Modified record |
-| Delete | Deleted record | Spaces (empty) |
-
-### HIST-AUDIT - Audit Information
-
-Captures when and by whom the change was processed.
-
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 05 | HIST-AUDIT | - | Audit information group |
-| 10 | HIST-PROCESS-DATE | X(26) | Processing timestamp |
-| 10 | HIST-PROCESS-USER | X(8) | User ID who made the change |
-
-The HIST-PROCESS-DATE uses a 26-character timestamp format (typically `YYYY-MM-DD-HH.MM.SS.NNNNNN`) providing microsecond precision.
-
-### HIST-FILLER
-
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 05 | HIST-FILLER | X(50) | Reserved for future use |
+The history record supports three types of tracked entities (Portfolio, Position, Transaction) and three types of actions (Add, Change, Delete).
 
 ## Record Layout
 
+### HISTORY-RECORD (01 Level)
+
 ```
-Position  Length  Field Name           Description
---------  ------  -------------------  ---------------------------
-1-8       8       HIST-PORTFOLIO-ID    Portfolio identifier
-9-16      8       HIST-DATE            Date (YYYYMMDD)
-17-22     6       HIST-TIME            Time (HHMMSS)
-23-26     4       HIST-SEQ-NO          Sequence number
-27-28     2       HIST-RECORD-TYPE     Record type (PT/PS/TR)
-29        1       HIST-ACTION-CODE     Action (A/C/D)
-30-429    400     HIST-BEFORE-IMAGE    Before image
-430-829   400     HIST-AFTER-IMAGE     After image
-830-833   4       HIST-REASON-CODE     Reason code
-834-859   26      HIST-PROCESS-DATE    Process timestamp
-860-867   8       HIST-PROCESS-USER    User ID
-868-917   50      HIST-FILLER          Reserved
+01  HISTORY-RECORD.
+    05  HIST-KEY.
+    05  HIST-DATA.
+    05  HIST-AUDIT.
+    05  HIST-FILLER.
 ```
 
-**Total Record Length: 917 bytes**
+**Total Record Length:** Approximately 920 bytes
 
-## Usage
+## Data Structures
 
-### Including the Copybook
+### HIST-KEY - Record Key
+
+The composite key uniquely identifies each history record:
+
+| Level | Name | Picture | Length | Description |
+|-------|------|---------|--------|-------------|
+| 05 | HIST-KEY | | 26 | Composite key group |
+| 10 | HIST-PORTFOLIO-ID | X(8) | 8 | Portfolio identifier |
+| 10 | HIST-DATE | X(8) | 8 | History date (YYYYMMDD) |
+| 10 | HIST-TIME | X(6) | 6 | History time (HHMMSS) |
+| 10 | HIST-SEQ-NO | X(4) | 4 | Sequence number for same timestamp |
+
+#### Key Design
+
+The key structure ensures:
+- Records are grouped by portfolio
+- Within portfolio, sorted chronologically
+- Multiple changes in the same second are distinguished by sequence number
+
+**Example Keys:**
+```
+PORT0001 20240320 143025 0001
+PORT0001 20240320 143025 0002
+PORT0001 20240320 143026 0001
+```
+
+### HIST-DATA - Change Data
+
+| Level | Name | Picture | Length | Description |
+|-------|------|---------|--------|-------------|
+| 05 | HIST-DATA | | 807 | Change data group |
+| 10 | HIST-RECORD-TYPE | X(2) | 2 | Type of record changed |
+| 10 | HIST-ACTION-CODE | X(1) | 1 | Type of action performed |
+| 10 | HIST-BEFORE-IMAGE | X(400) | 400 | Record contents before change |
+| 10 | HIST-AFTER-IMAGE | X(400) | 400 | Record contents after change |
+| 10 | HIST-REASON-CODE | X(4) | 4 | Reason code for change |
+
+#### HIST-RECORD-TYPE Values
+
+| Value | 88-Level Name | Description |
+|-------|---------------|-------------|
+| PT | HIST-TYPE-PORT | Portfolio master record |
+| PS | HIST-TYPE-POS | Position record |
+| TR | HIST-TYPE-TRN | Transaction record |
+
+#### HIST-ACTION-CODE Values
+
+| Value | 88-Level Name | Description |
+|-------|---------------|-------------|
+| A | HIST-ACTION-ADD | Record was added (insert) |
+| C | HIST-ACTION-CHG | Record was changed (update) |
+| D | HIST-ACTION-DEL | Record was deleted |
+
+#### Before/After Image Usage
+
+| Action | HIST-BEFORE-IMAGE | HIST-AFTER-IMAGE |
+|--------|-------------------|------------------|
+| Add (A) | Spaces/empty | New record contents |
+| Change (C) | Original record | Modified record |
+| Delete (D) | Deleted record | Spaces/empty |
+
+### HIST-AUDIT - Audit Information
+
+| Level | Name | Picture | Length | Description |
+|-------|------|---------|--------|-------------|
+| 05 | HIST-AUDIT | | 34 | Audit information group |
+| 10 | HIST-PROCESS-DATE | X(26) | 26 | Processing timestamp (ISO format) |
+| 10 | HIST-PROCESS-USER | X(8) | 8 | User ID who made the change |
+
+#### Timestamp Format
+
+The `HIST-PROCESS-DATE` uses ISO 8601 format with microsecond precision:
+```
+YYYY-MM-DD-HH.MM.SS.FFFFFF
+```
+
+Example: `2024-03-20-14.30.25.123456`
+
+### HIST-FILLER - Reserved Space
+
+| Level | Name | Picture | Length | Description |
+|-------|------|---------|--------|-------------|
+| 05 | HIST-FILLER | X(50) | 50 | Reserved for future use |
+
+## Programs Using This Copybook
+
+| Program | Usage | Description |
+|---------|-------|-------------|
+| HISTLD00 | File Section | Position History DB2 Load Program - reads history records from VSAM and loads to DB2 |
+
+## Usage in HISTLD00
+
+In the HISTLD00 program, the HISTREC copybook is used as the File Section record definition for the TRANSACTION-HISTORY VSAM file:
 
 ```cobol
-       FILE SECTION.
-       FD  HISTORY-FILE.
-           COPY HISTREC.
+FILE SECTION.
+FD  TRANSACTION-HISTORY.
+    COPY HISTREC.
 ```
 
-Or in WORKING-STORAGE:
+The program reads history records sequentially and maps them to DB2 table fields for loading into the POSHIST database table.
 
-```cobol
-       WORKING-STORAGE SECTION.
-           COPY HISTREC.
-```
+## Usage Examples
 
 ### Creating a History Record for an Add
 
 ```cobol
-       CREATE-ADD-HISTORY.
-           INITIALIZE HISTORY-RECORD
-           
-           MOVE PORT-ID           TO HIST-PORTFOLIO-ID
-           MOVE WS-CURRENT-DATE   TO HIST-DATE
-           MOVE WS-CURRENT-TIME   TO HIST-TIME
-           MOVE WS-SEQ-NUMBER     TO HIST-SEQ-NO
-           
-           SET HIST-TYPE-PORT     TO TRUE
-           SET HIST-ACTION-ADD    TO TRUE
-           
-           MOVE SPACES            TO HIST-BEFORE-IMAGE
-           MOVE PORT-RECORD       TO HIST-AFTER-IMAGE
-           MOVE 'NEW '            TO HIST-REASON-CODE
-           
-           ACCEPT HIST-PROCESS-DATE FROM TIME STAMP
-           MOVE WS-USER-ID        TO HIST-PROCESS-USER
-           
-           WRITE HISTORY-RECORD.
+* Record a new position being added
+INITIALIZE HISTORY-RECORD
+
+* Set key fields
+MOVE 'PORT0001'     TO HIST-PORTFOLIO-ID
+ACCEPT HIST-DATE    FROM DATE YYYYMMDD
+ACCEPT HIST-TIME    FROM TIME
+MOVE '0001'         TO HIST-SEQ-NO
+
+* Set data fields
+SET HIST-TYPE-POS   TO TRUE
+SET HIST-ACTION-ADD TO TRUE
+MOVE SPACES         TO HIST-BEFORE-IMAGE
+MOVE POSITION-RECORD TO HIST-AFTER-IMAGE
+MOVE 'NEW '         TO HIST-REASON-CODE
+
+* Set audit fields
+MOVE CURRENT-TIMESTAMP TO HIST-PROCESS-DATE
+MOVE USER-ID           TO HIST-PROCESS-USER
+
+WRITE HISTORY-RECORD
 ```
 
 ### Creating a History Record for a Change
 
 ```cobol
-       CREATE-CHANGE-HISTORY.
-           INITIALIZE HISTORY-RECORD
-           
-           MOVE PORT-ID           TO HIST-PORTFOLIO-ID
-           MOVE WS-CURRENT-DATE   TO HIST-DATE
-           MOVE WS-CURRENT-TIME   TO HIST-TIME
-           MOVE WS-SEQ-NUMBER     TO HIST-SEQ-NO
-           
-           SET HIST-TYPE-PORT     TO TRUE
-           SET HIST-ACTION-CHG    TO TRUE
-           
-           MOVE WS-OLD-RECORD     TO HIST-BEFORE-IMAGE
-           MOVE PORT-RECORD       TO HIST-AFTER-IMAGE
-           MOVE 'MAINT'           TO HIST-REASON-CODE
-           
-           ACCEPT HIST-PROCESS-DATE FROM TIME STAMP
-           MOVE WS-USER-ID        TO HIST-PROCESS-USER
-           
-           WRITE HISTORY-RECORD.
+* Record a position update
+SET HIST-TYPE-POS   TO TRUE
+SET HIST-ACTION-CHG TO TRUE
+MOVE WS-ORIGINAL-RECORD TO HIST-BEFORE-IMAGE
+MOVE POSITION-RECORD    TO HIST-AFTER-IMAGE
+MOVE 'ADJT'             TO HIST-REASON-CODE
 ```
 
 ### Creating a History Record for a Delete
 
 ```cobol
-       CREATE-DELETE-HISTORY.
-           INITIALIZE HISTORY-RECORD
-           
-           MOVE PORT-ID           TO HIST-PORTFOLIO-ID
-           MOVE WS-CURRENT-DATE   TO HIST-DATE
-           MOVE WS-CURRENT-TIME   TO HIST-TIME
-           MOVE WS-SEQ-NUMBER     TO HIST-SEQ-NO
-           
-           SET HIST-TYPE-PORT     TO TRUE
-           SET HIST-ACTION-DEL    TO TRUE
-           
-           MOVE PORT-RECORD       TO HIST-BEFORE-IMAGE
-           MOVE SPACES            TO HIST-AFTER-IMAGE
-           MOVE 'CLOS'            TO HIST-REASON-CODE
-           
-           ACCEPT HIST-PROCESS-DATE FROM TIME STAMP
-           MOVE WS-USER-ID        TO HIST-PROCESS-USER
-           
-           WRITE HISTORY-RECORD.
+* Record a position deletion
+SET HIST-TYPE-POS   TO TRUE
+SET HIST-ACTION-DEL TO TRUE
+MOVE POSITION-RECORD TO HIST-BEFORE-IMAGE
+MOVE SPACES          TO HIST-AFTER-IMAGE
+MOVE 'CLOS'          TO HIST-REASON-CODE
 ```
 
-### Querying History by Record Type
+### Reading History by Portfolio
 
 ```cobol
-       READ-PORTFOLIO-HISTORY.
-           PERFORM VARYING WS-INDEX FROM 1 BY 1
-                   UNTIL END-OF-HISTORY
-               READ HISTORY-FILE NEXT
-                   AT END
-                       SET END-OF-HISTORY TO TRUE
-                   NOT AT END
-                       IF HIST-TYPE-PORT
-                           PERFORM PROCESS-PORT-HISTORY
-                       END-IF
-               END-READ
-           END-PERFORM.
+* Position to start of portfolio's history
+MOVE 'PORT0001' TO HIST-PORTFOLIO-ID
+MOVE LOW-VALUES TO HIST-DATE
+MOVE LOW-VALUES TO HIST-TIME
+MOVE LOW-VALUES TO HIST-SEQ-NO
+
+START HISTORY-FILE KEY >= HIST-KEY
+    INVALID KEY
+        SET NO-HISTORY-FOUND TO TRUE
+END-START
+
+* Read all history for this portfolio
+PERFORM UNTIL END-OF-PORTFOLIO-HISTORY
+    READ HISTORY-FILE NEXT
+        AT END
+            SET END-OF-PORTFOLIO-HISTORY TO TRUE
+        NOT AT END
+            IF HIST-PORTFOLIO-ID NOT = 'PORT0001'
+                SET END-OF-PORTFOLIO-HISTORY TO TRUE
+            ELSE
+                PERFORM PROCESS-HISTORY-RECORD
+            END-IF
+    END-READ
+END-PERFORM
 ```
-
-## Programs Using This Copybook
-
-| Program | Description |
-|---------|-------------|
-| HISTLD00 | History load program - loads and manages history records |
 
 ## Related Copybooks
 
 | Copybook | Relationship |
 |----------|--------------|
-| PORTFLIO | Portfolio record layout (stored in before/after images) |
-| POSREC | Position record layout (stored in before/after images) |
-| TRNREC | Transaction record layout (stored in before/after images) |
-| AUDITLOG | Audit trail records (complementary audit information) |
+| POSREC | Position record - stored in before/after images for position changes |
+| TRNREC | Transaction record - stored in before/after images for transaction changes |
+| PORTFLIO | Portfolio record - stored in before/after images for portfolio changes |
+| AUDITLOG | Audit log record - complementary audit trail structure |
 
-## Reason Codes
+## Technical Notes
 
-Common reason codes used with HIST-REASON-CODE:
+### Record Type Selection
+
+When creating history records, set the appropriate record type based on what entity is being changed:
+- Use `HIST-TYPE-PORT` ('PT') for portfolio master changes
+- Use `HIST-TYPE-POS` ('PS') for position changes
+- Use `HIST-TYPE-TRN` ('TR') for transaction changes
+
+### Before/After Image Size
+
+The 400-byte before and after image fields are sized to accommodate the largest record type that might be tracked. For smaller records:
+- The actual record data is left-justified
+- Remaining space is typically filled with spaces
+- When reading, use the record type to determine how to interpret the image
+
+### Sequence Number Management
+
+The sequence number (`HIST-SEQ-NO`) handles multiple changes in the same second:
+1. Start at '0001' for first change in a timestamp
+2. Increment for subsequent changes with same timestamp
+3. Reset when timestamp changes
+
+For high-volume systems, consider generating sequence numbers programmatically rather than relying on timestamp uniqueness.
+
+### Reason Codes
+
+The `HIST-REASON-CODE` is a 4-character field for categorizing why a change occurred. Common patterns include:
 
 | Code | Description |
 |------|-------------|
-| NEW | New record created |
-| MAINT | Maintenance update |
-| CLOS | Account/portfolio closed |
-| CORR | Correction |
-| XFER | Transfer |
-| ADJT | Adjustment |
-| REBL | Rebalance |
+| NEW  | New record creation |
+| ADJT | Adjustment/correction |
+| CLOS | Account/position closure |
+| XFER | Transfer between accounts |
+| FEES | Fee-related change |
 | DIVD | Dividend processing |
-| SPLT | Stock split |
-| MRGR | Merger/acquisition |
+| SPLT | Stock split adjustment |
+| MERG | Merger/acquisition |
+| USER | Manual user update |
+| AUTO | Automated system update |
 
-## Design Considerations
+### File Organization
 
-### Image Size
+The history file is typically organized as a VSAM KSDS with:
+- Primary key: HIST-KEY (26 bytes)
+- Alternate index on HIST-PROCESS-DATE for date-range queries
+- Alternate index on HIST-PROCESS-USER for user activity reports
 
-The before and after image fields are 400 bytes each:
-- Large enough to accommodate portfolio, position, and transaction records
-- Fixed size simplifies processing and storage allocation
-- Padding with spaces for smaller records
+### Data Retention
 
-### Key Design
-
-The composite key structure ensures:
-- Records are grouped by portfolio for efficient retrieval
-- Chronological ordering within each portfolio
-- Sequence number handles sub-second granularity
-
-### Timestamp Precision
-
-The 26-character process timestamp provides:
-- Microsecond precision for accurate sequencing
-- Compatible with DB2 TIMESTAMP format
-- Sufficient for high-volume transaction environments
-
-## File Organization
-
-History files using this copybook are typically organized as:
-
-| Property | Recommendation |
-|----------|----------------|
-| Organization | Indexed (VSAM KSDS) |
-| Record Key | HIST-KEY |
-| Access Mode | Sequential for batch, Dynamic for inquiry |
-| Retention | Per regulatory requirements (typically 7 years) |
-
-## Maintenance Notes
-
-When modifying this copybook:
-
-1. **Changing image size**: Requires data migration for existing history files
-2. **Adding record types**: Update all programs that check HIST-RECORD-TYPE
-3. **Adding action codes**: Ensure all maintenance programs are updated
-4. **Modifying key structure**: Requires complete file rebuild
+History records support compliance requirements for data retention:
+- SEC Rule 17a-4: 6 years for broker-dealer records
+- SOX: 7 years for audit-related records
+- Consider archiving older records to reduce active file size

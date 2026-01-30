@@ -1,45 +1,42 @@
 ---
 title: "DB2CMT"
-description: "DB2 Commit Controller - Reusable service program providing centralized transaction management with commit, rollback, and savepoint operations"
+description: "DB2 Commit Controller - Reusable subprogram providing centralized transaction management with commit, rollback, and savepoint operations"
 ---
 
 ## Overview
 
-DB2CMT is a common service program that provides centralized DB2 transaction management for the portfolio management system. It is designed to be called by other programs needing to manage database transactions, ensuring consistent commit/rollback behavior across the application.
+DB2CMT is a reusable COBOL subprogram that provides centralized DB2 transaction management services. It acts as a commit controller, offering a standardized interface for commit, rollback, and savepoint operations across the application portfolio.
 
-The program implements a function-driven interface that supports six operations:
-- **INIT** - Initialize commit controller statistics
-- **CMIT** - Conditional or forced commit
-- **RBAK** - Full rollback
-- **SAVE** - Create a named savepoint
-- **REST** - Restore to a named savepoint
-- **STAT** - Display transaction statistics
+The program is designed to be called by other COBOL programs that need to manage database transactions. It supports six distinct functions:
+- **INIT** - Initialize the commit controller
+- **CMIT** - Commit work (conditional or forced)
+- **RBAK** - Rollback work
+- **SAVE** - Create a savepoint
+- **REST** - Restore to a savepoint
+- **STAT** - Display statistics
 
-This centralized approach provides several benefits: consistent error handling across all database operations, transaction statistics tracking for performance monitoring, and support for partial rollbacks using savepoints. The program follows a stateless design where it can be called multiple times within a unit of work.
+By centralizing transaction management, DB2CMT ensures consistent commit/rollback behavior, provides statistics tracking, and simplifies error handling across all database operations in the system.
 
 ## Program Structure
 
 ```mermaid
 graph TD
-    A["0000-MAIN"] --> B{"EVALUATE<br/>LS-FUNCTION"}
+    A[0000-MAIN] --> B{Function?}
+    B -->|INIT| C[1000-INITIALIZE]
+    B -->|CMIT| D[2000-COMMIT]
+    B -->|RBAK| E[3000-ROLLBACK]
+    B -->|SAVE| F[4000-SAVEPOINT]
+    B -->|REST| G[5000-RESTORE]
+    B -->|STAT| H[6000-STATISTICS]
+    B -->|OTHER| I[9000-ERROR-ROUTINE]
     
-    B -->|"INIT"| C["1000-INITIALIZE"]
-    B -->|"CMIT"| D["2000-COMMIT"]
-    B -->|"RBAK"| E["3000-ROLLBACK"]
-    B -->|"SAVE"| F["4000-SAVEPOINT"]
-    B -->|"REST"| G["5000-RESTORE"]
-    B -->|"STAT"| H["6000-STATISTICS"]
-    B -->|"OTHER"| I["9000-ERROR-ROUTINE"]
-    
-    D --> D1["2100-ISSUE-COMMIT"]
-    D1 -->|"on error"| J["9100-LOG-ERROR"]
-    
-    E -->|"on error"| J
-    F -->|"on error"| J
-    G -->|"on error"| J
-    
-    I --> K["ERRPROC"]
-    J --> L["DB2ERR"]
+    D --> D1[2100-ISSUE-COMMIT]
+    D1 -.->|On Error| J[9100-LOG-ERROR]
+    E -.->|On Error| J
+    F -.->|On Error| J
+    G -.->|On Error| J
+    I --> K[ERRPROC]
+    J --> L[DB2ERR]
 ```
 
 ## Data Structures
@@ -48,135 +45,127 @@ graph TD
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | WS-SAVEPOINT-ID | PIC X(18) | Host variable for savepoint name (SQL DECLARE SECTION) |
-| 01 | WS-COMMIT-STATS | - | Transaction statistics group |
-| 05 | WS-COMMIT-COUNT | PIC S9(9) COMP | Number of commits issued |
-| 05 | WS-ROLLBACK-COUNT | PIC S9(9) COMP | Number of rollbacks issued |
+| 01 | WS-SAVEPOINT-ID | PIC X(18) | Host variable for savepoint name (SQL DECLARE) |
+| 01 | WS-COMMIT-STATS | - | Statistics counters group |
+| 05 | WS-COMMIT-COUNT | PIC S9(9) COMP | Number of successful commits |
+| 05 | WS-ROLLBACK-COUNT | PIC S9(9) COMP | Number of successful rollbacks |
 | 05 | WS-SAVEPOINT-COUNT | PIC S9(9) COMP | Number of savepoints created |
-| 01 | WS-CURRENT-TIMESTAMP | PIC X(26) | Current timestamp storage |
+| 01 | WS-CURRENT-TIMESTAMP | PIC X(26) | Timestamp field (26 chars for DB2 format) |
 
 ### Linkage Section (Interface)
 
+The program receives a single parameter block `LS-COMMIT-REQUEST`:
+
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | LS-COMMIT-REQUEST | - | Main interface structure |
-| 05 | LS-FUNCTION | PIC X(4) | Function code (see values below) |
+| 05 | LS-FUNCTION | PIC X(4) | Function code to execute |
 | 05 | LS-SAVEPOINT-NAME | PIC X(18) | Savepoint name for SAVE/REST functions |
 | 05 | LS-COMMIT-PARMS | - | Commit parameters group |
-| 10 | LS-RECORDS-PROC | PIC S9(9) COMP | Records processed (for conditional commit) |
+| 10 | LS-RECORDS-PROC | PIC S9(9) COMP | Records processed since last commit |
 | 10 | LS-COMMIT-FREQ | PIC S9(4) COMP | Commit frequency threshold |
 | 10 | LS-FORCE-FLAG | PIC X(1) | Force commit flag (`Y` = force) |
-| 05 | LS-RETURN-CODE | PIC S9(4) COMP | Return code (0=success, 8=error, 12=severe) |
+| 05 | LS-RETURN-CODE | PIC S9(4) COMP | Return code from operation |
 | 05 | LS-ERROR-INFO | - | Error information group |
-| 10 | LS-SQLCODE | PIC S9(9) COMP | DB2 SQLCODE from failed operation |
+| 10 | LS-SQLCODE | PIC S9(9) COMP | SQL return code on error |
 | 10 | LS-ERROR-MSG | PIC X(80) | Error message text |
 
-### Function Codes (88-Level Conditions)
+### Function Codes (88-levels)
 
 | Condition Name | Value | Description |
 |----------------|-------|-------------|
-| FUNC-INIT | `INIT` | Initialize statistics counters |
-| FUNC-CMIT | `CMIT` | Issue conditional/forced commit |
-| FUNC-RBACK | `RBAK` | Issue full rollback |
-| FUNC-SAVE | `SAVE` | Create savepoint |
-| FUNC-REST | `REST` | Restore to savepoint |
-| FUNC-STAT | `STAT` | Display statistics |
+| FUNC-INIT | 'INIT' | Initialize commit controller |
+| FUNC-CMIT | 'CMIT' | Commit work |
+| FUNC-RBACK | 'RBAK' | Rollback work |
+| FUNC-SAVE | 'SAVE' | Create savepoint |
+| FUNC-REST | 'REST' | Restore to savepoint |
+| FUNC-STAT | 'STAT' | Display statistics |
 
-### SQL Communication Area (from SQLCA copybook)
+### Force Commit Flag
 
-| Field | Description |
-|-------|-------------|
-| SQLCODE | SQL return code (0=success, negative=error, 100=not found) |
-| SQLSTATE | 5-character SQL state code |
-| SQLERRM | Error message text from DB2 |
+| Condition Name | Value | Description |
+|----------------|-------|-------------|
+| LS-FORCE-COMMIT | 'Y' | Force immediate commit regardless of threshold |
 
-### SQL Status Codes (from SQLCA copybook)
+## DB2 Operations
 
-| Name | Value | Meaning |
-|------|-------|---------|
-| SQL-SUCCESS | `00000` | Successful completion |
-| SQL-NOT-FOUND | `02000` | No data found |
-| SQL-DUP-KEY | `23505` | Duplicate key violation |
-| SQL-DEADLOCK | `40001` | Deadlock detected |
-| SQL-TIMEOUT | `40003` | Timeout occurred |
-| SQL-CONNECTION-ERROR | `08001` | Connection error |
-| SQL-DB-ERROR | `58004` | Database system error |
+### SQL Statements
 
-## File I/O
+| Statement | Function | Description |
+|-----------|----------|-------------|
+| `COMMIT WORK` | CMIT | Commits all pending database changes |
+| `ROLLBACK WORK` | RBAK | Rolls back all pending changes |
+| `SAVEPOINT :name ON ROLLBACK RETAIN CURSORS` | SAVE | Creates a named savepoint preserving cursor positions |
+| `ROLLBACK TO SAVEPOINT :name` | REST | Rolls back to a specific savepoint |
 
-This program does not perform any file I/O operations. It exclusively manages DB2 transactions through embedded SQL statements.
+### SQLCODE Handling
+
+| SQLCODE | Action |
+|---------|--------|
+| 0 | Success - increment appropriate counter, return code 0 |
+| Other | Error - set LS-SQLCODE, LS-ERROR-MSG, return code 8, call DB2ERR |
 
 ## Control Flow
 
-### Function Dispatch (0000-MAIN)
+### Main Entry Point (0000-MAIN)
 
-The main paragraph uses an `EVALUATE TRUE` statement to dispatch to the appropriate function handler based on the 88-level condition names defined on `LS-FUNCTION`. This pattern is equivalent to a switch/case statement and provides clean, readable function routing.
+The program uses an EVALUATE statement to dispatch to the appropriate function based on LS-FUNCTION:
 
-### Initialize Function (1000-INITIALIZE)
-
-Resets all transaction statistics counters to zero:
-- `WS-COMMIT-COUNT`
-- `WS-ROLLBACK-COUNT`
-- `WS-SAVEPOINT-COUNT`
-
-Sets return code to 0 (success).
-
-### Commit Function (2000-COMMIT)
-
-Implements conditional commit logic:
-
-```
-IF LS-RECORDS-PROC >= LS-COMMIT-FREQ
-OR LS-FORCE-COMMIT
-    PERFORM 2100-ISSUE-COMMIT
-END-IF
+```cobol
+EVALUATE TRUE
+    WHEN FUNC-INIT  → 1000-INITIALIZE
+    WHEN FUNC-CMIT  → 2000-COMMIT
+    WHEN FUNC-RBACK → 3000-ROLLBACK
+    WHEN FUNC-SAVE  → 4000-SAVEPOINT
+    WHEN FUNC-REST  → 5000-RESTORE
+    WHEN FUNC-STAT  → 6000-STATISTICS
+    WHEN OTHER      → 9000-ERROR-ROUTINE
+END-EVALUATE
 ```
 
-The commit is issued only when:
-1. The number of records processed meets or exceeds the commit frequency, OR
-2. The force flag (`LS-FORCE-FLAG`) is set to `'Y'`
+### Function: INIT (1000-INITIALIZE)
 
-This allows calling programs to implement interval-based commits (e.g., every 1,000 records) while also supporting explicit commits at logical boundaries.
+Initializes the commit controller:
+1. Resets all statistics counters to zero
+2. Sets return code to 0
 
-The actual `EXEC SQL COMMIT WORK` is issued in `2100-ISSUE-COMMIT`, which:
-- Increments `WS-COMMIT-COUNT` on success
-- Sets `LS-RETURN-CODE` to 0 on success, 8 on failure
-- Logs errors via `9100-LOG-ERROR` on failure
+### Function: CMIT (2000-COMMIT)
 
-### Rollback Function (3000-ROLLBACK)
+Performs conditional or forced commit:
+1. Checks if commit is needed:
+   - `LS-RECORDS-PROC >= LS-COMMIT-FREQ` (threshold reached), OR
+   - `LS-FORCE-FLAG = 'Y'` (force flag set)
+2. If commit needed, calls 2100-ISSUE-COMMIT
+3. Issues `EXEC SQL COMMIT WORK`
+4. On success: increments commit count, return code 0
+5. On failure: captures SQLCODE, sets error message, return code 8, logs error
 
-Issues a full `EXEC SQL ROLLBACK WORK` to undo all changes since the last commit:
-- Increments `WS-ROLLBACK-COUNT` on success
-- Sets return code and logs errors on failure
+### Function: RBAK (3000-ROLLBACK)
 
-### Savepoint Function (4000-SAVEPOINT)
+Performs unconditional rollback:
+1. Issues `EXEC SQL ROLLBACK WORK`
+2. On success: increments rollback count, return code 0
+3. On failure: captures SQLCODE, sets error message, return code 8, logs error
 
-Creates a named savepoint using the DB2 `SAVEPOINT` statement:
+### Function: SAVE (4000-SAVEPOINT)
 
-```sql
-SAVEPOINT :WS-SAVEPOINT-ID ON ROLLBACK RETAIN CURSORS
-```
+Creates a named savepoint:
+1. Copies `LS-SAVEPOINT-NAME` to host variable
+2. Issues `EXEC SQL SAVEPOINT :WS-SAVEPOINT-ID ON ROLLBACK RETAIN CURSORS`
+3. The `ON ROLLBACK RETAIN CURSORS` clause preserves cursor positions if rollback occurs
+4. On success: increments savepoint count, return code 0
+5. On failure: captures SQLCODE, sets error message, return code 8, logs error
 
-Key features:
-- The savepoint name is passed via `LS-SAVEPOINT-NAME`
-- `ON ROLLBACK RETAIN CURSORS` preserves cursor positions if a rollback to this savepoint occurs
-- Increments `WS-SAVEPOINT-COUNT` on success
+### Function: REST (5000-RESTORE)
 
-Savepoints enable partial rollbacks, allowing a program to undo recent changes without losing all work since the last commit.
+Restores to a named savepoint:
+1. Copies `LS-SAVEPOINT-NAME` to host variable
+2. Issues `EXEC SQL ROLLBACK TO SAVEPOINT :WS-SAVEPOINT-ID`
+3. On success: increments rollback count, return code 0
+4. On failure: captures SQLCODE, sets error message, return code 8, logs error
 
-### Restore Function (5000-RESTORE)
+### Function: STAT (6000-STATISTICS)
 
-Rolls back to a previously created savepoint:
-
-```sql
-ROLLBACK TO SAVEPOINT :WS-SAVEPOINT-ID
-```
-
-This undoes all changes made after the savepoint was created while preserving changes made before it. The rollback counter is incremented on success.
-
-### Statistics Function (6000-STATISTICS)
-
-Displays accumulated transaction statistics to SYSOUT:
+Displays commit controller statistics to the job log:
 ```
 DB2 Commit Controller Statistics:
   Commits:    nnnnnnnnn
@@ -186,45 +175,17 @@ DB2 Commit Controller Statistics:
 
 ### Error Handling
 
-Two error routines handle different scenarios:
+**9000-ERROR-ROUTINE**: Handles invalid function codes
+1. Sets program name in error structure
+2. Sets return code 12
+3. Calls ERRPROC for logging
 
-**9000-ERROR-ROUTINE** - For program-level errors (invalid function code):
-- Sets `ERR-PROGRAM` to `'DB2CMT'`
-- Sets return code to 12 (severe error)
-- Calls `ERRPROC` for error logging
+**9100-LOG-ERROR**: Handles DB2 operation failures
+1. Calls DB2ERR with error information
 
-**9100-LOG-ERROR** - For DB2 operation failures:
-- Calls `DB2ERR` with the error information structure
-- The SQLCODE and error message are already populated by the calling paragraph
+## Calling Interface
 
-## Dependencies
-
-### Copybooks
-
-- **SQLCA** - SQL Communication Area containing SQLCODE, SQLSTATE, and error message fields; also defines common SQL status code constants
-- **DBPROC** - DB2 standard procedures including error message formatting structure and common DB2 routines (CONNECT-TO-DB2, DB2-ERROR-ROUTINE)
-- **ERRHAND** - Standard error handling definitions including ERR-MESSAGE structure, return code constants, and error categories
-
-### Called Programs
-
-- **ERRPROC** - Error processing routine for logging program errors
-- **DB2ERR** - DB2-specific error logging routine
-
-### Related Programs
-
-Programs that share the same DB2 infrastructure (SQLCA, DBPROC):
-- HISTLD00 - Position history DB2 loader
-- DB2CONN - DB2 connection management
-- DB2ERR - DB2 error handling
-- DB2STAT - DB2 status utilities
-
-Programs that may call DB2CMT for transaction management:
-- Any batch program requiring controlled commit intervals
-- Programs needing savepoint support for complex transactions
-
-## Usage Example
-
-To use DB2CMT from a calling program:
+### How to Call DB2CMT
 
 ```cobol
 WORKING-STORAGE SECTION.
@@ -233,25 +194,96 @@ WORKING-STORAGE SECTION.
     05  WS-SAVEPOINT-NAME   PIC X(18).
     05  WS-COMMIT-PARMS.
         10  WS-RECORDS-PROC PIC S9(9) COMP.
-        10  WS-COMMIT-FREQ  PIC S9(4) COMP VALUE 1000.
-        10  WS-FORCE-FLAG   PIC X(1) VALUE 'N'.
+        10  WS-COMMIT-FREQ  PIC S9(4) COMP.
+        10  WS-FORCE-FLAG   PIC X(1).
     05  WS-RETURN-CODE      PIC S9(4) COMP.
     05  WS-ERROR-INFO.
         10  WS-SQLCODE      PIC S9(9) COMP.
         10  WS-ERROR-MSG    PIC X(80).
 
 PROCEDURE DIVISION.
-    * Initialize at start of job
+    *> Initialize the commit controller
     MOVE 'INIT' TO WS-FUNCTION
     CALL 'DB2CMT' USING WS-COMMIT-REQUEST
     
-    * After processing each record
-    ADD 1 TO WS-RECORDS-PROC
+    *> Conditional commit (every 1000 records)
     MOVE 'CMIT' TO WS-FUNCTION
+    MOVE WS-REC-COUNT TO WS-RECORDS-PROC
+    MOVE 1000 TO WS-COMMIT-FREQ
+    MOVE 'N' TO WS-FORCE-FLAG
     CALL 'DB2CMT' USING WS-COMMIT-REQUEST
     
-    * Force final commit
-    MOVE 'Y' TO WS-FORCE-FLAG
+    *> Force commit at end of processing
     MOVE 'CMIT' TO WS-FUNCTION
+    MOVE 'Y' TO WS-FORCE-FLAG
+    CALL 'DB2CMT' USING WS-COMMIT-REQUEST
+    
+    *> Create a savepoint before risky operation
+    MOVE 'SAVE' TO WS-FUNCTION
+    MOVE 'BEFORE-UPDATE' TO WS-SAVEPOINT-NAME
+    CALL 'DB2CMT' USING WS-COMMIT-REQUEST
+    
+    *> Restore to savepoint if operation fails
+    MOVE 'REST' TO WS-FUNCTION
+    MOVE 'BEFORE-UPDATE' TO WS-SAVEPOINT-NAME
     CALL 'DB2CMT' USING WS-COMMIT-REQUEST
 ```
+
+### Return Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Operation successful |
+| 8 | DB2 operation failed (check LS-SQLCODE and LS-ERROR-MSG) |
+| 12 | Invalid function code |
+
+## Dependencies
+
+### Copybooks
+
+- **SQLCA** - SQL Communication Area for DB2 return codes
+- **DBPROC** - Database procedure definitions
+- **ERRHAND** - Error handling structures (ERR-TEXT, ERR-PROGRAM, ERR-MESSAGE)
+
+### Called Programs
+
+- **ERRPROC** - Error processing routine (for invalid function codes)
+- **DB2ERR** - DB2 error logging routine (for SQL failures)
+
+### Related Programs
+
+Programs that share copybooks with DB2CMT (potential callers):
+
+| Program | Shared Copybooks | Relationship |
+|---------|------------------|--------------|
+| HISTLD00 | SQLCA, DBPROC, ERRHAND | Batch loader - likely caller for commit management |
+| DB2CONN | SQLCA, DBPROC, ERRHAND | DB2 connection utility |
+| DB2ERR | SQLCA, DBPROC, ERRHAND | DB2 error handler - called by this program |
+| DB2STAT | SQLCA, DBPROC, ERRHAND | DB2 statistics utility |
+
+## Technical Notes
+
+### Savepoint Behavior
+
+The `ON ROLLBACK RETAIN CURSORS` clause on the SAVEPOINT statement ensures that:
+- Cursor positions are preserved if a rollback to savepoint occurs
+- This is important for batch processing that iterates through result sets
+
+### Statistics Persistence
+
+Statistics counters (WS-COMMIT-STATS) persist across calls within a single program execution. To reset statistics:
+1. Call with FUNC-INIT, or
+2. Terminate and restart the calling program
+
+### Thread Safety
+
+This program maintains state in working storage, which is not shared across threads. Each calling program/thread will have its own instance of the commit controller with independent statistics.
+
+### Commit Frequency Strategy
+
+The conditional commit logic (`LS-RECORDS-PROC >= LS-COMMIT-FREQ`) allows callers to:
+- Track records processed externally
+- Let DB2CMT decide when to commit based on the threshold
+- Override with force flag for end-of-job commits
+
+This pattern supports efficient batch processing with configurable commit intervals.

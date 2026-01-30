@@ -5,15 +5,11 @@ description: "Test Validation Suite - executes test cases, validates results, an
 
 ## Overview
 
-TSTVAL00 is a batch test validation program that provides an automated testing framework for COBOL applications. It reads test case definitions, executes different types of tests, compares actual results against expected results, and produces a comprehensive test report with pass/fail statistics.
+TSTVAL00 is a Test Validation Suite that provides automated test execution and validation capabilities for the portfolio management system. It reads test case definitions, executes different types of tests (functional, integration, performance, and error handling), validates results against expected outcomes, and produces a detailed test report with pass/fail metrics.
 
-The program supports four types of tests:
-- **Functional Tests** - Verify individual functions work correctly
-- **Integration Tests** - Verify components work together properly
-- **Performance Tests** - Benchmark execution times and throughput
-- **Error Tests** - Verify proper error handling and recovery
+The program serves as a quality assurance tool supporting the software development lifecycle. It compares actual results against expected results to determine test pass/fail status, tracks cumulative metrics across all test cases, and calculates success rates. This enables consistent, repeatable test execution for regression testing and validation.
 
-This is a key component of the quality assurance infrastructure, enabling automated regression testing and continuous integration workflows.
+TSTVAL00 supports four categories of tests: functional tests for basic feature validation, integration tests for inter-component testing, performance tests for benchmarking, and error tests for negative scenario validation.
 
 ## Program Structure
 
@@ -22,29 +18,34 @@ graph TD
     A[0000-MAIN] --> B[1000-INITIALIZE]
     A --> C[2000-PROCESS]
     A --> D[3000-CLEANUP]
+    A --> E[GOBACK]
     
     B --> B1[1100-OPEN-FILES]
     B --> B2[1200-WRITE-HEADERS]
     B --> B3[1300-INIT-METRICS]
     
-    B1 --> B1A{File Status OK?}
-    B1A -->|No| E[9999-ERROR-HANDLER]
+    B1 --> B1a[Open TEST-CASES]
+    B1 --> B1b[Open EXPECTED-RESULTS]
+    B1 --> B1c[Open ACTUAL-RESULTS]
+    B1 --> B1d[Open TEST-REPORT]
+    B1 -->|Error| ERR[9999-ERROR-HANDLER]
     
-    C --> C1{Read TEST-CASES}
-    C1 -->|EOF| C6[2900-WRITE-SUMMARY]
-    C1 -->|Record| C2[2100-EXECUTE-TEST]
+    C --> C1{END-OF-TESTS?}
+    C1 -->|No| C2[READ TEST-CASES]
+    C2 --> C3[2100-EXECUTE-TEST]
+    C3 --> C1
+    C1 -->|Yes| C4[2900-WRITE-SUMMARY]
     
-    C2 --> C2A{TEST-TYPE?}
-    C2A -->|FUNCTIONAL| C2B[2200-RUN-FUNCTIONAL-TEST]
-    C2A -->|INTEGRATE| C2C[2300-RUN-INTEGRATION-TEST]
-    C2A -->|PERFORM| C2D[2400-RUN-PERFORMANCE-TEST]
-    C2A -->|ERROR| C2E[2500-RUN-ERROR-TEST]
-    C2A -->|OTHER| E
+    C3 --> T1{TEST-TYPE?}
+    T1 -->|FUNCTIONAL| T2[2200-RUN-FUNCTIONAL-TEST]
+    T1 -->|INTEGRATE| T3[2300-RUN-INTEGRATION-TEST]
+    T1 -->|PERFORM| T4[2400-RUN-PERFORMANCE-TEST]
+    T1 -->|ERROR| T5[2500-RUN-ERROR-TEST]
+    T1 -->|OTHER| ERR
     
-    C2 --> C3[2600-VALIDATE-RESULTS]
-    C2 --> C4[2700-UPDATE-METRICS]
-    C2 --> C5[2800-WRITE-TEST-DETAIL]
-    C5 --> C1
+    C3 --> V1[2600-VALIDATE-RESULTS]
+    C3 --> V2[2700-UPDATE-METRICS]
+    C3 --> V3[2800-WRITE-TEST-DETAIL]
     
     D --> D1[Close All Files]
 ```
@@ -53,320 +54,368 @@ graph TD
 
 ### File Section - Test Case Record
 
-| Level | Field | Picture | Description |
-|-------|-------|---------|-------------|
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
 | 01 | TEST-CASE-RECORD | - | Test case definition |
 | 05 | TEST-ID | X(10) | Unique test identifier |
-| 05 | TEST-TYPE | X(10) | Test type (FUNCTIONAL, INTEGRATE, PERFORM, ERROR) |
-| 05 | TEST-DESCRIPTION | X(50) | Human-readable test description |
+| 05 | TEST-TYPE | X(10) | Type: FUNCTIONAL, INTEGRATE, PERFORM, ERROR |
+| 05 | TEST-DESCRIPTION | X(50) | Test description |
 | 05 | TEST-PARAMETERS | X(100) | Test input parameters |
 
-### File Section - Result Records
+### File Section - Results Records
 
-| Record | Picture | Description |
-|--------|---------|-------------|
-| EXPECTED-RECORD | X(200) | Expected test output |
-| ACTUAL-RECORD | X(200) | Actual test output |
-| REPORT-RECORD | X(132) | Test report output line |
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 01 | EXPECTED-RECORD | X(200) | Expected test result |
+| 01 | ACTUAL-RECORD | X(200) | Actual test result |
+| 01 | REPORT-RECORD | X(132) | Output report line |
 
-### Working Storage
+### Working Storage - File Status
 
-#### File Status Fields
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | WS-TEST-STATUS | XX | TEST-CASES file status |
+| 05 | WS-EXP-STATUS | XX | EXPECTED-RESULTS file status |
+| 05 | WS-ACT-STATUS | XX | ACTUAL-RESULTS file status |
+| 05 | WS-RPT-STATUS | XX | TEST-REPORT file status |
 
-| Field | Picture | Description |
-|-------|---------|-------------|
-| WS-TEST-STATUS | XX | TEST-CASES file status |
-| WS-EXP-STATUS | XX | EXPECTED-RESULTS file status |
-| WS-ACT-STATUS | XX | ACTUAL-RESULTS file status |
-| WS-RPT-STATUS | XX | TEST-REPORT file status |
+### Working Storage - Test Type Constants
 
-#### Test Type Constants
+| Level | Name | Picture | Value | Description |
+|-------|------|---------|-------|-------------|
+| 05 | WS-FUNCTIONAL | X(10) | 'FUNCTIONAL' | Functional test type |
+| 05 | WS-INTEGRATION | X(10) | 'INTEGRATE' | Integration test type |
+| 05 | WS-PERFORMANCE | X(10) | 'PERFORM' | Performance test type |
+| 05 | WS-ERROR | X(10) | 'ERROR' | Error handling test type |
 
-| Field | Picture | Value | Description |
-|-------|---------|-------|-------------|
-| WS-FUNCTIONAL | X(10) | 'FUNCTIONAL' | Functional test type |
-| WS-INTEGRATION | X(10) | 'INTEGRATE' | Integration test type |
-| WS-PERFORMANCE | X(10) | 'PERFORM' | Performance test type |
-| WS-ERROR | X(10) | 'ERROR' | Error handling test type |
+### Working Storage - Processing Flags
 
-#### Processing Flags
+| Level | Name | Picture | Value | Description |
+|-------|------|---------|-------|-------------|
+| 05 | WS-END-OF-TESTS | X | 'N' | End-of-file flag |
+| - | END-OF-TESTS | 88 | 'Y' | Condition name for EOF |
+| 05 | WS-TEST-PASSED | X | 'N' | Current test pass flag |
+| - | TEST-PASSED | 88 | 'Y' | Condition name for pass |
 
-| Field | Picture | Initial | Level-88 | Description |
-|-------|---------|---------|----------|-------------|
-| WS-END-OF-TESTS | X | 'N' | END-OF-TESTS = 'Y' | EOF indicator |
-| WS-TEST-PASSED | X | 'N' | TEST-PASSED = 'Y' | Current test result |
+### Working Storage - Test Metrics
 
-#### Test Metrics
+| Level | Name | Picture | Value | Description |
+|-------|------|---------|-------|-------------|
+| 05 | WS-TOTAL-TESTS | 9(5) | ZERO | Total tests executed |
+| 05 | WS-TESTS-PASSED | 9(5) | ZERO | Tests that passed |
+| 05 | WS-TESTS-FAILED | 9(5) | ZERO | Tests that failed |
+| 05 | WS-START-TIME | 9(8) | ZERO | Suite start time (HHMMSSCC) |
+| 05 | WS-END-TIME | 9(8) | ZERO | Suite end time |
+| 05 | WS-ELAPSED-TIME | 9(8) | ZERO | Total elapsed time |
 
-| Field | Picture | Initial | Description |
-|-------|---------|---------|-------------|
-| WS-TOTAL-TESTS | 9(5) | ZERO | Total tests executed |
-| WS-TESTS-PASSED | 9(5) | ZERO | Count of passed tests |
-| WS-TESTS-FAILED | 9(5) | ZERO | Count of failed tests |
-| WS-START-TIME | 9(8) | ZERO | Suite start time (HHMMSSTT) |
-| WS-END-TIME | 9(8) | ZERO | Suite end time |
-| WS-ELAPSED-TIME | 9(8) | ZERO | Total elapsed time |
+### Working Storage - Report Lines
 
-#### Report Detail Line
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | WS-HEADER1 | X(132) | Separator line (all asterisks) |
+| 05 | WS-HEADER2 | X(132) | Report title "TEST VALIDATION REPORT" |
 
-| Field | Picture | Description |
-|-------|---------|-------------|
-| WS-TEST-ID-OUT | X(10) | Test identifier |
-| WS-TEST-TYPE-OUT | X(10) | Test type |
-| WS-TEST-DESC-OUT | X(50) | Test description |
-| WS-TEST-STATUS-OUT | X(4) | PASS or FAIL |
+### Working Storage - Test Detail Line
 
-#### Summary Line
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | WS-TEST-ID-OUT | X(10) | Test ID for report |
+| 05 | WS-TEST-TYPE-OUT | X(10) | Test type for report |
+| 05 | WS-TEST-DESC-OUT | X(50) | Test description for report |
+| 05 | WS-TEST-STATUS-OUT | X(4) | PASS/FAIL status |
 
-| Field | Picture | Description |
-|-------|---------|-------------|
-| WS-TOTAL-OUT | ZZ,ZZ9 | Total tests (edited) |
-| WS-PASSED-OUT | ZZ,ZZ9 | Passed count (edited) |
-| WS-FAILED-OUT | ZZ,ZZ9 | Failed count (edited) |
-| WS-SUCCESS-RATE | ZZ9.99 | Pass percentage |
+### Working Storage - Summary Line
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | WS-TOTAL-OUT | ZZ,ZZ9 | Formatted total tests |
+| 05 | WS-PASSED-OUT | ZZ,ZZ9 | Formatted passed count |
+| 05 | WS-FAILED-OUT | ZZ,ZZ9 | Formatted failed count |
+| 05 | WS-SUCCESS-RATE | ZZ9.99 | Success percentage |
+
+### Return Code Area (from RTNCODE copybook)
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 01 | RETURN-CODE-AREA | - | Return code management |
+| 05 | RC-REQUEST-TYPE | X | Request type (I/S/G/L/A) |
+| 05 | RC-PROGRAM-ID | X(8) | Program identifier |
+| 05 | RC-CURRENT-CODE | S9(4) COMP | Current return code |
+| 05 | RC-HIGHEST-CODE | S9(4) COMP | Highest return code seen |
+| 05 | RC-STATUS | X | Status: S/W/E/F |
+| 05 | RC-MESSAGE | X(80) | Status message |
 
 ## File I/O
 
-### Input Files
+### TEST-CASES (Input)
 
-#### TEST-CASES (TESTCASE)
+- **Assignment**: TESTCASE
+- **Organization**: Sequential
+- **Recording Mode**: Fixed
+- **File Status**: WS-TEST-STATUS
 
-| Attribute | Value |
-|-----------|-------|
-| Organization | Sequential |
-| Access Mode | Sequential |
-| Recording Mode | F (Fixed) |
-| File Status | WS-TEST-STATUS |
+| Operation | Paragraph | Description |
+|-----------|-----------|-------------|
+| OPEN INPUT | 1100-OPEN-FILES | Opens for reading test definitions |
+| READ | 2000-PROCESS | Reads next test case |
+| CLOSE | 3000-CLEANUP | Closes after all tests |
 
-Contains test case definitions with ID, type, description, and parameters.
+### EXPECTED-RESULTS (Input)
 
-#### EXPECTED-RESULTS (EXPECTED)
+- **Assignment**: EXPECTED
+- **Organization**: Sequential
+- **Recording Mode**: Fixed
+- **File Status**: WS-EXP-STATUS
 
-| Attribute | Value |
-|-----------|-------|
-| Organization | Sequential |
-| Access Mode | Sequential |
-| Recording Mode | F (Fixed) |
-| Record Length | 200 bytes |
-| File Status | WS-EXP-STATUS |
+| Operation | Paragraph | Description |
+|-----------|-----------|-------------|
+| OPEN INPUT | 1100-OPEN-FILES | Opens expected results file |
+| READ | 2600-VALIDATE-RESULTS | Reads expected outcome |
+| CLOSE | 3000-CLEANUP | Closes after validation |
 
-Contains expected output for each test case.
+### ACTUAL-RESULTS (Input)
 
-#### ACTUAL-RESULTS (ACTUAL)
+- **Assignment**: ACTUAL
+- **Organization**: Sequential
+- **Recording Mode**: Fixed
+- **File Status**: WS-ACT-STATUS
 
-| Attribute | Value |
-|-----------|-------|
-| Organization | Sequential |
-| Access Mode | Sequential |
-| Recording Mode | F (Fixed) |
-| Record Length | 200 bytes |
-| File Status | WS-ACT-STATUS |
+| Operation | Paragraph | Description |
+|-----------|-----------|-------------|
+| OPEN INPUT | 1100-OPEN-FILES | Opens actual results file |
+| READ | 2600-VALIDATE-RESULTS | Reads actual outcome |
+| CLOSE | 3000-CLEANUP | Closes after validation |
 
-Contains actual output from test execution.
+### TEST-REPORT (Output)
 
-### Output File
+- **Assignment**: TESTRPT
+- **Organization**: Sequential
+- **Recording Mode**: Fixed (132 bytes)
+- **File Status**: WS-RPT-STATUS
 
-#### TEST-REPORT (TESTRPT)
-
-| Attribute | Value |
-|-----------|-------|
-| Organization | Sequential |
-| Recording Mode | F (Fixed) |
-| Record Length | 132 bytes |
-| File Status | WS-RPT-STATUS |
-
-Contains the formatted test validation report.
-
-### File Operations Summary
-
-| Operation | File | Paragraph | Description |
-|-----------|------|-----------|-------------|
-| OPEN INPUT | TEST-CASES | 1100-OPEN-FILES | Open test case definitions |
-| OPEN INPUT | EXPECTED-RESULTS | 1100-OPEN-FILES | Open expected results |
-| OPEN INPUT | ACTUAL-RESULTS | 1100-OPEN-FILES | Open actual results |
-| OPEN OUTPUT | TEST-REPORT | 1100-OPEN-FILES | Open report for writing |
-| READ | TEST-CASES | 2000-PROCESS | Read next test case |
-| WRITE | REPORT-RECORD | 1200-WRITE-HEADERS | Write header lines |
-| WRITE | REPORT-RECORD | 2800-WRITE-TEST-DETAIL | Write test detail |
-| WRITE | REPORT-RECORD | 2900-WRITE-SUMMARY | Write summary line |
-| CLOSE | All files | 3000-CLEANUP | Close all files |
+| Operation | Paragraph | Description |
+|-----------|-----------|-------------|
+| OPEN OUTPUT | 1100-OPEN-FILES | Opens for report writing |
+| WRITE | 1200-WRITE-HEADERS | Writes report headers |
+| WRITE | 2800-WRITE-TEST-DETAIL | Writes test result line |
+| WRITE | 2900-WRITE-SUMMARY | Writes summary totals |
+| CLOSE | 3000-CLEANUP | Closes report file |
 
 ## Control Flow
 
 ### 0000-MAIN - Main Control
 
+Orchestrates the test validation process:
 1. Calls 1000-INITIALIZE for setup
-2. Calls 2000-PROCESS for test execution
-3. Calls 3000-CLEANUP for resource release
+2. Calls 2000-PROCESS to run all tests
+3. Calls 3000-CLEANUP for file closure
 4. Returns via GOBACK
 
 ### 1000-INITIALIZE - Setup
 
-1. **1100-OPEN-FILES**: Opens all four files with status checking
-   - Any file open error triggers 9999-ERROR-HANDLER
-2. **1200-WRITE-HEADERS**: Writes report header lines (asterisk border and title)
+Prepares the test environment:
+1. **1100-OPEN-FILES**: Opens all four files (test cases, expected, actual, report)
+2. **1200-WRITE-HEADERS**: Writes report header lines
 3. **1300-INIT-METRICS**: Initializes counters and captures start time
+
+### 1100-OPEN-FILES - File Opening
+
+Opens all required files with error handling:
+- Opens TEST-CASES for input
+- Opens EXPECTED-RESULTS for input
+- Opens ACTUAL-RESULTS for input
+- Opens TEST-REPORT for output
+- Calls 9999-ERROR-HANDLER if any open fails
+
+### 1200-WRITE-HEADERS - Report Header
+
+Writes the report header section:
+1. Writes WS-HEADER1 (asterisk separator line)
+2. Writes WS-HEADER2 (centered title "TEST VALIDATION REPORT")
+
+### 1300-INIT-METRICS - Metrics Initialization
+
+Initializes test tracking:
+1. Clears all metrics in WS-TEST-METRICS to zeros
+2. Captures start time using `ACCEPT WS-START-TIME FROM TIME`
 
 ### 2000-PROCESS - Main Processing Loop
 
-1. Reads TEST-CASES until EOF
-2. For each test case, calls 2100-EXECUTE-TEST
-3. After all tests, calls 2900-WRITE-SUMMARY
+Executes all test cases:
+1. Loops until END-OF-TESTS is true
+2. Reads each TEST-CASE-RECORD
+3. Sets END-OF-TESTS on AT END condition
+4. Calls 2100-EXECUTE-TEST for each record
+5. After loop, calls 2900-WRITE-SUMMARY
 
-### 2100-EXECUTE-TEST - Test Dispatcher
+### 2100-EXECUTE-TEST - Test Execution Router
 
-1. Evaluates TEST-TYPE and routes to appropriate test runner:
-   - FUNCTIONAL → 2200-RUN-FUNCTIONAL-TEST
-   - INTEGRATE → 2300-RUN-INTEGRATION-TEST
-   - PERFORM → 2400-RUN-PERFORMANCE-TEST
-   - ERROR → 2500-RUN-ERROR-TEST
-   - OTHER → 9999-ERROR-HANDLER
-2. Calls 2600-VALIDATE-RESULTS to compare actual vs expected
-3. Calls 2700-UPDATE-METRICS to update counters
-4. Calls 2800-WRITE-TEST-DETAIL to write report line
+Routes tests based on TEST-TYPE:
 
-### Test Type Handlers
+| TEST-TYPE | Paragraph Called |
+|-----------|------------------|
+| FUNCTIONAL | 2200-RUN-FUNCTIONAL-TEST |
+| INTEGRATE | 2300-RUN-INTEGRATION-TEST |
+| PERFORM | 2400-RUN-PERFORMANCE-TEST |
+| ERROR | 2500-RUN-ERROR-TEST |
+| Other | 9999-ERROR-HANDLER |
 
-| Paragraph | Test Type | Purpose |
-|-----------|-----------|---------|
-| 2200-RUN-FUNCTIONAL-TEST | FUNCTIONAL | Unit/function testing |
-| 2300-RUN-INTEGRATION-TEST | INTEGRATE | Integration testing |
-| 2400-RUN-PERFORMANCE-TEST | PERFORM | Performance benchmarking |
-| 2500-RUN-ERROR-TEST | ERROR | Error handling verification |
+After test execution:
+1. Calls 2600-VALIDATE-RESULTS to compare expected vs actual
+2. Calls 2700-UPDATE-METRICS to update pass/fail counters
+3. Calls 2800-WRITE-TEST-DETAIL to write result to report
 
-*Note: The actual test execution logic for these paragraphs would need to be implemented based on specific testing requirements.*
+### 2200-RUN-FUNCTIONAL-TEST
 
-### 2600-VALIDATE-RESULTS - Result Comparison
+Executes functional tests - validates basic feature behavior and business logic.
 
-Compares ACTUAL-RECORD with EXPECTED-RECORD to determine test pass/fail status.
+### 2300-RUN-INTEGRATION-TEST
 
-### 2700-UPDATE-METRICS - Counter Updates
+Executes integration tests - validates inter-component communication and data flow.
 
-Updates the test counters:
+### 2400-RUN-PERFORMANCE-TEST
+
+Executes performance tests - validates response times and throughput benchmarks.
+
+### 2500-RUN-ERROR-TEST
+
+Executes error handling tests - validates proper handling of invalid inputs and error conditions.
+
+### 2600-VALIDATE-RESULTS
+
+Compares actual results against expected results to determine pass/fail status. Sets the TEST-PASSED flag accordingly.
+
+### 2700-UPDATE-METRICS
+
+Updates test counters:
 - Increments WS-TOTAL-TESTS
-- Increments WS-TESTS-PASSED or WS-TESTS-FAILED based on result
+- If TEST-PASSED: Increments WS-TESTS-PASSED
+- Otherwise: Increments WS-TESTS-FAILED
 
-### 2800-WRITE-TEST-DETAIL - Report Writing
+### 2800-WRITE-TEST-DETAIL
 
-Formats and writes a detail line for each test showing:
-- Test ID
-- Test Type
-- Description
-- Status (PASS/FAIL)
+Writes a detail line to the report for the current test case, including test ID, type, description, and PASS/FAIL status.
 
 ### 2900-WRITE-SUMMARY - Summary Generation
 
-1. Captures end time using `ACCEPT FROM TIME`
-2. Computes elapsed time
-3. Calculates success rate percentage
-4. Writes summary line with totals and pass rate
+Produces the test summary:
+1. Captures end time using `ACCEPT WS-END-TIME FROM TIME`
+2. Computes elapsed time: `WS-END-TIME - WS-START-TIME`
+3. Moves metrics to output fields
+4. Computes success rate: `(WS-TESTS-PASSED / WS-TOTAL-TESTS) * 100`
+5. Writes WS-SUMMARY-LINE to report
 
-### 3000-CLEANUP - Resource Release
+### 3000-CLEANUP - File Closure
 
-Closes all four files in a single CLOSE statement.
+Closes all four files:
+- TEST-CASES
+- EXPECTED-RESULTS
+- ACTUAL-RESULTS
+- TEST-REPORT
 
-### 9999-ERROR-HANDLER - Error Processing
+### 9999-ERROR-HANDLER - Error Handling
 
-1. Displays error message to console (CONS)
+Handles fatal errors:
+1. Displays WS-ERROR-MESSAGE to console (CONS)
 2. Sets RETURN-CODE to 12
 3. Terminates via GOBACK
 
-## Report Format
+## Report Layout
+
+The TEST-REPORT output has a 132-character fixed format:
 
 ```
 ************************************************************************...
                               TEST VALIDATION REPORT
-TEST0001   FUNCTIONAL  Verify account creation                         PASS
-TEST0002   FUNCTIONAL  Verify balance calculation                      PASS
-TEST0003   INTEGRATE   Verify end-to-end transaction                   FAIL
-TEST0004   PERFORM     Benchmark 1000 transactions                     PASS
-TEST0005   ERROR       Verify invalid input handling                   PASS
+TEST001    FUNCTIONAL  Verify account creation                          PASS
+TEST002    FUNCTIONAL  Validate balance calculation                     PASS
+TEST003    INTEGRATE   Test DB2 connection handling                     FAIL
+TEST004    PERFORM     Benchmark transaction throughput                 PASS
+TEST005    ERROR       Invalid account number handling                  PASS
+...
 TOTAL TESTS: 5     PASSED: 4     FAILED: 1     SUCCESS: 80.00%
 ```
+
+## Test Types
+
+| Type | Constant | Purpose |
+|------|----------|---------|
+| FUNCTIONAL | 'FUNCTIONAL' | Unit/feature testing - validates individual functions work correctly |
+| INTEGRATE | 'INTEGRATE' | Integration testing - validates components work together |
+| PERFORM | 'PERFORM' | Performance testing - validates system meets performance requirements |
+| ERROR | 'ERROR' | Negative testing - validates proper handling of error conditions |
 
 ## Dependencies
 
 ### Copybooks
 
-- **RTNCODE** - Return code management structures for tracking test execution status
-- **ERRHAND** - Standard error handling definitions including error message fields
+| Copybook | Section | Description |
+|----------|---------|-------------|
+| RTNCODE | WORKING-STORAGE | Return code management structure |
+| ERRHAND | WORKING-STORAGE | Error handling definitions |
 
 ### Called Programs
 
-None directly - this is a test framework that validates results from other program executions.
+This program does not call external programs. Test execution is handled internally.
 
 ### Related Programs
 
-Programs sharing the RTNCODE copybook:
+Programs that share copybooks with TSTVAL00:
 
-| Program | Description |
-|---------|-------------|
-| RPTAUD00 | Audit report generator |
-| RPTPOS00 | Position report generator |
-| RPTSTA00 | Status report generator |
-| RTNCDE00 | Return code processor |
-| TSTGEN00 | Test data generator |
-| UTLMNT00 | Maintenance utility |
-| UTLMON00 | Monitoring utility |
-| UTLVAL00 | Validation utility |
-
-Programs sharing the ERRHAND copybook are used throughout the system for consistent error handling.
+- **TSTGEN00** - Test data generator (uses RTNCODE, ERRHAND)
+- **RPTAUD00** - Audit report program (uses RTNCODE, ERRHAND)
+- **RPTPOS00** - Position report program (uses RTNCODE, ERRHAND)
+- **RPTSTA00** - Status report program (uses RTNCODE, ERRHAND)
+- **RTNCDE00** - Return code manager (uses RTNCODE)
+- **UTLMNT00** - Maintenance utility (uses RTNCODE, ERRHAND)
+- **UTLMON00** - Monitoring utility (uses RTNCODE, ERRHAND)
+- **UTLVAL00** - Validation utility (uses RTNCODE, ERRHAND)
 
 ## Return Codes
 
-| Code | Description |
-|------|-------------|
-| 0 | All tests passed successfully |
-| 12 | Error during execution (file open failure, invalid test type) |
+| Code | Meaning |
+|------|---------|
+| 0 | All tests completed (check report for pass/fail) |
+| 12 | Fatal error (file open failure, invalid test type) |
 
-## Usage
-
-### JCL Example
+## JCL Example
 
 ```jcl
-//TSTVAL   EXEC PGM=TSTVAL00
-//STEPLIB  DD DSN=your.loadlib,DISP=SHR
-//TESTCASE DD DSN=your.test.cases,DISP=SHR
-//EXPECTED DD DSN=your.expected.results,DISP=SHR
-//ACTUAL   DD DSN=your.actual.results,DISP=SHR
-//TESTRPT  DD DSN=your.test.report,
-//            DISP=(NEW,CATLG,DELETE),
-//            SPACE=(CYL,(1,1)),
-//            DCB=(RECFM=FB,LRECL=132,BLKSIZE=0)
-//SYSOUT   DD SYSOUT=*
+//TSTVAL00 EXEC PGM=TSTVAL00
+//STEPLIB  DD  DSN=your.loadlib,DISP=SHR
+//TESTCASE DD  DSN=your.test.cases,DISP=SHR
+//EXPECTED DD  DSN=your.expected.results,DISP=SHR
+//ACTUAL   DD  DSN=your.actual.results,DISP=SHR
+//TESTRPT  DD  SYSOUT=*
+//SYSOUT   DD  SYSOUT=*
 ```
 
-### Test Case File Format
+## Test Case File Format
 
 Each test case record should contain:
-```
-Columns  1-10:  Test ID (e.g., TEST0001)
-Columns 11-20:  Test Type (FUNCTIONAL, INTEGRATE, PERFORM, ERROR)
-Columns 21-70:  Test Description
-Columns 71-170: Test Parameters
-```
+
+| Field | Position | Length | Description |
+|-------|----------|--------|-------------|
+| TEST-ID | 1-10 | 10 | Unique identifier (e.g., "TEST001") |
+| TEST-TYPE | 11-20 | 10 | FUNCTIONAL, INTEGRATE, PERFORM, or ERROR |
+| TEST-DESCRIPTION | 21-70 | 50 | Human-readable description |
+| TEST-PARAMETERS | 71-170 | 100 | Input parameters for test execution |
 
 ## Technical Notes
 
-1. **SPECIAL-NAMES CONSOLE**: The `CONSOLE IS CONS` clause defines CONS as an alias for the system console, used for error message display via `DISPLAY ... UPON CONS`.
+- **SPECIAL-NAMES CONSOLE IS CONS**: Defines CONS as an alias for console output, used in error handler
+- **ACCEPT FROM TIME**: Retrieves system time in HHMMSSCC format (hours, minutes, seconds, centiseconds)
+- **88-Level Conditions**: Uses END-OF-TESTS and TEST-PASSED for readable flag checking
+- **Edited Pictures**: Summary uses ZZ,ZZ9 for zero-suppression with comma insertion
+- **Success Rate Calculation**: Computes percentage as `(passed / total) * 100`
+- **RECORDING MODE F**: Fixed-length records for all files
+- **BLOCK CONTAINS 0**: System-determined blocking for all files
 
-2. **ACCEPT FROM TIME**: Captures the current time in HHMMSSTT format (hours, minutes, seconds, hundredths). Used for calculating test suite elapsed time.
+## Testing Workflow
 
-3. **Edited Pictures**: The summary line uses edited pictures like `ZZ,ZZ9` for numeric display with comma insertion and leading zero suppression, and `ZZ9.99` for the percentage with decimal point.
-
-4. **Recording Mode F**: Fixed-length records without additional control information, standard for batch sequential files.
-
-5. **Block Contains 0**: Lets the system determine optimal block size based on device characteristics.
-
-6. **Test Framework Pattern**: This program implements a common test framework pattern:
-   - Read test definitions from file
-   - Execute tests based on type
-   - Compare actual vs expected results
-   - Aggregate metrics and report
-
-7. **Extensibility**: New test types can be added by:
-   - Adding a new constant to WS-TEST-TYPES
-   - Adding a WHEN clause to the EVALUATE in 2100-EXECUTE-TEST
-   - Implementing the corresponding test paragraph
-
-8. **Error Isolation**: Each file open is checked independently, allowing identification of which specific file caused a failure.
+1. **Prepare Test Cases**: Create TESTCASE file with test definitions
+2. **Generate Expected Results**: Create EXPECTED file with anticipated outcomes
+3. **Execute System Under Test**: Run the programs being tested to produce ACTUAL results
+4. **Run TSTVAL00**: Execute validation suite to compare actual vs expected
+5. **Review Report**: Examine TESTRPT for pass/fail status and success rate
+6. **Investigate Failures**: For failed tests, compare EXPECTED and ACTUAL records

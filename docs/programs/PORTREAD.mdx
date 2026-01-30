@@ -1,128 +1,109 @@
 ---
 title: "PORTREAD"
-description: "Portfolio Record Reading Program - sequentially reads and displays all portfolio records"
+description: "Portfolio Record Reading Program - sequentially reads and displays all records from the indexed Portfolio file"
 ---
 
 ## Overview
 
-PORTREAD is a batch COBOL utility program that reads and displays all records from the Portfolio Master File. It provides a simple way to view portfolio data for verification, debugging, or reporting purposes.
+PORTREAD is a batch COBOL program that demonstrates portfolio file reading capabilities. It sequentially reads all records from an indexed VSAM file (PORTFILE) and displays the key fields of each portfolio record to the console output.
 
-Key capabilities include:
+This program serves as both a functional utility and a reference implementation for:
+- **File browsing**: Listing all portfolios in the system
+- **Data verification**: Confirming file contents and record structure
+- **Testing support**: Validating portfolio data after batch updates
 
-- **Sequential Reading**: Reads all portfolio records from start to end
-- **Record Display**: Formats and displays key portfolio information
-- **Record Counting**: Tracks and reports total records processed
-- **Error Handling**: Detects and reports file access errors
-
-This program is part of the Portfolio Management module and serves as a diagnostic/utility tool for examining portfolio data. It demonstrates the basic reading capabilities of the Portfolio file.
+The program uses dynamic access mode on an indexed file, allowing for both sequential and random access patterns, though this implementation uses sequential (READ NEXT) processing.
 
 ## Program Structure
 
 ```mermaid
 graph TD
     A[0000-MAIN] --> B[1000-INITIALIZE]
-    B --> C{File Open OK?}
-    C --> |No| D[Display Error]
+    B --> C{Open Successful?}
+    C -->|No| D[Display Error]
     D --> E[3000-TERMINATE]
-    C --> |Yes| F[2000-PROCESS]
-    F --> G{End of File?}
-    G --> |No| H[2100-DISPLAY-RECORD]
-    H --> I[Increment Count]
+    C -->|Yes| F[2000-PROCESS]
+    F --> G{END-OF-FILE?}
+    G -->|No| H[Increment Count]
+    H --> I[2100-DISPLAY-RECORD]
     I --> F
-    G --> |Yes| J[3000-TERMINATE]
-    J --> K[GOBACK]
+    G -->|Yes| E
+    E --> J[GOBACK]
     
-    B --> B1[Initialize Work Areas]
-    B1 --> B2[OPEN INPUT PORTFOLIO-FILE]
-    
-    F --> F1[READ PORTFOLIO-FILE NEXT]
-    F1 --> F2{AT END?}
-    F2 --> |Yes| F3[SET END-OF-FILE]
-    F2 --> |No| F4[Process Record]
-    
-    H --> H1[DISPLAY Portfolio ID]
-    H1 --> H2[DISPLAY Account No]
-    H2 --> H3[DISPLAY Client Name]
-    H3 --> H4[DISPLAY Status]
-    H4 --> H5[DISPLAY Total Value]
-    
-    J --> J1[CLOSE PORTFOLIO-FILE]
-    J1 --> J2[DISPLAY Total Count]
-    J2 --> J3[Set RETURN-CODE]
+    subgraph "Processing Loop"
+        F
+        G
+        H
+        I
+    end
 ```
 
 ## Data Structures
 
-### Working Storage
+### File Section
 
-#### Constants
+The program uses the PORTFLIO copybook to define the portfolio record structure:
 
-| Level | Name | Picture | Value | Description |
-|-------|------|---------|-------|-------------|
-| 01 | WS-CONSTANTS | - | - | Program constants |
-| 05 | WS-PROGRAM-NAME | X(08) | 'PORTREAD' | Program identifier |
-| 05 | WS-SUCCESS | S9(4) | +0 | Success return code |
-| 05 | WS-ERROR | S9(4) | +8 | Error return code |
-
-#### Switches and Status
-
-| Level | Name | Picture | Value | Description |
-|-------|------|---------|-------|-------------|
-| 01 | WS-SWITCHES | - | - | Control switches |
-| 05 | WS-FILE-STATUS | X(02) | - | VSAM file status |
-| 88 | WS-SUCCESS-STATUS | VALUE '00' | - | Successful operation |
-| 88 | WS-EOF-STATUS | VALUE '10' | - | End of file reached |
-| 88 | WS-REC-NOT-FND | VALUE '23' | - | Record not found |
-| 05 | WS-END-OF-FILE-SW | X | 'N' | EOF indicator |
-| 88 | END-OF-FILE | VALUE 'Y' | - | EOF condition true |
-| 88 | NOT-END-OF-FILE | VALUE 'N' | - | EOF condition false |
-
-#### Work Areas
-
-| Level | Name | Picture | Value | Description |
-|-------|------|---------|-------|-------------|
-| 01 | WS-WORK-AREAS | - | - | Processing work areas |
-| 05 | WS-RECORD-COUNT | 9(7) | ZERO | Records read counter |
-| 05 | WS-RETURN-CODE | S9(4) | +0 | Program return code |
-
-### Portfolio Record Structure (PORTFLIO)
+#### PORT-RECORD (from PORTFLIO copybook)
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | PORT-RECORD | - | Portfolio master record |
-| 05 | PORT-KEY | - | Composite record key |
+| 01 | PORT-RECORD | Group | Portfolio master record |
+| 05 | PORT-KEY | Group | Composite primary key |
 | 10 | PORT-ID | X(8) | Portfolio identifier |
 | 10 | PORT-ACCOUNT-NO | X(10) | Account number |
-| 05 | PORT-CLIENT-INFO | - | Client information |
+| 05 | PORT-CLIENT-INFO | Group | Client information |
 | 10 | PORT-CLIENT-NAME | X(30) | Client name |
-| 10 | PORT-CLIENT-TYPE | X(1) | Client type (I/C/T) |
-| 05 | PORT-PORTFOLIO-INFO | - | Portfolio details |
+| 10 | PORT-CLIENT-TYPE | X(1) | Client type code |
+| 88 | PORT-INDIVIDUAL | 'I' | Individual client |
+| 88 | PORT-CORPORATE | 'C' | Corporate client |
+| 88 | PORT-TRUST | 'T' | Trust account |
+| 05 | PORT-PORTFOLIO-INFO | Group | Portfolio metadata |
 | 10 | PORT-CREATE-DATE | 9(8) | Creation date (YYYYMMDD) |
 | 10 | PORT-LAST-MAINT | 9(8) | Last maintenance date |
-| 10 | PORT-STATUS | X(1) | Status (A/C/S) |
-| 05 | PORT-FINANCIAL-INFO | - | Financial data |
+| 10 | PORT-STATUS | X(1) | Portfolio status |
+| 88 | PORT-ACTIVE | 'A' | Active portfolio |
+| 88 | PORT-CLOSED | 'C' | Closed portfolio |
+| 88 | PORT-SUSPENDED | 'S' | Suspended portfolio |
+| 05 | PORT-FINANCIAL-INFO | Group | Financial data |
 | 10 | PORT-TOTAL-VALUE | S9(13)V99 COMP-3 | Total portfolio value |
 | 10 | PORT-CASH-BALANCE | S9(13)V99 COMP-3 | Cash balance |
-| 05 | PORT-AUDIT-INFO | - | Audit trail |
+| 05 | PORT-AUDIT-INFO | Group | Audit trail |
 | 10 | PORT-LAST-USER | X(8) | Last update user ID |
 | 10 | PORT-LAST-TRANS | 9(8) | Last transaction date |
 | 05 | PORT-FILLER | X(50) | Reserved space |
 
-### Client Type Values
+### Working Storage
 
-| Code | 88-Level | Description |
-|------|----------|-------------|
-| `I` | PORT-INDIVIDUAL | Individual investor |
-| `C` | PORT-CORPORATE | Corporate account |
-| `T` | PORT-TRUST | Trust account |
+#### Constants (WS-CONSTANTS)
 
-### Portfolio Status Values
+| Level | Name | Picture | Value | Description |
+|-------|------|---------|-------|-------------|
+| 01 | WS-CONSTANTS | Group | | Program constants |
+| 05 | WS-PROGRAM-NAME | X(8) | 'PORTREAD' | Program identifier |
+| 05 | WS-SUCCESS | S9(4) | +0 | Success return code |
+| 05 | WS-ERROR | S9(4) | +8 | Error return code |
 
-| Code | 88-Level | Description |
-|------|----------|-------------|
-| `A` | PORT-ACTIVE | Active portfolio |
-| `C` | PORT-CLOSED | Closed portfolio |
-| `S` | PORT-SUSPENDED | Suspended portfolio |
+#### Switches (WS-SWITCHES)
+
+| Level | Name | Picture | Value | Description |
+|-------|------|---------|-------|-------------|
+| 01 | WS-SWITCHES | Group | | Processing flags |
+| 05 | WS-FILE-STATUS | X(2) | | VSAM file status |
+| 88 | WS-SUCCESS-STATUS | | '00' | Successful operation |
+| 88 | WS-EOF-STATUS | | '10' | End of file reached |
+| 88 | WS-REC-NOT-FND | | '23' | Record not found |
+| 05 | WS-END-OF-FILE-SW | X | 'N' | EOF switch |
+| 88 | END-OF-FILE | | 'Y' | EOF reached |
+| 88 | NOT-END-OF-FILE | | 'N' | More records exist |
+
+#### Work Areas (WS-WORK-AREAS)
+
+| Level | Name | Picture | Value | Description |
+|-------|------|---------|-------|-------------|
+| 01 | WS-WORK-AREAS | Group | | Processing variables |
+| 05 | WS-RECORD-COUNT | 9(7) | ZERO | Records read counter |
+| 05 | WS-RETURN-CODE | S9(4) | +0 | Program return code |
 
 ## File I/O
 
@@ -130,195 +111,183 @@ graph TD
 
 | Attribute | Value |
 |-----------|-------|
-| File Name | PORTFOLIO-FILE |
+| Logical Name | PORTFOLIO-FILE |
 | DD Name | PORTFILE |
 | Organization | Indexed (VSAM KSDS) |
 | Access Mode | Dynamic |
-| Record Key | PORT-KEY |
+| Record Key | PORT-KEY (18 bytes: PORT-ID + PORT-ACCOUNT-NO) |
 | File Status | WS-FILE-STATUS |
 
 ### I/O Operations
 
-| Operation | Paragraph | Description |
+| Paragraph | Operation | Description |
 |-----------|-----------|-------------|
-| OPEN INPUT | 1000-INITIALIZE | Open file for reading |
-| READ NEXT | 2000-PROCESS | Read next sequential record |
-| CLOSE | 3000-TERMINATE | Close file |
+| 1000-INITIALIZE | OPEN INPUT | Open file for reading |
+| 2000-PROCESS | READ NEXT | Sequential read of next record |
+| 3000-TERMINATE | CLOSE | Close the file |
+
+### File Status Codes
+
+| Code | Condition | Handling |
+|------|-----------|----------|
+| 00 | Success | Continue processing |
+| 10 | End of file | Set END-OF-FILE flag, exit loop |
+| 23 | Record not found | (Defined but not used in sequential read) |
+| Other | Error | Display error, terminate with RC=8 |
 
 ## Control Flow
 
+### Main Processing (0000-MAIN)
+
+1. Perform initialization
+2. Loop through all records until end-of-file
+3. Perform termination
+4. Return to caller via GOBACK
+
 ### Initialization (1000-INITIALIZE)
 
-1. **Initialize Work Areas**: Clears `WS-WORK-AREAS` to default values
-2. **Open File**: Opens `PORTFOLIO-FILE` for INPUT
-3. **Error Check**: If open fails:
-   - Displays error message with file status
-   - Sets `WS-RETURN-CODE` to error value
-   - Performs terminate processing
+1. Initialize work areas to default values
+2. Open PORTFOLIO-FILE for input
+3. If open fails:
+   - Display error message with file status
+   - Set return code to 8 (error)
+   - Jump to termination
 
-### Main Processing Loop (2000-PROCESS)
+### Record Processing (2000-PROCESS)
 
-The main loop executes `UNTIL END-OF-FILE`:
+Uses the `READ...NEXT RECORD` statement for sequential processing:
 
-1. **Read Next Record**: Issues `READ PORTFOLIO-FILE NEXT RECORD`
-2. **AT END Handling**: Sets `END-OF-FILE` flag when no more records
-3. **NOT AT END Handling**:
-   - Increments `WS-RECORD-COUNT`
-   - Calls `2100-DISPLAY-RECORD` to output record data
-
-### Record Display (2100-DISPLAY-RECORD)
-
-Displays formatted portfolio information:
-
+```cobol
+READ PORTFOLIO-FILE NEXT RECORD
+    AT END
+        SET END-OF-FILE TO TRUE
+    NOT AT END
+        ADD 1 TO WS-RECORD-COUNT
+        PERFORM 2100-DISPLAY-RECORD
+END-READ
 ```
-Portfolio Record: nnnnnnn
-  ID: xxxxxxxx
-  Account: xxxxxxxxxx
-  Client: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-  Status: x
-  Total Value: snnnnnnnnnnnnnn.nn
+
+The `AT END` and `NOT AT END` phrases provide inline handling for the end-of-file condition.
+
+### Display Record (2100-DISPLAY-RECORD)
+
+Outputs key portfolio fields to SYSOUT:
+- Record number
+- Portfolio ID
+- Account number
+- Client name
+- Portfolio status
+- Total portfolio value
+
+Sample output:
+```
+Portfolio Record: 0000001
+  ID: PORT0001
+  Account: 1234567890
+  Client: SMITH, JOHN
+  Status: A
+  Total Value: +0000000150000.00
 ```
 
 ### Termination (3000-TERMINATE)
 
-1. **Close File**: Closes `PORTFOLIO-FILE`
-2. **Display Summary**: Shows total records read
-3. **Set Return Code**: Moves `WS-RETURN-CODE` to `RETURN-CODE`
+1. Close PORTFOLIO-FILE
+2. Display total records read
+3. Set system RETURN-CODE from WS-RETURN-CODE
 
 ## Dependencies
 
 ### Copybooks
 
-| Copybook | Location | Purpose |
-|----------|----------|---------|
-| PORTFLIO | common | Portfolio master record layout |
+| Copybook | Location | Description |
+|----------|----------|-------------|
+| PORTFLIO | common/ | Portfolio master record layout with key, client info, financial data, and audit fields |
+
+### Called Programs
+
+*None* - This is a standalone batch utility.
 
 ### Related Programs
 
-| Program | Relationship | Description |
-|---------|--------------|-------------|
-| PORTMSTR | Sibling | Portfolio master maintenance (CRUD) |
-| PORTADD | Sibling | Add new portfolio records |
-| PORTUPDT | Sibling | Update portfolio records |
-| PORTDEL | Sibling | Delete portfolio records |
-| PORTTEST | Sibling | Portfolio testing utility |
-| TSTGEN00 | Consumer | Test data generator |
+Programs that share the PORTFLIO copybook (portfolio CRUD operations):
 
-### Programs Sharing PORTFLIO Copybook
+| Program | Function |
+|---------|----------|
+| PORTADD | Add new portfolio records |
+| PORTUPDT | Update existing portfolio records |
+| PORTDEL | Delete portfolio records |
+| PORTTEST | Portfolio file testing utility |
+| TSTGEN00 | Test data generation |
 
-- PORTADD - Portfolio add program
-- PORTDEL - Portfolio delete program
-- PORTTEST - Portfolio test program
-- PORTUPDT - Portfolio update program
-- TSTGEN00 - Test data generator
+## Return Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Successful completion - all records read |
+| 8 | Error - file open failed |
 
 ## JCL Requirements
 
 ```jcl
-//PORTREAD  JOB (ACCT),'READ PORTFOLIO',
-//          CLASS=A,MSGCLASS=X,NOTIFY=&SYSUID
-//*
-//STEP1    EXEC PGM=PORTREAD
-//STEPLIB   DD DSN=YOUR.LOADLIB,DISP=SHR
-//PORTFILE  DD DSN=PORTFOLIO.MASTER.FILE,DISP=SHR
-//SYSOUT    DD SYSOUT=*
-//SYSPRINT  DD SYSOUT=*
-//SYSUDUMP  DD SYSOUT=*
+//PORTREAD EXEC PGM=PORTREAD
+//STEPLIB  DD DSN=your.loadlib,DISP=SHR
+//PORTFILE DD DSN=your.portfolio.vsam.file,DISP=SHR
+//SYSOUT   DD SYSOUT=*
 ```
 
 ### DD Statements
 
 | DD Name | Description |
 |---------|-------------|
-| STEPLIB | Load library containing PORTREAD |
-| PORTFILE | Portfolio master VSAM KSDS file |
-| SYSOUT | Standard output (DISPLAY statements) |
-| SYSPRINT | Print output |
-| SYSUDUMP | Dump output for abends |
-
-## Return Codes
-
-| Code | Meaning | Description |
-|------|---------|-------------|
-| 0 | Success | All records read successfully |
-| 8 | Error | File open or processing error |
-
-## Sample Output
-
-```
-Portfolio Record: 0000001
-  ID: PORT0001
-  Account: 1234567890
-  Client: SMITH, JOHN Q
-  Status: A
-  Total Value: 000000125000.50
- 
-Portfolio Record: 0000002
-  ID: PORT0002
-  Account: 0987654321
-  Client: ACME CORPORATION
-  Status: A
-  Total Value: 000005000000.00
- 
-Portfolio Record: 0000003
-  ID: PORT0003
-  Account: 5555555555
-  Client: FAMILY TRUST
-  Status: S
-  Total Value: 000000750000.25
- 
-Total Records Read: 0000003
-```
+| STEPLIB | Program load library |
+| PORTFILE | Portfolio VSAM KSDS file |
+| SYSOUT | Console output for DISPLAY statements |
 
 ## Technical Notes
 
-### VSAM Access Mode
+### Dynamic Access Mode
 
-The program uses `ACCESS MODE IS DYNAMIC` which allows both:
-- Sequential access (used by this program via `READ NEXT`)
-- Random access (by key, not used in this program)
+The program specifies `ACCESS MODE IS DYNAMIC` which allows both:
+- **Sequential access**: Using `READ...NEXT RECORD` (as used in this program)
+- **Random access**: Using `READ...KEY IS...` (not used but available)
 
-This provides flexibility if the program is later enhanced to support keyed reads.
+This provides flexibility for future enhancements such as:
+- Reading a specific portfolio by key
+- Positioned reads starting from a specific key
+- Mixed sequential and random processing
 
-### File Status Checking
+### Packed Decimal Fields
 
-The program uses 88-level conditions for file status checking:
+The financial fields use COMP-3 (packed decimal) format:
+- `PORT-TOTAL-VALUE`: S9(13)V99 - supports values up to ±9,999,999,999,999.99
+- `PORT-CASH-BALANCE`: S9(13)V99 - same range
 
-```cobol
-88  WS-SUCCESS-STATUS     VALUE '00'.
-88  WS-EOF-STATUS        VALUE '10'.
-88  WS-REC-NOT-FND       VALUE '23'.
+When displayed via DISPLAY statement, these show in their internal packed format. For formatted output, these would need to be moved to edited PIC fields (e.g., `PIC $ZZZ,ZZZ,ZZZ,ZZ9.99-`).
+
+### Record Key Structure
+
+The composite key (PORT-KEY) consists of:
+- PORT-ID (8 bytes): Portfolio identifier
+- PORT-ACCOUNT-NO (10 bytes): Account number
+
+This 18-byte key ensures unique identification of each portfolio record.
+
+## Usage Examples
+
+### Basic Execution
+Run the program to list all portfolios:
+```
+//LISTALL  EXEC PGM=PORTREAD
+//PORTFILE DD DSN=PROD.PORTFOLIO.MASTER,DISP=SHR
+//SYSOUT   DD SYSOUT=*
 ```
 
-Common VSAM file status codes:
-- `00` - Successful completion
-- `10` - End of file (AT END condition)
-- `23` - Record not found
-- `22` - Duplicate key on write
-- `35` - File not found
-
-### COMP-3 Packed Decimal
-
-Financial fields use COMP-3 (packed decimal) format:
-- `PORT-TOTAL-VALUE`: S9(13)V99 - Up to $99,999,999,999,999.99
-- `PORT-CASH-BALANCE`: S9(13)V99 - Up to $99,999,999,999,999.99
-
-Packed decimal stores two digits per byte plus a sign nibble, making it efficient for financial calculations.
-
-### Record Counter
-
-`WS-RECORD-COUNT` uses PIC 9(7), supporting up to 9,999,999 records. For larger files, consider expanding to 9(9) or using COMP for efficiency.
-
-### Error Recovery
-
-The program performs basic error handling:
-- On file open failure, displays status and terminates
-- Uses GOBACK for clean program termination
-- Sets appropriate return code for job step condition checking
-
-### Usage Scenarios
-
-1. **Data Verification**: Verify portfolio data after batch updates
-2. **Debugging**: Examine file contents during development
-3. **Audit Support**: List all portfolios for audit review
-4. **Migration Testing**: Verify data after file conversions
+### Capture Output to File
+Redirect output for later analysis:
+```
+//CAPTURE  EXEC PGM=PORTREAD
+//PORTFILE DD DSN=PROD.PORTFOLIO.MASTER,DISP=SHR
+//SYSOUT   DD DSN=WORK.PORT.LISTING,DISP=(NEW,CATLG),
+//            DCB=(RECFM=FBA,LRECL=133,BLKSIZE=0),
+//            SPACE=(CYL,(1,1))
+```

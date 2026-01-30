@@ -1,299 +1,306 @@
 ---
 title: "CKPRST"
-description: "Checkpoint/Restart Control Structure - Defines data structures for program-level checkpoint and restart processing in batch programs"
+description: "Checkpoint/Restart Control Structure - Copybook providing data structures for batch checkpoint/restart functionality"
 ---
 
 ## Overview
 
-CKPRST is a copybook that defines the data structures required for implementing checkpoint/restart functionality in batch COBOL programs. It provides a standardized framework for saving program state at regular intervals, enabling recovery from failures without reprocessing all data from the beginning.
+CKPRST is a COBOL copybook that defines the data structures used for checkpoint/restart functionality in batch programs. It provides a standardized framework for:
 
-The copybook contains two main structures:
-- **CHECKPOINT-CONTROL** - Working storage structure for managing checkpoint state during execution
-- **CHECKPOINT-RECORD** - VSAM file record structure for persisting checkpoint data
+- **Checkpoint management** - Recording processing state at regular intervals
+- **Restart capability** - Resuming processing after failures from the last checkpoint
+- **Resource tracking** - Monitoring file positions and processing counters
+- **Error control** - Managing error thresholds and restart limits
 
-Key capabilities include:
-- **Program state tracking** - Captures program ID, run date/time, and processing status
-- **Progress counters** - Tracks records read, processed, and errors encountered
-- **Position management** - Stores last processed key and processing phase
-- **Multi-file support** - Tracks status and position for up to 5 files
-- **Configurable thresholds** - Commit frequency, max errors, and max restart attempts
-
-This copybook works in conjunction with BCHCTL (Batch Control) which handles job-level sequencing, while CKPRST manages program-level checkpointing within individual job steps.
+This copybook is essential for long-running batch jobs that need recoverability. By taking periodic checkpoints, programs can resume processing from the last committed point rather than restarting from the beginning after a failure.
 
 ## Data Structures
 
-### CHECKPOINT-CONTROL (Working Storage)
+### CHECKPOINT-CONTROL
 
-The main checkpoint control structure used during program execution.
+The main checkpoint control structure containing all checkpoint state information.
 
-#### CK-HEADER
-
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 05 | CK-HEADER | - | Header information group |
-| 10 | CK-PROGRAM-ID | PIC X(8) | Program identifier |
-| 10 | CK-RUN-DATE | PIC X(8) | Run date (YYYYMMDD) |
-| 10 | CK-RUN-TIME | PIC X(6) | Run time (HHMMSS) |
-| 10 | CK-STATUS | PIC X(1) | Current processing status |
-
-##### CK-STATUS Values (88-Level Conditions)
-
-| Condition Name | Value | Description |
-|----------------|-------|-------------|
-| CK-INITIAL | `I` | Initial state - program starting |
-| CK-ACTIVE | `A` | Active - processing in progress |
-| CK-COMPLETE | `C` | Complete - successful completion |
-| CK-FAILED | `F` | Failed - processing aborted |
-| CK-RESTARTED | `R` | Restarted - resumed from checkpoint |
-
-#### CK-COUNTERS
+#### CK-HEADER (Run Identification)
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 05 | CK-COUNTERS | - | Processing counters group |
-| 10 | CK-RECORDS-READ | PIC 9(9) COMP | Total records read from input |
+| 10 | CK-PROGRAM-ID | PIC X(8) | Program name for checkpoint identification |
+| 10 | CK-RUN-DATE | PIC X(8) | Run date (YYYYMMDD format) |
+| 10 | CK-RUN-TIME | PIC X(6) | Run time (HHMMSS format) |
+| 10 | CK-STATUS | PIC X(1) | Current checkpoint status |
+
+##### Status Codes (88-levels)
+
+| Condition | Value | Description |
+|-----------|-------|-------------|
+| CK-INITIAL | 'I' | Initial state - processing not started |
+| CK-ACTIVE | 'A' | Active - processing in progress |
+| CK-COMPLETE | 'C' | Complete - processing finished successfully |
+| CK-FAILED | 'F' | Failed - processing terminated with error |
+| CK-RESTARTED | 'R' | Restarted - resumed from checkpoint |
+
+#### CK-COUNTERS (Processing Statistics)
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 10 | CK-RECORDS-READ | PIC 9(9) COMP | Total records read |
 | 10 | CK-RECORDS-PROC | PIC 9(9) COMP | Records successfully processed |
 | 10 | CK-RECORDS-ERROR | PIC 9(9) COMP | Records with errors |
 | 10 | CK-RESTART-COUNT | PIC 9(2) COMP | Number of restart attempts |
 
-#### CK-POSITION
+#### CK-POSITION (Processing Position)
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 05 | CK-POSITION | - | Current position tracking group |
 | 10 | CK-LAST-KEY | PIC X(50) | Last successfully processed record key |
 | 10 | CK-LAST-TIME | PIC X(26) | Timestamp of last checkpoint |
 | 10 | CK-PHASE | PIC X(2) | Current processing phase |
 
-##### CK-PHASE Values (88-Level Conditions)
+##### Phase Codes (88-levels)
 
-| Condition Name | Value | Description |
-|----------------|-------|-------------|
-| CK-PHASE-INIT | `00` | Initialization phase |
-| CK-PHASE-READ | `10` | Reading input phase |
-| CK-PHASE-PROC | `20` | Processing phase |
-| CK-PHASE-UPDT | `30` | Update/write phase |
-| CK-PHASE-TERM | `40` | Termination phase |
+| Condition | Value | Description |
+|-----------|-------|-------------|
+| CK-PHASE-INIT | '00' | Initialization phase |
+| CK-PHASE-READ | '10' | Reading input phase |
+| CK-PHASE-PROC | '20' | Processing phase |
+| CK-PHASE-UPDT | '30' | Update/output phase |
+| CK-PHASE-TERM | '40' | Termination phase |
 
-#### CK-RESOURCES
+#### CK-RESOURCES (File Tracking)
+
+Tracks up to 5 files with their positions:
 
 | Level | Name | Picture | Occurs | Description |
 |-------|------|---------|--------|-------------|
-| 05 | CK-RESOURCES | - | - | File tracking group |
-| 10 | CK-FILE-STATUS | - | 5 | File status entry (repeats 5 times) |
+| 10 | CK-FILE-STATUS | - | 5 | File status array |
 | 15 | CK-FILE-NAME | PIC X(8) | - | Logical file name |
 | 15 | CK-FILE-POS | PIC X(50) | - | Current file position/key |
 | 15 | CK-FILE-STATUS | PIC X(2) | - | File status code |
 
-#### CK-CONTROL-INFO
+#### CK-CONTROL-INFO (Configuration)
 
 | Level | Name | Picture | Default | Description |
 |-------|------|---------|---------|-------------|
-| 05 | CK-CONTROL-INFO | - | - | Control parameters group |
-| 10 | CK-COMMIT-FREQ | PIC 9(5) COMP | 1000 | Commit/checkpoint every N records |
+| 10 | CK-COMMIT-FREQ | PIC 9(5) COMP | 1000 | Records between checkpoints |
 | 10 | CK-MAX-ERRORS | PIC 9(3) COMP | 100 | Maximum errors before abort |
-| 10 | CK-MAX-RESTARTS | PIC 9(2) COMP | 3 | Maximum restart attempts allowed |
+| 10 | CK-MAX-RESTARTS | PIC 9(2) COMP | 3 | Maximum restart attempts |
 | 10 | CK-RESTART-MODE | PIC X(1) | - | Current restart mode |
 
-##### CK-RESTART-MODE Values (88-Level Conditions)
+##### Restart Mode Codes (88-levels)
 
-| Condition Name | Value | Description |
-|----------------|-------|-------------|
-| CK-MODE-NORMAL | `N` | Normal processing (no restart) |
-| CK-MODE-RESTART | `R` | Restart from last checkpoint |
-| CK-MODE-RECOVER | `C` | Recovery mode (manual intervention) |
+| Condition | Value | Description |
+|-----------|-------|-------------|
+| CK-MODE-NORMAL | 'N' | Normal processing (no restart) |
+| CK-MODE-RESTART | 'R' | Restart from last checkpoint |
+| CK-MODE-RECOVER | 'C' | Recovery mode (special handling) |
 
-### CHECKPOINT-RECORD (File Record)
+### CHECKPOINT-RECORD
 
-The VSAM file record structure for persisting checkpoint data.
+VSAM file record structure for persisting checkpoint data:
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | CHECKPOINT-RECORD | - | Checkpoint VSAM record |
-| 05 | CKR-KEY | - | Record key group |
+| 01 | CHECKPOINT-RECORD | - | Complete checkpoint file record |
+| 05 | CKR-KEY | - | Composite record key |
 | 10 | CKR-PROGRAM-ID | PIC X(8) | Program identifier |
-| 10 | CKR-RUN-DATE | PIC X(8) | Run date (YYYYMMDD) |
+| 10 | CKR-RUN-DATE | PIC X(8) | Run date |
 | 05 | CKR-DATA | PIC X(400) | Checkpoint data payload |
+
+**Total Record Size**: 416 bytes (8 + 8 + 400)
 
 ## Standard Processing Routines
 
-The copybook documents four standard checkpoint processing routines that programs should call:
+The copybook documents four standard checkpoint processing routines:
 
-| Routine | Called Program | Purpose |
-|---------|----------------|---------|
-| PROC-CHECKPOINT-INIT | CKPINIT | Initialize checkpoint processing at program start |
-| PROC-CHECKPOINT-TAKE | CKPTAKE | Take a checkpoint (save current state) |
-| PROC-CHECKPOINT-COMMIT | CKPCMIT | Commit checkpoint to permanent storage |
-| PROC-CHECKPOINT-RESTART | CKPRSTR | Restore state from checkpoint for restart |
-
-### Calling Convention
+### CKPINIT - Checkpoint Initialize
 
 ```cobol
-* Initialize checkpoint at program start
 CALL 'CKPINIT' USING CHECKPOINT-CONTROL
                      RETURN-STATUS
+```
 
-* Take checkpoint during processing
+Initializes checkpoint control structures at program start. Checks for existing checkpoint records to determine if restart is needed.
+
+### CKPTAKE - Take Checkpoint
+
+```cobol
 CALL 'CKPTAKE' USING CHECKPOINT-CONTROL
                      RETURN-STATUS
+```
 
-* Commit checkpoint to storage
+Records current processing state. Typically called every CK-COMMIT-FREQ records or at significant processing milestones.
+
+### CKPCMIT - Checkpoint Commit
+
+```cobol
 CALL 'CKPCMIT' USING CHECKPOINT-CONTROL
                      RETURN-STATUS
+```
 
-* Restart from checkpoint
+Commits the checkpoint to persistent storage. Often combined with database commits to ensure consistency.
+
+### CKPRSTR - Checkpoint Restart
+
+```cobol
 CALL 'CKPRSTR' USING CHECKPOINT-CONTROL
                      RETURN-STATUS
 ```
+
+Restores processing state from the last committed checkpoint. Repositions files and restores counters.
 
 ## Usage Pattern
 
 ### Typical Checkpoint/Restart Flow
 
-```mermaid
-graph TD
-    A["Program Start"] --> B{"Restart<br/>Mode?"}
-    B -->|"Normal"| C["CKPINIT<br/>Initialize"]
-    B -->|"Restart"| D["CKPRSTR<br/>Restore State"]
-    
-    C --> E["Set CK-INITIAL"]
-    D --> F["Set CK-RESTARTED"]
-    
-    E --> G["Main Processing Loop"]
-    F --> G
-    
-    G --> H["Process Record"]
-    H --> I["Increment Counters"]
-    I --> J{"Records >=<br/>CK-COMMIT-FREQ?"}
-    
-    J -->|"Yes"| K["CKPTAKE<br/>Save State"]
-    K --> L["CKPCMIT<br/>Commit"]
-    L --> M["Reset Counter"]
-    M --> N{"More<br/>Records?"}
-    
-    J -->|"No"| N
-    
-    N -->|"Yes"| G
-    N -->|"No"| O["Set CK-COMPLETE"]
-    O --> P["Final Commit"]
-    P --> Q["Program End"]
-```
-
-### Implementation Example
-
 ```cobol
 WORKING-STORAGE SECTION.
     COPY CKPRST.
     
-01  WS-RECORD-COUNT        PIC 9(9) COMP VALUE 0.
+01  WS-RETURN-STATUS    PIC S9(4) COMP.
+01  WS-RECORD-COUNT     PIC 9(9) COMP VALUE 0.
 
 PROCEDURE DIVISION.
 0000-MAIN.
-    PERFORM 1000-INITIALIZE
-    PERFORM 2000-PROCESS UNTIL END-OF-FILE
-    PERFORM 3000-TERMINATE
-    GOBACK.
-
-1000-INITIALIZE.
+    *> Initialize checkpoint - check for restart
+    CALL 'CKPINIT' USING CHECKPOINT-CONTROL
+                         WS-RETURN-STATUS
+    
     IF CK-MODE-RESTART
         CALL 'CKPRSTR' USING CHECKPOINT-CONTROL
-                             RETURN-STATUS
-        SET CK-RESTARTED TO TRUE
-    ELSE
-        CALL 'CKPINIT' USING CHECKPOINT-CONTROL
-                             RETURN-STATUS
-        SET CK-INITIAL TO TRUE
-        MOVE 0 TO CK-RECORDS-READ
-        MOVE 0 TO CK-RECORDS-PROC
+                             WS-RETURN-STATUS
+        *> Reposition files to CK-LAST-KEY
+        PERFORM 1000-REPOSITION-FILES
     END-IF
     
-    SET CK-ACTIVE TO TRUE.
-
-2000-PROCESS.
-    READ INPUT-FILE
-    ADD 1 TO CK-RECORDS-READ
+    MOVE 'A' TO CK-STATUS
+    PERFORM 2000-PROCESS-RECORDS
     
-    PERFORM 2100-PROCESS-RECORD
-    ADD 1 TO CK-RECORDS-PROC
-    ADD 1 TO WS-RECORD-COUNT
-    
-    IF WS-RECORD-COUNT >= CK-COMMIT-FREQ
-        MOVE INPUT-KEY TO CK-LAST-KEY
-        CALL 'CKPTAKE' USING CHECKPOINT-CONTROL
-                             RETURN-STATUS
-        CALL 'CKPCMIT' USING CHECKPOINT-CONTROL
-                             RETURN-STATUS
-        MOVE 0 TO WS-RECORD-COUNT
-    END-IF.
-
-3000-TERMINATE.
-    SET CK-COMPLETE TO TRUE
+    MOVE 'C' TO CK-STATUS
     CALL 'CKPCMIT' USING CHECKPOINT-CONTROL
-                         RETURN-STATUS.
+                         WS-RETURN-STATUS
+    GOBACK.
+
+2000-PROCESS-RECORDS.
+    PERFORM UNTIL END-OF-FILE
+        READ INPUT-FILE
+            AT END SET END-OF-FILE TO TRUE
+            NOT AT END
+                PERFORM 2100-PROCESS-ONE-RECORD
+                ADD 1 TO WS-RECORD-COUNT
+                ADD 1 TO CK-RECORDS-READ
+                
+                *> Take checkpoint every CK-COMMIT-FREQ records
+                IF WS-RECORD-COUNT >= CK-COMMIT-FREQ
+                    MOVE INPUT-KEY TO CK-LAST-KEY
+                    CALL 'CKPTAKE' USING CHECKPOINT-CONTROL
+                                         WS-RETURN-STATUS
+                    CALL 'CKPCMIT' USING CHECKPOINT-CONTROL
+                                         WS-RETURN-STATUS
+                    MOVE 0 TO WS-RECORD-COUNT
+                END-IF
+        END-READ
+    END-PERFORM.
 ```
 
-## Relationship with BCHCTL
+### Restart Detection
 
-The CKPRST and BCHCTL copybooks work together to provide comprehensive batch processing control:
+```cobol
+*> Check if this is a restart situation
+CALL 'CKPINIT' USING CHECKPOINT-CONTROL
+                     WS-RETURN-STATUS
 
-| Aspect | BCHCTL | CKPRST |
-|--------|--------|--------|
-| Scope | Job-level | Program-level |
-| Purpose | Job sequencing & dependencies | Program checkpointing |
-| Persistence | Batch control file | Checkpoint VSAM file |
-| Key | Job name + Date + Sequence | Program ID + Run date |
-| Status tracking | Job status | Processing phase |
-| Recovery | Job restart | Position-based restart |
+EVALUATE TRUE
+    WHEN CK-MODE-NORMAL
+        *> Fresh start - initialize everything
+        PERFORM 1000-NORMAL-INIT
+    WHEN CK-MODE-RESTART
+        *> Restart - restore from checkpoint
+        DISPLAY 'Restarting from checkpoint'
+        DISPLAY '  Last key: ' CK-LAST-KEY
+        DISPLAY '  Records processed: ' CK-RECORDS-PROC
+        PERFORM 1100-RESTART-INIT
+    WHEN CK-MODE-RECOVER
+        *> Recovery mode - special handling
+        PERFORM 1200-RECOVERY-INIT
+END-EVALUATE
+```
 
-### Typical Integration
+## Dependencies
 
-1. Job scheduler creates BCHCTL record with READY status
-2. Job step checks prerequisites using BCHCTL
-3. Program uses CKPRST for checkpointing during execution
-4. On completion, updates both CKPRST and BCHCTL status
-5. On failure, CKPRST enables position-based restart
+### Related Copybooks
+
+- **RETHND** - Return handling copybook (used with CKPRST in program CKPRST)
+
+### Supporting Programs
+
+The copybook references four external checkpoint processing programs:
+
+| Program | Purpose |
+|---------|---------|
+| CKPINIT | Initialize checkpoint control |
+| CKPTAKE | Take a checkpoint |
+| CKPCMIT | Commit checkpoint to storage |
+| CKPRSTR | Restore from checkpoint |
 
 ## Programs Using This Copybook
 
-- **CKPRST** - Checkpoint/restart service program that implements the checkpoint processing logic
+| Program | Description |
+|---------|-------------|
+| CKPRST | Checkpoint/restart processing program |
 
-## File Requirements
+## Technical Notes
 
-### Checkpoint VSAM File
+### Checkpoint File Design
 
-Programs using this copybook require a VSAM KSDS file for checkpoint storage:
+The CHECKPOINT-RECORD structure uses a composite key of:
+- Program ID (8 bytes)
+- Run Date (8 bytes)
 
-| Attribute | Value |
-|-----------|-------|
-| Organization | Indexed (KSDS) |
-| Key Position | 1 |
-| Key Length | 16 (8 + 8) |
-| Record Length | 416 (16 key + 400 data) |
-| Access Mode | Dynamic |
+This allows multiple programs to share a checkpoint file while maintaining separate checkpoint records. Each program/date combination has its own checkpoint history.
 
-### JCL DD Statement
+### Commit Frequency Tuning
 
-```jcl
-//CKPTFILE DD DSN=your.checkpoint.file,DISP=SHR
-```
+The default CK-COMMIT-FREQ of 1000 records balances:
+- **Performance**: Fewer commits = less overhead
+- **Recovery time**: More frequent commits = less re-work on restart
+- **Resource usage**: Checkpoints consume I/O and storage
 
-## Best Practices
+Adjust based on:
+- Record processing time
+- Acceptable recovery time
+- System I/O capacity
 
-1. **Checkpoint Frequency**: Set `CK-COMMIT-FREQ` based on:
-   - Record processing time
-   - Acceptable reprocessing time on restart
-   - System commit overhead
+### Error Threshold
 
-2. **Error Thresholds**: Configure `CK-MAX-ERRORS` to:
-   - Allow for data quality issues
-   - Prevent runaway error conditions
-   - Match business requirements
+The CK-MAX-ERRORS default of 100 provides:
+- Tolerance for occasional bad records
+- Protection against runaway error conditions
+- Configurable per-job requirements
 
-3. **Restart Limits**: Set `CK-MAX-RESTARTS` to:
-   - Prevent infinite restart loops
-   - Allow for transient failures
-   - Trigger manual intervention when exceeded
+### Restart Limit
 
-4. **Key Storage**: Ensure `CK-LAST-KEY` is large enough for your largest file key (50 bytes provided)
+CK-MAX-RESTARTS default of 3 prevents:
+- Infinite restart loops
+- Resource exhaustion from repeated failures
+- Operator intervention requirement after limit reached
 
-5. **Phase Tracking**: Update `CK-PHASE` at each processing stage for precise restart positioning
+### Phase Tracking
+
+The CK-PHASE field enables:
+- Precise restart positioning within complex jobs
+- Phase-specific recovery logic
+- Progress monitoring and reporting
+
+### File Position Array
+
+The 5-element CK-FILE-STATUS array supports:
+- Multiple input/output files
+- Independent file positioning on restart
+- File status tracking for each resource
+
+### Timestamp Format
+
+CK-LAST-TIME uses 26 characters to accommodate:
+- DB2 timestamp format: `YYYY-MM-DD-HH.MM.SS.NNNNNN`
+- Enables precise checkpoint timing
+- Supports audit and debugging requirements

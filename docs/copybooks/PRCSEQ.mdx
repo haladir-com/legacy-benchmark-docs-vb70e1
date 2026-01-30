@@ -1,375 +1,301 @@
 ---
 title: "PRCSEQ"
-description: "Process Sequence Definitions - defines batch process scheduling, dependencies, and standard sequences"
+description: "Process Sequence Definitions - defines batch process sequencing, dependencies, scheduling, and recovery information"
 ---
 
 ## Overview
 
-PRCSEQ is a copybook that defines the data structures for batch process sequencing and scheduling in the Investment Portfolio Management System. It provides:
+PRCSEQ is a copybook that defines the data structures for batch process sequencing and scheduling. It provides a comprehensive framework for managing the order, timing, dependencies, and recovery options for batch jobs in the Portfolio Management System.
 
-- **Process Sequence Records**: Complete definition of individual batch processes
-- **Dependency Management**: Hard and soft dependency tracking between processes
-- **Scheduling Configuration**: Timing, frequency, and calendar-based scheduling
-- **Recovery Information**: Recovery program definitions and error limits
-- **Standard Sequences**: Pre-defined process sequences for daily operations
+The copybook contains two main structures:
+1. **PROCESS-SEQUENCE-RECORD**: A detailed record layout for defining individual processes, their dependencies, scheduling rules, and recovery procedures
+2. **STANDARD-SEQUENCES**: Predefined process sequence groups for common batch workflows (start-of-day, main processing, end-of-day)
 
-This copybook is fundamental to the batch control framework, enabling automated job sequencing, dependency resolution, and process recovery.
+This copybook is central to the batch orchestration subsystem, enabling:
+- **Process ordering**: Defining the sequence in which jobs should run
+- **Dependency management**: Specifying which jobs must complete before others can start
+- **Schedule control**: Configuring when jobs run (daily, weekly, monthly, specific days)
+- **Recovery handling**: Defining how to recover from job failures
 
-## Record Structure
+## Data Structures
 
-### Process Sequence Record (PROCESS-SEQUENCE-RECORD)
+### PROCESS-SEQUENCE-RECORD
 
-The main record structure defining a batch process:
+The primary record structure for process definitions, typically stored in an indexed VSAM file.
 
-```
-+------------------+----------------------------------------+
-| PSR-KEY (10)     | PSR-DATA (variable)                    |
-+------------------+----------------------------------------+
-| Process ID | Ver | Description | Type | Timing | Deps... |
-+------------------+----------------------------------------+
-```
-
-## Field Definitions
-
-### Key Fields (PSR-KEY)
+#### Key Fields (PSR-KEY)
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 05 | PSR-KEY | - | Composite record key |
+| 05 | PSR-KEY | Group | Composite primary key (10 bytes) |
 | 10 | PSR-PROCESS-ID | X(8) | Unique process identifier |
-| 10 | PSR-VERSION | 9(2) | Process definition version |
+| 10 | PSR-VERSION | 9(2) | Version number for the definition |
 
-### Process Data (PSR-DATA)
+#### Process Data (PSR-DATA)
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 05 | PSR-DATA | - | Process definition data |
+| 05 | PSR-DATA | Group | Process definition data |
 | 10 | PSR-DESCRIPTION | X(30) | Human-readable description |
 | 10 | PSR-TYPE | X(3) | Process type code |
+| 88 | PSR-TYPE-INIT | 'INI' | Initialization process |
+| 88 | PSR-TYPE-PROC | 'PRC' | Processing/main process |
+| 88 | PSR-TYPE-RPT | 'RPT' | Reporting process |
+| 88 | PSR-TYPE-TERM | 'TRM' | Termination process |
 
-#### Process Type Values
-
-| Code | 88-Level | Description |
-|------|----------|-------------|
-| `INI` | PSR-TYPE-INIT | Initialization process |
-| `PRC` | PSR-TYPE-PROC | Main processing |
-| `RPT` | PSR-TYPE-RPT | Report generation |
-| `TRM` | PSR-TYPE-TERM | Termination/cleanup |
-
-### Timing Configuration (PSR-TIMING)
+#### Timing Information (PSR-TIMING)
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 10 | PSR-TIMING | - | Timing parameters |
+| 10 | PSR-TIMING | Group | Timing controls |
 | 15 | PSR-FREQ | X(1) | Execution frequency |
+| 88 | PSR-DAILY | 'D' | Run daily |
+| 88 | PSR-WEEKLY | 'W' | Run weekly |
+| 88 | PSR-MONTHLY | 'M' | Run monthly |
 | 15 | PSR-START-TIME | 9(4) | Earliest start time (HHMM) |
-| 15 | PSR-MAX-TIME | 9(4) | Maximum run time (minutes) |
+| 15 | PSR-MAX-TIME | 9(4) | Maximum run time in minutes |
 
-#### Frequency Values
+#### Dependencies (PSR-DEPENDENCIES)
 
-| Code | 88-Level | Description |
-|------|----------|-------------|
-| `D` | PSR-DAILY | Run daily |
-| `W` | PSR-WEEKLY | Run weekly |
-| `M` | PSR-MONTHLY | Run monthly |
+| Level | Name | Picture | Occurs | Description |
+|-------|------|---------|--------|-------------|
+| 10 | PSR-DEPENDENCIES | Group | | Dependency definitions |
+| 15 | PSR-DEP-COUNT | 9(2) COMP | | Number of active dependencies |
+| 15 | PSR-DEP-ENTRY | Group | 10 | Dependency entry (repeating) |
+| 20 | PSR-DEP-ID | X(8) | | Process ID of prerequisite |
+| 20 | PSR-DEP-TYPE | X(1) | | Dependency type |
+| 88 | PSR-DEP-HARD | 'H' | | Hard dependency - must complete |
+| 88 | PSR-DEP-SOFT | 'S' | | Soft dependency - preferred |
+| 20 | PSR-DEP-RC | S9(4) COMP | | Maximum acceptable return code |
 
-### Dependencies (PSR-DEPENDENCIES)
-
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 10 | PSR-DEPENDENCIES | - | Dependency configuration |
-| 15 | PSR-DEP-COUNT | 9(2) COMP | Number of dependencies |
-| 15 | PSR-DEP-ENTRY | OCCURS 10 | Dependency array |
-| 20 | PSR-DEP-ID | X(8) | Dependent process ID |
-| 20 | PSR-DEP-TYPE | X(1) | Dependency type |
-| 20 | PSR-DEP-RC | S9(4) COMP | Max acceptable return code |
-
-#### Dependency Type Values
-
-| Code | 88-Level | Description |
-|------|----------|-------------|
-| `H` | PSR-DEP-HARD | Hard dependency - must complete successfully |
-| `S` | PSR-DEP-SOFT | Soft dependency - completion preferred but not required |
-
-### Process Control (PSR-CONTROL)
+#### Control Information (PSR-CONTROL)
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 10 | PSR-CONTROL | - | Execution control |
+| 10 | PSR-CONTROL | Group | Execution control |
 | 15 | PSR-PROGRAM | X(8) | Program name to execute |
-| 15 | PSR-PARM | X(50) | Program parameters |
+| 15 | PSR-PARM | X(50) | Parameter string for program |
 | 15 | PSR-MAX-RC | S9(4) COMP | Maximum acceptable return code |
 | 15 | PSR-RESTART | X(1) | Restart capability flag |
+| 88 | PSR-RESTARTABLE | 'Y' | Process can be restarted |
+| 88 | PSR-NO-RESTART | 'N' | Process cannot be restarted |
 
-#### Restart Values
-
-| Code | 88-Level | Description |
-|------|----------|-------------|
-| `Y` | PSR-RESTARTABLE | Process can be restarted |
-| `N` | PSR-NO-RESTART | Process cannot be restarted |
-
-### Schedule Configuration (PSR-SCHEDULE)
+#### Schedule Information (PSR-SCHEDULE)
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 05 | PSR-SCHEDULE | - | Calendar scheduling |
-| 10 | PSR-ACTIVE-DAYS | X(7) | Active days (Mon-Sun as Y/N) |
-| 10 | PSR-MONTH-END | X(1) | Month-end only flag |
-| 10 | PSR-HOLIDAY-RUN | X(1) | Holiday execution flag |
+| 05 | PSR-SCHEDULE | Group | Scheduling rules |
+| 10 | PSR-ACTIVE-DAYS | X(7) | Day-of-week flags (Sun-Sat) |
+| 88 | PSR-WEEKDAY | 'YYYYYNN' | Monday through Friday |
+| 88 | PSR-WEEKEND | 'NNNNNYY' | Saturday and Sunday |
+| 88 | PSR-ALL-DAYS | 'YYYYYYY' | Every day |
+| 10 | PSR-MONTH-END | X(1) | Month-end processing flag |
+| 88 | PSR-LAST-DAY | 'Y' | Run on last day of month |
+| 10 | PSR-HOLIDAY-RUN | X(1) | Holiday handling |
+| 88 | PSR-SKIP-HOL | 'N' | Skip on holidays |
+| 88 | PSR-RUN-HOL | 'Y' | Run on holidays |
 
-#### Active Days Pattern
-
-Position 1-7 represents Monday through Sunday:
-- `Y` = Run on this day
-- `N` = Do not run on this day
-
-| Pattern | 88-Level | Description |
-|---------|----------|-------------|
-| `YYYYYNN` | PSR-WEEKDAY | Weekdays only (Mon-Fri) |
-| `NNNNNYY` | PSR-WEEKEND | Weekend only (Sat-Sun) |
-| `YYYYYYY` | PSR-ALL-DAYS | Every day |
-
-#### Month-End Flag
-
-| Code | 88-Level | Description |
-|------|----------|-------------|
-| `Y` | PSR-LAST-DAY | Run on last day of month only |
-
-#### Holiday Run Flag
-
-| Code | 88-Level | Description |
-|------|----------|-------------|
-| `Y` | PSR-RUN-HOL | Run on holidays |
-| `N` | PSR-SKIP-HOL | Skip on holidays |
-
-### Recovery Configuration (PSR-RECOVERY)
+#### Recovery Information (PSR-RECOVERY)
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 05 | PSR-RECOVERY | - | Recovery settings |
+| 05 | PSR-RECOVERY | Group | Recovery procedures |
 | 10 | PSR-RECOVERY-PGM | X(8) | Recovery program name |
-| 10 | PSR-RECOVERY-PARM | X(50) | Recovery parameters |
-| 10 | PSR-ERROR-LIMIT | 9(4) COMP | Error threshold before abort |
+| 10 | PSR-RECOVERY-PARM | X(50) | Recovery program parameters |
+| 10 | PSR-ERROR-LIMIT | 9(4) COMP | Max errors before termination |
 
-### Audit Information (PSR-AUDIT)
+#### Audit Trail (PSR-AUDIT)
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 05 | PSR-AUDIT | - | Audit trail |
-| 10 | PSR-CREATE-DATE | X(10) | Record creation date |
+| 05 | PSR-AUDIT | Group | Audit information |
+| 10 | PSR-CREATE-DATE | X(10) | Creation date (YYYY-MM-DD) |
 | 10 | PSR-CREATE-USER | X(8) | Creating user ID |
 | 10 | PSR-UPDATE-DATE | X(10) | Last update date |
 | 10 | PSR-UPDATE-USER | X(8) | Last updating user ID |
 
-### Reserved Space
+#### Reserved Space
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
 | 05 | PSR-FILLER | X(50) | Reserved for future use |
 
-## Standard Sequences
+### STANDARD-SEQUENCES
 
-The copybook also defines pre-configured standard process sequences:
+Predefined constants for common batch processing workflows:
 
-### STANDARD-SEQUENCES Structure
+#### Start-of-Day Sequence (SEQ-START-OF-DAY)
 
-```cobol
-01  STANDARD-SEQUENCES.
-    05  SEQ-START-OF-DAY.
-        10  FILLER  PIC X(8) VALUE 'INITDAY '.
-        10  FILLER  PIC X(8) VALUE 'CKPCLR  '.
-        10  FILLER  PIC X(8) VALUE 'DATEVAL '.
-    05  SEQ-MAIN-PROCESS.
-        10  FILLER  PIC X(8) VALUE 'TRNVAL00'.
-        10  FILLER  PIC X(8) VALUE 'POSUPD00'.
-        10  FILLER  PIC X(8) VALUE 'HISTLD00'.
-    05  SEQ-END-OF-DAY.
-        10  FILLER  PIC X(8) VALUE 'RPTGEN00'.
-        10  FILLER  PIC X(8) VALUE 'BCKLOD00'.
-        10  FILLER  PIC X(8) VALUE 'ENDDAY  '.
+| Position | Value | Description |
+|----------|-------|-------------|
+| 1-8 | 'INITDAY ' | Initialize day processing |
+| 9-16 | 'CKPCLR  ' | Clear checkpoints |
+| 17-24 | 'DATEVAL ' | Validate processing date |
+
+#### Main Processing Sequence (SEQ-MAIN-PROCESS)
+
+| Position | Value | Description |
+|----------|-------|-------------|
+| 1-8 | 'TRNVAL00' | Transaction validation |
+| 9-16 | 'POSUPD00' | Position updates |
+| 17-24 | 'HISTLD00' | History loading |
+
+#### End-of-Day Sequence (SEQ-END-OF-DAY)
+
+| Position | Value | Description |
+|----------|-------|-------------|
+| 1-8 | 'RPTGEN00' | Report generation |
+| 9-16 | 'BCKLOD00' | Backup loading |
+| 17-24 | 'ENDDAY  ' | End day processing |
+
+## Record Layout Diagram
+
 ```
-
-### Start-of-Day Sequence (SEQ-START-OF-DAY)
-
-| Program | Purpose |
-|---------|---------|
-| INITDAY | Initialize daily processing |
-| CKPCLR | Clear checkpoint files |
-| DATEVAL | Validate processing date |
-
-### Main Processing Sequence (SEQ-MAIN-PROCESS)
-
-| Program | Purpose |
-|---------|---------|
-| TRNVAL00 | Transaction validation |
-| POSUPD00 | Position updates |
-| HISTLD00 | History loading to DB2 |
-
-### End-of-Day Sequence (SEQ-END-OF-DAY)
-
-| Program | Purpose |
-|---------|---------|
-| RPTGEN00 | Report generation |
-| BCKLOD00 | Backup/archive loading |
-| ENDDAY | End-of-day cleanup |
+PROCESS-SEQUENCE-RECORD (Total: ~350 bytes)
+├── PSR-KEY (10 bytes)
+│   ├── PSR-PROCESS-ID    [8]
+│   └── PSR-VERSION       [2]
+├── PSR-DATA
+│   ├── PSR-DESCRIPTION   [30]
+│   ├── PSR-TYPE          [3]
+│   ├── PSR-TIMING
+│   │   ├── PSR-FREQ      [1]
+│   │   ├── PSR-START-TIME[4]
+│   │   └── PSR-MAX-TIME  [4]
+│   ├── PSR-DEPENDENCIES
+│   │   ├── PSR-DEP-COUNT [2 COMP]
+│   │   └── PSR-DEP-ENTRY [10 occurrences × 11 bytes]
+│   │       ├── PSR-DEP-ID    [8]
+│   │       ├── PSR-DEP-TYPE  [1]
+│   │       └── PSR-DEP-RC    [2 COMP]
+│   └── PSR-CONTROL
+│       ├── PSR-PROGRAM   [8]
+│       ├── PSR-PARM      [50]
+│       ├── PSR-MAX-RC    [2 COMP]
+│       └── PSR-RESTART   [1]
+├── PSR-SCHEDULE
+│   ├── PSR-ACTIVE-DAYS   [7]
+│   ├── PSR-MONTH-END     [1]
+│   └── PSR-HOLIDAY-RUN   [1]
+├── PSR-RECOVERY
+│   ├── PSR-RECOVERY-PGM  [8]
+│   ├── PSR-RECOVERY-PARM [50]
+│   └── PSR-ERROR-LIMIT   [2 COMP]
+├── PSR-AUDIT
+│   ├── PSR-CREATE-DATE   [10]
+│   ├── PSR-CREATE-USER   [8]
+│   ├── PSR-UPDATE-DATE   [10]
+│   └── PSR-UPDATE-USER   [8]
+└── PSR-FILLER            [50]
+```
 
 ## Usage
 
-### In PRCSEQ00 (Process Sequence Manager)
+### File Definition
 
 ```cobol
+FILE-CONTROL.
+    SELECT PROCESS-SEQ-FILE
+        ASSIGN TO PRCSEQ
+        ORGANIZATION IS INDEXED
+        ACCESS MODE IS DYNAMIC
+        RECORD KEY IS PSR-KEY
+        FILE STATUS IS WS-PSR-STATUS.
+
 FILE SECTION.
 FD  PROCESS-SEQ-FILE.
     COPY PRCSEQ.
 ```
 
-PRCSEQ00 uses this copybook to:
-- Define the process sequence file record layout
-- Build execution sequences based on process type
-- Check dependencies using PSR-DEP-ENTRY
-- Determine restart capability via PSR-RESTART
-
-### In RCVPRC00 (Process Recovery Handler)
+### Working with Dependencies
 
 ```cobol
-FD  PROCESS-SEQ-FILE.
-    COPY PRCSEQ.
+* Check all dependencies for a process
+PERFORM VARYING WS-DEP-IX FROM 1 BY 1
+        UNTIL WS-DEP-IX > PSR-DEP-COUNT
+    
+    IF PSR-DEP-HARD(WS-DEP-IX)
+        * Hard dependency - must be complete
+        PERFORM CHECK-HARD-DEPENDENCY
+    ELSE
+        * Soft dependency - preferred but optional
+        PERFORM CHECK-SOFT-DEPENDENCY
+    END-IF
+END-PERFORM
 ```
 
-RCVPRC00 uses this copybook to:
-- Read process definitions for recovery decisions
-- Check PSR-RESTARTABLE flag for restart eligibility
-- Access PSR-RECOVERY-PGM for recovery program invocation
+### Checking Schedule
+
+```cobol
+* Check if process should run today
+IF PSR-ACTIVE-DAYS(WS-DAY-OF-WEEK:1) = 'Y'
+    IF PSR-SKIP-HOL AND WS-IS-HOLIDAY
+        CONTINUE  *> Skip today
+    ELSE
+        PERFORM EXECUTE-PROCESS
+    END-IF
+END-IF
+```
+
+### Recovery Handling
+
+```cobol
+* Determine recovery action
+IF PSR-RESTARTABLE
+    PERFORM RESTART-PROCESS
+ELSE
+    IF WS-ERROR-COUNT > PSR-ERROR-LIMIT
+        PERFORM TERMINATE-SEQUENCE
+    ELSE
+        PERFORM CALL-RECOVERY-PROGRAM
+    END-IF
+END-IF
+```
 
 ## Programs Using This Copybook
 
-| Program | Usage |
-|---------|-------|
-| PRCSEQ00 | Process Sequence Manager - builds and manages execution sequences |
-| RCVPRC00 | Process Recovery Handler - handles failed process recovery |
-
-## Record Layout Diagram
-
-```
-PROCESS-SEQUENCE-RECORD
-├── PSR-KEY (10 bytes)
-│   ├── PSR-PROCESS-ID    X(8)
-│   └── PSR-VERSION       9(2)
-├── PSR-DATA
-│   ├── PSR-DESCRIPTION   X(30)
-│   ├── PSR-TYPE          X(3)   [INI/PRC/RPT/TRM]
-│   ├── PSR-TIMING
-│   │   ├── PSR-FREQ      X(1)   [D/W/M]
-│   │   ├── PSR-START-TIME 9(4)
-│   │   └── PSR-MAX-TIME   9(4)
-│   ├── PSR-DEPENDENCIES
-│   │   ├── PSR-DEP-COUNT  9(2) COMP
-│   │   └── PSR-DEP-ENTRY (x10)
-│   │       ├── PSR-DEP-ID    X(8)
-│   │       ├── PSR-DEP-TYPE  X(1)   [H/S]
-│   │       └── PSR-DEP-RC    S9(4) COMP
-│   └── PSR-CONTROL
-│       ├── PSR-PROGRAM    X(8)
-│       ├── PSR-PARM       X(50)
-│       ├── PSR-MAX-RC     S9(4) COMP
-│       └── PSR-RESTART    X(1)   [Y/N]
-├── PSR-SCHEDULE
-│   ├── PSR-ACTIVE-DAYS   X(7)
-│   ├── PSR-MONTH-END     X(1)
-│   └── PSR-HOLIDAY-RUN   X(1)
-├── PSR-RECOVERY
-│   ├── PSR-RECOVERY-PGM  X(8)
-│   ├── PSR-RECOVERY-PARM X(50)
-│   └── PSR-ERROR-LIMIT   9(4) COMP
-├── PSR-AUDIT
-│   ├── PSR-CREATE-DATE   X(10)
-│   ├── PSR-CREATE-USER   X(8)
-│   ├── PSR-UPDATE-DATE   X(10)
-│   └── PSR-UPDATE-USER   X(8)
-└── PSR-FILLER            X(50)
-```
-
-## Dependency Resolution
-
-The dependency system supports complex process relationships:
-
-```mermaid
-graph TD
-    A[Process A] --> |Hard Dep| B[Process B]
-    A --> |Hard Dep| C[Process C]
-    B --> |Soft Dep| D[Process D]
-    C --> |Hard Dep| D
-    D --> E[Process E]
-```
-
-**Hard Dependencies (PSR-DEP-HARD)**:
-- Dependent process must complete successfully
-- Return code must be ≤ PSR-DEP-RC
-- Blocks execution if not satisfied
-
-**Soft Dependencies (PSR-DEP-SOFT)**:
-- Dependent process should complete
-- Execution proceeds even if not satisfied
-- Warning logged if dependency not met
-
-## Example Process Definition
-
-```cobol
-MOVE 'HISTLD00' TO PSR-PROCESS-ID
-MOVE 01         TO PSR-VERSION
-MOVE 'Load history to DB2' TO PSR-DESCRIPTION
-SET PSR-TYPE-PROC TO TRUE
-SET PSR-DAILY     TO TRUE
-MOVE 0600         TO PSR-START-TIME
-MOVE 0120         TO PSR-MAX-TIME
-MOVE 2            TO PSR-DEP-COUNT
-MOVE 'POSUPD00'   TO PSR-DEP-ID(1)
-SET PSR-DEP-HARD(1) TO TRUE
-MOVE 4            TO PSR-DEP-RC(1)
-MOVE 'TRNVAL00'   TO PSR-DEP-ID(2)
-SET PSR-DEP-HARD(2) TO TRUE
-MOVE 0            TO PSR-DEP-RC(2)
-MOVE 'HISTLD00'   TO PSR-PROGRAM
-MOVE SPACES       TO PSR-PARM
-MOVE 8            TO PSR-MAX-RC
-SET PSR-RESTARTABLE TO TRUE
-SET PSR-WEEKDAY   TO TRUE
-SET PSR-SKIP-HOL  TO TRUE
-```
+| Program | Purpose | Usage |
+|---------|---------|-------|
+| PRCSEQ00 | Process Sequence Manager | Manages process sequencing, builds execution order, checks dependencies, tracks status |
+| RCVPRC00 | Process Recovery Handler | Reads process definitions for recovery decisions, checks restartability flag |
 
 ## Related Copybooks
 
 | Copybook | Relationship |
 |----------|--------------|
-| BCHCTL | Batch control records - tracks execution status |
-| BCHCON | Batch constants - defines status codes and return codes |
-| CKPRST | Checkpoint/restart - program-level checkpointing |
-| ERRHAND | Error handling - error message structures |
+| BCHCTL | Batch control records - runtime status of processes defined in PRCSEQ |
+| BCHCON | Batch constants - status codes and return code values used with PRCSEQ |
+| ERRHAND | Error handling - used when PRCSEQ operations fail |
 
-## Technical Notes
+## Design Notes
 
-### COMP Fields
+### Dependency Model
 
-The copybook uses `COMP` (binary) for numeric fields:
-- `PSR-DEP-COUNT`: 9(2) COMP - Supports up to 99 dependencies (10 actually used)
-- `PSR-DEP-RC`: S9(4) COMP - Signed for return code comparison
-- `PSR-MAX-RC`: S9(4) COMP - Maximum acceptable return code
-- `PSR-ERROR-LIMIT`: 9(4) COMP - Up to 9999 errors before abort
+The copybook supports a flexible dependency model:
+- **Hard dependencies** (`PSR-DEP-HARD`): The dependent process will not start until the prerequisite completes successfully
+- **Soft dependencies** (`PSR-DEP-SOFT`): The scheduler prefers to wait but can proceed if necessary
+- **Return code thresholds** (`PSR-DEP-RC`): Dependencies can specify acceptable return codes (e.g., proceed if RC ≤ 4)
 
-### Active Days Encoding
+### Day-of-Week Encoding
 
-The 7-character `PSR-ACTIVE-DAYS` field provides flexible day-of-week scheduling:
-- Position 1 = Monday
-- Position 2 = Tuesday
-- Position 3 = Wednesday
-- Position 4 = Thursday
-- Position 5 = Friday
-- Position 6 = Saturday
-- Position 7 = Sunday
+The `PSR-ACTIVE-DAYS` field uses a 7-character string where each position represents a day:
+- Position 1: Sunday
+- Position 2: Monday
+- Position 3: Tuesday
+- Position 4: Wednesday
+- Position 5: Thursday
+- Position 6: Friday
+- Position 7: Saturday
 
-### File Organization
+'Y' indicates the process should run; 'N' indicates it should not.
 
-When used as a file record:
-- Organization: Indexed (VSAM KSDS)
-- Primary Key: PSR-KEY (PSR-PROCESS-ID + PSR-VERSION)
-- Access Mode: Dynamic (sequential and random)
+### Version Control
+
+The `PSR-VERSION` field allows multiple versions of a process definition to coexist, enabling:
+- Testing new configurations alongside production
+- Rollback to previous versions if issues occur
+- Gradual migration of process definitions
+
+### Standard Sequences
+
+The `STANDARD-SEQUENCES` structure provides predefined job names for common batch workflows. Programs can reference these constants to ensure consistent naming across the system.

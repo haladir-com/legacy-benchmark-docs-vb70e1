@@ -1,221 +1,207 @@
 ---
 title: "PRCSEQ00"
-description: "Process Sequence Manager - coordinates batch job execution order and dependencies"
+description: "Process Sequence Manager - orchestrates batch job execution order and dependency management"
 ---
 
 ## Overview
 
-PRCSEQ00 is a batch utility program that manages the execution sequence of batch processes. It acts as a coordinator that determines which batch jobs should run next based on their defined dependencies and completion status.
+PRCSEQ00 is a Process Sequence Manager program that orchestrates batch job execution in a mainframe environment. It manages the order in which batch processes run, handles inter-process dependencies, and tracks the execution status of each process in a sequence.
 
-The program provides four primary functions accessed through a linkage section interface:
-- **INIT** - Initialize a processing sequence for a given date and type
-- **NEXT** - Get the next ready process that can be executed
-- **STAT** - Check and update the status of processes in the sequence
-- **TERM** - Terminate the sequence and report final status
+The program operates as a callable service that provides four main functions: initializing a batch sequence (INIT), retrieving the next process to execute (NEXT), checking process status (STAT), and terminating the sequence (TERM). This design enables a job scheduler or control program to dynamically manage batch workflows based on real-time dependency resolution.
 
-This program is typically called by a batch scheduler or control program to orchestrate the execution of multiple batch jobs in the correct order while respecting inter-job dependencies.
+PRCSEQ00 uses two VSAM indexed files: a Process Sequence File that defines the execution order and dependencies, and a Batch Control File that tracks the runtime status of each process. The program supports both hard dependencies (process must complete successfully) and soft dependencies (process must complete but return code threshold is more lenient).
 
 ## Program Structure
 
 ```mermaid
 graph TD
-    A[0000-MAIN] -->|FUNC-INIT| B[1000-INITIALIZE-SEQUENCE]
-    A -->|FUNC-NEXT| C[2000-GET-NEXT-PROCESS]
-    A -->|FUNC-STAT| D[3000-CHECK-STATUS]
-    A -->|FUNC-TERM| E[4000-TERMINATE-SEQUENCE]
-    A -->|OTHER| F[9000-ERROR-ROUTINE]
+    A[0000-MAIN] --> B{EVALUATE Function}
+    B -->|INIT| C[1000-INITIALIZE-SEQUENCE]
+    B -->|NEXT| D[2000-GET-NEXT-PROCESS]
+    B -->|STAT| E[3000-CHECK-STATUS]
+    B -->|TERM| F[4000-TERMINATE-SEQUENCE]
+    B -->|OTHER| G[9000-ERROR-ROUTINE]
     
-    B --> B1[1100-OPEN-FILES]
-    B --> B2[1200-BUILD-SEQUENCE]
-    B --> B3[1300-CREATE-CONTROL-RECORDS]
+    C --> C1[1100-OPEN-FILES]
+    C --> C2[1200-BUILD-SEQUENCE]
+    C --> C3[1300-CREATE-CONTROL-RECORDS]
+    C2 --> C2a[1210-ADD-TO-SEQUENCE]
     
-    B2 --> B2A[1210-ADD-TO-SEQUENCE]
+    D --> D1[2100-FIND-NEXT-READY]
+    D --> D2[2200-CHECK-DEPENDENCIES]
+    D --> D3[2300-UPDATE-PROCESS-STATUS]
+    D2 --> D2a[2210-CHECK-DEP-STATUS]
     
-    C --> C1[2100-FIND-NEXT-READY]
-    C --> C2[2200-CHECK-DEPENDENCIES]
-    C --> C3[2300-UPDATE-PROCESS-STATUS]
+    E --> E1[3100-READ-CONTROL-STATUS]
+    E --> E2[3200-UPDATE-SEQUENCE-TABLE]
+    E --> E3[3300-CHECK-COMPLETION]
     
-    C2 --> C2A[2210-CHECK-DEP-STATUS]
-    
-    D --> D1[3100-READ-CONTROL-STATUS]
-    D --> D2[3200-UPDATE-SEQUENCE-TABLE]
-    D --> D3[3300-CHECK-COMPLETION]
-    
-    E --> E1[4100-CHECK-FINAL-STATUS]
-    E --> E2[4200-CLOSE-FILES]
-    
-    E1 --> D3
-    
-    F --> ERR[ERRPROC]
+    F --> F1[4100-CHECK-FINAL-STATUS]
+    F --> F2[4200-CLOSE-FILES]
+    F1 --> E3
 ```
 
 ## Data Structures
 
-### Linkage Section - Request Interface
+### Linkage Section (Input/Output Parameters)
 
-The program receives requests through the `LS-SEQUENCE-REQUEST` structure:
-
-| Field | Picture | Description |
-|-------|---------|-------------|
-| LS-FUNCTION | X(4) | Function code: INIT, NEXT, STAT, or TERM |
-| LS-PROCESS-DATE | X(8) | Processing date for the sequence |
-| LS-SEQUENCE-TYPE | X(3) | Sequence type filter (e.g., INI, PRC, RPT, TRM) |
-| LS-NEXT-PROCESS | X(8) | Output: Next process ID to execute |
-| LS-RETURN-CODE | S9(4) COMP | Return status code |
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 01 | LS-SEQUENCE-REQUEST | - | Main parameter block passed by caller |
+| 05 | LS-FUNCTION | X(4) | Function code: INIT, NEXT, STAT, or TERM |
+| 05 | LS-PROCESS-DATE | X(8) | Processing date for the batch sequence |
+| 05 | LS-SEQUENCE-TYPE | X(3) | Type of sequence (INI/PRC/RPT/TRM) |
+| 05 | LS-NEXT-PROCESS | X(8) | Output: name of next process to run |
+| 05 | LS-RETURN-CODE | S9(4) COMP | Return code (0=success, 4=warning, 8=error) |
 
 ### Working Storage
 
-#### File Status Fields
-
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 05 | WS-PSR-STATUS | X(2) | Process sequence file status |
-| 05 | WS-BCT-STATUS | X(2) | Batch control file status |
-
-#### Work Areas
-
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 05 | WS-CURRENT-TIME | X(26) | Current timestamp for status updates |
-| 05 | WS-SEQUENCE-IX | 9(4) COMP | Sequence iteration index |
+| 01 | WS-FILE-STATUS | - | File status indicators |
+| 05 | WS-PSR-STATUS | X(2) | Process Sequence File status |
+| 05 | WS-BCT-STATUS | X(2) | Batch Control File status |
+| 01 | WS-WORK-AREAS | - | Working variables |
+| 05 | WS-CURRENT-TIME | X(26) | Timestamp for status updates |
+| 05 | WS-SEQUENCE-IX | 9(4) COMP | Index for traversing sequences |
 | 05 | WS-PROCESS-COUNT | 9(4) COMP | Total processes in sequence |
-| 05 | WS-ACTIVE-COUNT | 9(4) COMP | Count of currently active processes |
-| 05 | WS-ERROR-COUNT | 9(4) COMP | Count of processes in error status |
+| 05 | WS-ACTIVE-COUNT | 9(4) COMP | Number of currently active processes |
+| 05 | WS-ERROR-COUNT | 9(4) COMP | Number of processes in error |
 
-#### Process Table
-
-An in-memory table that holds up to 100 processes:
+### Process Table (Internal Tracking)
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 05 | WS-PROC-ENTRY | - | Occurs 100 times, indexed by WS-PROC-IX |
+| 01 | WS-PROCESS-TABLE | - | In-memory process tracking (100 entries) |
 | 10 | WS-PROC-ID | X(8) | Process identifier |
 | 10 | WS-PROC-SEQ | 9(4) COMP | Sequence number |
-| 10 | WS-PROC-STATUS | X(1) | Current status (R/A/W/D/E) |
+| 10 | WS-PROC-STATUS | X(1) | Status: R=Ready, A=Active, D=Done, E=Error |
 | 10 | WS-PROC-RC | S9(4) COMP | Process return code |
 
 ## File I/O
 
-### Process Sequence File (PRCSEQ)
+### PROCESS-SEQ-FILE (PRCSEQ)
 
-An indexed VSAM file containing process definitions with dependencies.
+- **Organization**: VSAM Indexed
+- **Access Mode**: Dynamic (sequential and random)
+- **Record Key**: PSR-KEY (Process ID + Version)
 
-| Operation | Description |
-|-----------|-------------|
-| OPEN I-O | Opened for read/write access during initialization |
-| START | Positions to first record for a given date |
-| READ NEXT | Sequential read to build process sequence |
-| READ | Random read to get process definition and dependencies |
-| CLOSE | Closed during termination |
+| Operation | Paragraph | Description |
+|-----------|-----------|-------------|
+| OPEN I-O | 1100-OPEN-FILES | Opens for read/write access |
+| START | 1200-BUILD-SEQUENCE | Positions to start of date sequence |
+| READ NEXT | 1200-BUILD-SEQUENCE | Sequential read to build process table |
+| READ | 2200-CHECK-DEPENDENCIES | Random read for dependency lookup |
+| CLOSE | 4200-CLOSE-FILES | Closes file at termination |
 
-**Record Structure (PRCSEQ copybook):**
-- `PSR-KEY`: Composite key (process ID + version)
-- `PSR-TYPE`: Process type (INI, PRC, RPT, TRM)
-- `PSR-DEPENDENCIES`: Up to 10 dependencies with hard/soft indicators and acceptable return codes
-- `PSR-CONTROL`: Program name, parameters, and restart capability
+### BATCH-CONTROL-FILE (BCHCTL)
 
-### Batch Control File (BCHCTL)
+- **Organization**: VSAM Indexed
+- **Access Mode**: Dynamic
+- **Record Key**: BCT-KEY (Job Name + Process Date + Sequence No)
 
-An indexed VSAM file for tracking job execution status.
-
-| Operation | Description |
-|-----------|-------------|
-| OPEN I-O | Opened for read/write access during initialization |
-| WRITE | Creates control records for each process in sequence |
-| READ | Reads status of processes and dependencies |
-| REWRITE | Updates process status (READY → ACTIVE → DONE/ERROR) |
-| CLOSE | Closed during termination |
-
-**Record Structure (BCHCTL copybook):**
-- `BCT-KEY`: Composite key (job name + process date + sequence number)
-- `BCT-STATUS`: Current status (R=Ready, A=Active, W=Waiting, D=Done, E=Error)
-- `BCT-PROCESS-CONTROL`: Step name, program name, start/end times
-- `BCT-RETURN-INFO`: Return code and error description
+| Operation | Paragraph | Description |
+|-----------|-----------|-------------|
+| OPEN I-O | 1100-OPEN-FILES | Opens for read/write access |
+| WRITE | 1300-CREATE-CONTROL-RECORDS | Creates control record for each process |
+| READ | 2210-CHECK-DEP-STATUS, 2300-UPDATE-PROCESS-STATUS, 3100-READ-CONTROL-STATUS | Reads process status |
+| REWRITE | 2300-UPDATE-PROCESS-STATUS | Updates status to ACTIVE with start time |
+| CLOSE | 4200-CLOSE-FILES | Closes file at termination |
 
 ## Control Flow
 
 ### Initialization (FUNC-INIT)
 
-1. **Open Files**: Opens both the process sequence file and batch control file for I/O
-2. **Build Sequence**: 
-   - Starts at records matching the process date
-   - Reads sequentially and filters by sequence type
-   - Builds an in-memory table of up to 100 processes
-3. **Create Control Records**: Writes a batch control record for each process with initial READY status
+1. **1100-OPEN-FILES**: Opens both VSAM files for I/O operations. If either file fails to open, triggers error handling.
+
+2. **1200-BUILD-SEQUENCE**: Builds the in-memory process table by:
+   - Positioning to the requested process date in PROCESS-SEQ-FILE using START
+   - Sequentially reading all processes matching the requested sequence type
+   - Adding each matching process via 1210-ADD-TO-SEQUENCE
+
+3. **1300-CREATE-CONTROL-RECORDS**: Creates a batch control record for each process using PERFORM VARYING loop. Each record is initialized with READY status.
 
 ### Get Next Process (FUNC-NEXT)
 
-1. **Find Next Ready**: Scans the process table for the first process with READY status
-2. **Check Dependencies**: 
-   - Reads the process definition to get dependency list
-   - For each dependency, verifies completion status in the control file
-   - Hard dependencies must complete successfully before proceeding
-   - Return codes are validated against acceptable thresholds
-3. **Update Status**: Changes the process status from READY to ACTIVE and records the start timestamp
+1. **2100-FIND-NEXT-READY**: Scans the process table for the first entry with READY status. Returns SPACES in LS-NEXT-PROCESS if no ready processes remain.
+
+2. **2200-CHECK-DEPENDENCIES**: For the candidate process:
+   - Reads its definition from PROCESS-SEQ-FILE
+   - Iterates through all defined dependencies (PSR-DEP-COUNT entries)
+   - Calls 2210-CHECK-DEP-STATUS to verify each dependency
+
+3. **2210-CHECK-DEP-STATUS**: For each dependency:
+   - If dependency is not DONE and is a hard dependency (`PSR-DEP-HARD`), returns warning code
+   - If dependency is DONE but return code exceeds threshold (PSR-DEP-RC), returns error code
+
+4. **2300-UPDATE-PROCESS-STATUS**: If dependencies are satisfied:
+   - Marks the process as ACTIVE in the batch control file
+   - Records the start timestamp
+   - Rewrites the control record
 
 ### Check Status (FUNC-STAT)
 
-1. **Read Control Status**: Retrieves current status from the batch control file
-2. **Update Sequence Table**: Synchronizes the in-memory table with file-based status
-3. **Check Completion**: Counts active and errored processes
+1. **3100-READ-CONTROL-STATUS**: Reads current status from batch control file for the specified process.
 
-### Terminate Sequence (FUNC-TERM)
+2. **3200-UPDATE-SEQUENCE-TABLE**: Updates the in-memory process table with current status and return code from the control file.
 
-1. **Check Final Status**: 
-   - If any errors exist, returns BCT-RC-ERROR (8)
-   - If processes still active, returns BCT-RC-WARNING (4)
-   - Otherwise returns BCT-RC-SUCCESS (0)
-2. **Close Files**: Closes both VSAM files
+3. **3300-CHECK-COMPLETION**: Counts processes in ACTIVE and ERROR states to determine overall sequence status.
+
+### Terminate (FUNC-TERM)
+
+1. **4100-CHECK-FINAL-STATUS**: Performs final status check to determine sequence completion:
+   - If any errors exist: returns error code (8)
+   - If processes still active: returns warning code (4)
+   - Otherwise: returns success (0)
+
+2. **4200-CLOSE-FILES**: Closes both VSAM files and verifies successful closure.
 
 ### Error Handling
 
-Errors invoke `9000-ERROR-ROUTINE` which:
-- Sets the program name to 'PRCSEQ00'
+**9000-ERROR-ROUTINE**: Centralized error handler that:
+- Sets program name to 'PRCSEQ00' in error message
 - Sets return code to BCT-RC-ERROR (8)
-- Calls the ERRPROC utility for standardized error logging
+- Calls ERRPROC program with error message details
 
 ## Dependencies
 
 ### Copybooks
 
-- **PRCSEQ** - Process sequence record definition with dependency structures
-- **BCHCTL** - Batch control record definition for job tracking
-- **BCHCON** - Batch control constants (status values, return codes, thresholds)
-- **ERRHAND** - Standard error handling structures and codes
+| Copybook | Section | Description |
+|----------|---------|-------------|
+| PRCSEQ | FILE SECTION | Process Sequence Record definition - defines process order, timing, and dependencies |
+| BCHCTL | FILE SECTION | Batch Control Record definition - tracks runtime status of each process |
+| BCHCON | WORKING-STORAGE | Batch Control Constants - status values and return code thresholds |
+| ERRHAND | WORKING-STORAGE | Error Handling definitions - error message structure and standard return codes |
 
 ### Called Programs
 
-- **ERRPROC** - Standard error processing utility
+| Program | Purpose |
+|---------|---------|
+| ERRPROC | Error logging and reporting utility |
 
 ### Related Programs
 
-Programs that share copybooks or have caller/callee relationships:
+Programs that share copybooks or have caller/callee relationships with this program:
 
-- **RCVPRC00** - Also uses PRCSEQ, BCHCTL, BCHCON, and ERRHAND copybooks
-- **BCHCTL00** - Batch control utility sharing BCHCTL and BCHCON
-- **HISTLD00** - History loader sharing BCHCTL, BCHCON, and ERRHAND
-- **RPTSTA00** - Status reporting sharing BCHCTL and ERRHAND
+- **RCVPRC00** - Uses PRCSEQ, BCHCTL, BCHCON copybooks (likely a recovery processor)
+- **BCHCTL00** - Uses BCHCTL, BCHCON copybooks (batch control program)
+- **HISTLD00** - Uses BCHCTL, BCHCON copybooks (history loader)
+- **RPTSTA00** - Uses BCHCTL copybook (status reporting)
 
 ## Return Codes
 
-| Code | Constant | Description |
-|------|----------|-------------|
-| 0 | BCT-RC-SUCCESS | Successful completion |
-| 4 | BCT-RC-WARNING | Warning - processes still active or soft dependency not met |
-| 8 | BCT-RC-ERROR | Error condition - hard dependency failed or I/O error |
-| 12 | BCT-RC-SEVERE | Severe error |
-| 16 | BCT-RC-CRITICAL | Critical error |
+| Code | Constant | Meaning |
+|------|----------|---------|
+| 0 | BCT-RC-SUCCESS | All processes completed successfully |
+| 4 | BCT-RC-WARNING | Processes still active or soft dependency not met |
+| 8 | BCT-RC-ERROR | Hard error occurred or dependency failed |
 
 ## Technical Notes
 
-1. **Dynamic File Access**: Both files use ACCESS MODE IS DYNAMIC, allowing both sequential and random access patterns.
-
-2. **Dependency Types**: 
-   - Hard dependencies (`PSR-DEP-HARD = 'H'`) must complete successfully before a process can start
-   - Soft dependencies (`PSR-DEP-SOFT = 'S'`) issue warnings but don't block execution
-
-3. **Process Table Limit**: The in-memory table supports up to 100 processes per sequence. Sequences larger than this would need to be split into multiple runs.
-
-4. **COMP Fields**: The program uses `PIC 9(4) COMP` (binary) for counters and indexes, which is efficient for arithmetic operations on IBM mainframes.
-
-5. **Timestamp Handling**: The program uses `ACCEPT ... FROM TIME STAMP` to capture precise timing for process start times.
+- The program uses **PERFORM VARYING** loops with COMP (binary) indexes for efficient iteration through process tables
+- **Dynamic file access** allows both sequential scanning (building sequence) and random access (dependency checking)
+- The **88-level condition names** (FUNC-INIT, FUNC-NEXT, etc.) provide readable function code validation
+- Maximum of **100 processes** can be managed in a single sequence (WS-PROC-ENTRY OCCURS 100 TIMES)
+- Maximum of **10 dependencies** per process (PSR-DEP-ENTRY OCCURS 10 TIMES)
+- Uses **GOBACK** instead of STOP RUN to properly return control to the calling program

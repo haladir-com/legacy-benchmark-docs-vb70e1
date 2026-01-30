@@ -1,92 +1,50 @@
 ---
 title: "DB2ONLN"
-description: "Online DB2 Connection Manager - manages DB2 connection pool for CICS transactions"
+description: "Online DB2 Connection Manager for CICS - manages DB2 connection pooling, reuse, and monitoring"
 ---
 
 ## Overview
 
-DB2ONLN is a CICS-based COBOL program that provides centralized DB2 connection management for online transactions in the Investment Portfolio Management System. It implements a connection pool pattern to optimize database resource usage in the CICS environment.
+DB2ONLN is a CICS-based COBOL program that provides centralized DB2 connection management for online transactions. It implements a connection pooling strategy to optimize database resource utilization and improve response times for CICS applications.
 
-Key capabilities include:
+The program acts as a service layer between CICS transactions and DB2, handling:
+- **Connection pooling**: Tracks active connections against a configurable maximum (default 100)
+- **Connection establishment**: Creates new DB2 connections with token generation for tracking
+- **Connection release**: Gracefully disconnects and updates pool statistics
+- **Status monitoring**: Checks connection health and reports pool utilization
 
-- **Connection Pool Management**: Maintains a pool of DB2 connections with configurable limits
-- **Connection Lifecycle**: Handles connect, disconnect, and status checking operations
-- **Token Generation**: Creates unique connection tokens for tracking
-- **Pool Monitoring**: Tracks active, available, and total connections
-- **Error Handling**: Provides detailed error information for connection failures
-
-This program is part of the Online DB2 Components layer, working alongside DB2RECV (Recovery Manager) to provide reliable database access for CICS transactions.
+This design pattern reduces the overhead of establishing new database connections for each transaction by managing a pool of reusable connections.
 
 ## Program Structure
 
 ```mermaid
 graph TD
     A[PROCEDURE DIVISION] --> B{Request Type?}
-    B --> |C - Connect| C[P100-PROCESS-CONNECT]
-    B --> |D - Disconnect| D[P200-PROCESS-DISCONNECT]
-    B --> |S - Status| E[P300-CHECK-STATUS]
+    B -->|'C' Connect| C[P100-PROCESS-CONNECT]
+    B -->|'D' Disconnect| D[P200-PROCESS-DISCONNECT]
+    B -->|'S' Status| E[P300-CHECK-STATUS]
     
     C --> C1{Active < Max?}
-    C1 --> |Yes| C2[P110-ESTABLISH-CONNECTION]
-    C1 --> |No| C3[Return Error: Max Reached]
+    C1 -->|Yes| C2[P110-ESTABLISH-CONNECTION]
+    C1 -->|No| C3[Return Error: Max Reached]
     
-    C2 --> C4[EXEC SQL CONNECT TO POSMVP]
-    C4 --> C5{SQLCODE = 0?}
-    C5 --> |Yes| C6[Increment Active Count]
-    C6 --> C7[P120-GENERATE-TOKEN]
-    C5 --> |No| C8[Return SQL Error]
+    C2 --> C4{SQLCODE = 0?}
+    C4 -->|Yes| C5[Increment Active Count]
+    C5 --> C6[P120-GENERATE-TOKEN]
+    C4 -->|No| C7[Return SQL Error]
     
     D --> D1[EXEC SQL DISCONNECT]
     D1 --> D2{SQLCODE = 0?}
-    D2 --> |Yes| D3[Decrement Active Count]
-    D2 --> |No| D4[Return SQL Error]
+    D2 -->|Yes| D3[Decrement Active Count]
+    D2 -->|No| D4[Return SQL Error]
     
-    E --> E1[EXEC SQL SELECT CURRENT SERVER]
-    E1 --> E2{SQLCODE = 0?}
-    E2 --> |Yes| E3[Return Active Count]
-    E2 --> |No| E4[Return SQL Error]
+    E --> E1[SELECT CURRENT SERVER]
+    E1 --> E2[Return Active Count]
     
-    B --> F[EXEC CICS RETURN]
+    C --> F[EXEC CICS RETURN]
+    D --> F
+    E --> F
 ```
-
-## Calling Interface
-
-DB2ONLN is invoked via CICS LINK with a COMMAREA parameter:
-
-```cobol
-EXEC CICS LINK PROGRAM('DB2ONLN')
-          COMMAREA(DB2-REQUEST-AREA)
-          LENGTH(LENGTH OF DB2-REQUEST-AREA)
-END-EXEC
-```
-
-### Request Structure (DB2-REQUEST-AREA)
-
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 01 | DB2-REQUEST-AREA | - | Request/response parameter block |
-| 05 | DB2-REQUEST-TYPE | X | Function code (C/D/S) |
-| 05 | DB2-RESPONSE-CODE | S9(8) COMP | Return code (output) |
-| 05 | DB2-CONNECTION-TOKEN | X(16) | Unique connection identifier (output) |
-| 05 | DB2-ERROR-INFO | - | Error details (output) |
-| 10 | DB2-SQLCODE | S9(9) COMP | SQL return code |
-| 10 | DB2-ERROR-MSG | X(80) | Error message text |
-
-### Request Type Codes
-
-| Code | 88-Level Name | Description |
-|------|---------------|-------------|
-| `C` | DB2-CONNECT | Establish a new DB2 connection |
-| `D` | DB2-DISCONNECT | Release an existing connection |
-| `S` | DB2-STATUS | Check connection pool status |
-
-### Response Codes
-
-| Code | Meaning | Description |
-|------|---------|-------------|
-| 0 | Success | Operation completed successfully |
-| -1 | Error | Operation failed (check DB2-ERROR-INFO) |
-| n (positive) | Status | Active connection count (STATUS function only) |
 
 ## Data Structures
 
@@ -94,245 +52,255 @@ END-EXEC
 
 #### SQL Communication Area
 
-```cobol
-01  WS-DB2-AREA.
-    EXEC SQL INCLUDE SQLCA END-EXEC.
-```
+| Level | Name | Description |
+|-------|------|-------------|
+| 01 | WS-DB2-AREA | Container for SQLCA include |
+| | SQLCA | Standard SQL Communication Area (included via EXEC SQL INCLUDE) |
 
-The SQLCA provides access to SQLCODE, SQLERRMC, and other DB2 diagnostic information.
+The SQLCA provides:
+- `SQLCODE` - Return code from SQL operations
+- `SQLERRMC` - Error message text from DB2
+- `SQLSTATE` - SQL state code
 
 #### Connection Pool Statistics
 
-| Level | Name | Picture | Value | Description |
-|-------|------|---------|-------|-------------|
-| 01 | WS-POOL-STATS | - | - | Pool statistics area |
-| 05 | WS-TOTAL-CONNECTIONS | S9(8) COMP | 0 | Total connections created |
+| Level | Name | Picture | Initial Value | Description |
+|-------|------|---------|---------------|-------------|
+| 01 | WS-POOL-STATS | Group | | Pool management counters |
+| 05 | WS-TOTAL-CONNECTIONS | S9(8) COMP | 0 | Cumulative connections made |
 | 05 | WS-ACTIVE-CONNECTIONS | S9(8) COMP | 0 | Currently active connections |
-| 05 | WS-AVAILABLE-CONNECTIONS | S9(8) COMP | 0 | Available in pool |
+| 05 | WS-AVAILABLE-CONNECTIONS | S9(8) COMP | 0 | Available pool slots |
 | 05 | WS-MAX-CONNECTIONS | S9(8) COMP | 100 | Maximum allowed connections |
 
 #### Error Handling Area
 
-```cobol
-01  WS-ERROR-AREA.
-    COPY ERRHND.
-```
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 01 | WS-ERROR-AREA | Group | Container for ERRHND copybook |
 
-Includes online error handling structures from the ERRHND copybook.
+From ERRHND copybook:
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | ERR-PROGRAM | X(8) | Program name for error tracking |
+| 05 | ERR-PARAGRAPH | X(30) | Paragraph where error occurred |
+| 05 | ERR-SQLCODE | S9(9) COMP | DB2 SQLCODE value |
+| 05 | ERR-CICS-RESP | S9(8) COMP | CICS EIBRESP value |
+| 05 | ERR-CICS-RESP2 | S9(8) COMP | CICS EIBRESP2 value |
+| 05 | ERR-SEVERITY | X | Error severity flag |
+| 88 | ERR-FATAL | 'F' | Fatal error - must terminate |
+| 88 | ERR-WARNING | 'W' | Warning - can continue |
+| 88 | ERR-INFO | 'I' | Informational message |
+| 05 | ERR-MESSAGE | X(80) | Error description text |
+| 05 | ERR-ACTION | X | Recommended action |
+| 88 | ERR-RETURN | 'R' | Return to caller |
+| 88 | ERR-CONTINUE | 'C' | Continue processing |
+| 88 | ERR-ABEND | 'A' | Abend the transaction |
+| 05 | ERR-TRACE | Group | Trace information |
+| 10 | ERR-TRACE-ID | X(16) | Unique trace identifier |
+| 10 | ERR-TIMESTAMP | X(26) | Error timestamp |
+
+### Linkage Section
+
+#### DB2-REQUEST-AREA
+
+This is the interface used by calling programs to request DB2 connection services:
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 01 | DB2-REQUEST-AREA | Group | Main request/response block |
+| 05 | DB2-REQUEST-TYPE | X | Function code |
+| 88 | DB2-CONNECT | 'C' | Request new connection |
+| 88 | DB2-DISCONNECT | 'D' | Release connection |
+| 88 | DB2-STATUS | 'S' | Check pool status |
+| 05 | DB2-RESPONSE-CODE | S9(8) COMP | Return code (0=success, -1=error) |
+| 05 | DB2-CONNECTION-TOKEN | X(16) | Unique connection identifier |
+| 05 | DB2-ERROR-INFO | Group | Error details |
+| 10 | DB2-SQLCODE | S9(9) COMP | DB2 SQLCODE if error |
+| 10 | DB2-ERROR-MSG | X(80) | Error message text |
+
+## File I/O
+
+This program does not perform traditional file I/O. All data persistence is through DB2 database connections and CICS facilities.
 
 ## Control Flow
 
-### Connect Function (P100-PROCESS-CONNECT)
+### Main Entry Point
 
-1. **Pool Capacity Check**: Verifies `WS-ACTIVE-CONNECTIONS < WS-MAX-CONNECTIONS`
-2. **Connection Establishment** (P110): Issues `EXEC SQL CONNECT TO POSMVP`
-3. **Success Handling**:
-   - Increments `WS-ACTIVE-CONNECTIONS`
-   - Generates unique connection token
-   - Returns response code 0
-4. **Failure Handling**:
-   - Captures SQLCODE and SQLERRMC
-   - Returns response code -1
+The program is invoked via CICS `LINK` or `XCTL` with the `DB2-REQUEST-AREA` passed as a COMMAREA. The main procedure uses `EVALUATE TRUE` to dispatch based on the request type:
 
-### Token Generation (P120-GENERATE-TOKEN)
+```cobol
+EVALUATE TRUE
+    WHEN DB2-CONNECT
+         PERFORM P100-PROCESS-CONNECT THRU P100-EXIT
+    WHEN DB2-DISCONNECT
+         PERFORM P200-PROCESS-DISCONNECT THRU P200-EXIT
+    WHEN DB2-STATUS
+         PERFORM P300-CHECK-STATUS THRU P300-EXIT
+END-EVALUATE
+```
+
+After processing, control returns to CICS via `EXEC CICS RETURN`.
+
+### Connect Processing (P100-PROCESS-CONNECT)
+
+1. **Check pool capacity**: Compare `WS-ACTIVE-CONNECTIONS` against `WS-MAX-CONNECTIONS`
+2. **If pool full**: Set error message "Maximum connections reached" and response code -1
+3. **If capacity available**: Call P110-ESTABLISH-CONNECTION
+
+#### Connection Establishment (P110-ESTABLISH-CONNECTION)
+
+1. Execute `CONNECT TO POSMVP` to establish DB2 connection
+2. **On success (SQLCODE = 0)**:
+   - Increment `WS-ACTIVE-CONNECTIONS`
+   - Set response code to 0
+   - Generate connection token via P120-GENERATE-TOKEN
+3. **On failure**:
+   - Copy SQLCODE to response
+   - Copy SQLERRMC error message
+   - Set response code to -1
+
+#### Token Generation (P120-GENERATE-TOKEN)
 
 Creates a unique connection token by combining:
-- Current timestamp (`FUNCTION CURRENT-DATE`)
+- Current date/time from `FUNCTION CURRENT-DATE`
 - Active connection count
 
-This token can be used by calling programs to track and manage their connections.
+This token can be used by callers to track and manage their specific connection.
 
-### Disconnect Function (P200-PROCESS-DISCONNECT)
+### Disconnect Processing (P200-PROCESS-DISCONNECT)
 
-1. **SQL Disconnect**: Issues `EXEC SQL DISCONNECT`
-2. **Success Handling**:
-   - Decrements `WS-ACTIVE-CONNECTIONS`
-   - Returns response code 0
-3. **Failure Handling**:
-   - Captures SQLCODE and SQLERRMC
-   - Returns response code -1
+1. Execute `EXEC SQL DISCONNECT`
+2. **On success (SQLCODE = 0)**:
+   - Decrement `WS-ACTIVE-CONNECTIONS`
+   - Set response code to 0
+3. **On failure**:
+   - Copy SQLCODE and SQLERRMC to response
+   - Set response code to -1
 
-### Status Function (P300-CHECK-STATUS)
+### Status Check (P300-CHECK-STATUS)
 
-1. **Connection Test**: Issues `SELECT CURRENT SERVER INTO :DB2-ERROR-MSG`
-2. **Status Return**: Sets `DB2-RESPONSE-CODE` to current active connection count
-3. **Error Handling**: Returns SQLCODE if query fails
+1. Execute `SELECT CURRENT SERVER INTO :DB2-ERROR-MSG` to verify connection
+2. **On success**: Set response code to 0
+3. **On failure**: Copy SQLCODE, set response code to -1
+4. Return active connection count in `DB2-RESPONSE-CODE`
+
+## SQL Statements
+
+| Paragraph | SQL Statement | Purpose |
+|-----------|--------------|---------|
+| P110-ESTABLISH-CONNECTION | `CONNECT TO POSMVP` | Establish connection to POSMVP database |
+| P200-PROCESS-DISCONNECT | `DISCONNECT` | Release the current connection |
+| P300-CHECK-STATUS | `SELECT CURRENT SERVER INTO :DB2-ERROR-MSG` | Verify connection is active |
+
+## CICS Commands
+
+| Location | Command | Purpose |
+|----------|---------|---------|
+| Main procedure | `EXEC CICS RETURN END-EXEC` | Return control to CICS |
 
 ## Dependencies
 
 ### Copybooks
 
-| Copybook | Location | Purpose |
-|----------|----------|---------|
-| ERRHND | online | Online error handling structures |
-| SQLCA | (included) | SQL Communication Area |
+| Copybook | Location | Description |
+|----------|----------|-------------|
+| SQLCA | (DB2 system) | SQL Communication Area - included via EXEC SQL INCLUDE |
+| ERRHND | online/ | Online error handling structure with severity levels and trace info |
+
+### Called Programs
+
+*None* - This program is a CICS service that returns to CICS after processing.
 
 ### Related Programs
 
-| Program | Relationship | Description |
-|---------|--------------|-------------|
-| DB2RECV | Consumer | Calls DB2ONLN for connection recovery |
-| INQONLN | Related | Main online inquiry handler |
-| INQHIST | Related | History inquiry (uses DB2 access) |
-| ERRHNDL | Support | Error handler for online programs |
-| SECMGR | Support | Security manager for online access |
+Programs that also use the ERRHND copybook for consistent error handling:
 
-### Programs Sharing ERRHND Copybook
+| Program | Relationship |
+|---------|--------------|
+| DB2RECV | DB2 recovery processing - uses same error handling |
+| ERRHNDL | Error handler - uses same error structure |
+| INQONLN | Online inquiry - uses same error handling |
+| SECMGR | Security manager - uses same error handling |
 
-- DB2RECV - DB2 Recovery Manager
-- ERRHNDL - Online Error Handler
-- INQONLN - Online Inquiry Handler
-- SECMGR - Security Manager
+## Return Codes
 
-## Usage Examples
+| Code | Meaning | Context |
+|------|---------|---------|
+| 0 | Success | Connection established, released, or status checked |
+| -1 | Error | Connection failed, disconnect failed, or max connections reached |
+| *n* | Active count | For STATUS requests, returns current active connection count |
 
-### Establishing a Connection
+## Usage Example
+
+To call DB2ONLN from a CICS program:
 
 ```cobol
 WORKING-STORAGE SECTION.
 01  WS-DB2-REQUEST.
-    COPY DB2REQ.
+    05 WS-REQUEST-TYPE        PIC X.
+    05 WS-RESPONSE-CODE       PIC S9(8) COMP.
+    05 WS-CONNECTION-TOKEN    PIC X(16).
+    05 WS-ERROR-INFO.
+       10 WS-SQLCODE          PIC S9(9) COMP.
+       10 WS-ERROR-MSG        PIC X(80).
 
 PROCEDURE DIVISION.
-    MOVE 'C' TO DB2-REQUEST-TYPE
+    *> Request a connection
+    MOVE 'C' TO WS-REQUEST-TYPE
     
-    EXEC CICS LINK PROGRAM('DB2ONLN')
-              COMMAREA(WS-DB2-REQUEST)
-              LENGTH(LENGTH OF WS-DB2-REQUEST)
+    EXEC CICS LINK
+         PROGRAM('DB2ONLN')
+         COMMAREA(WS-DB2-REQUEST)
+         LENGTH(LENGTH OF WS-DB2-REQUEST)
     END-EXEC
     
-    IF DB2-RESPONSE-CODE = 0
-        DISPLAY 'Connected - Token: ' DB2-CONNECTION-TOKEN
+    IF WS-RESPONSE-CODE = 0
+        DISPLAY 'Connected with token: ' WS-CONNECTION-TOKEN
+        *> ... perform database operations ...
+        
+        *> Release connection when done
+        MOVE 'D' TO WS-REQUEST-TYPE
+        EXEC CICS LINK
+             PROGRAM('DB2ONLN')
+             COMMAREA(WS-DB2-REQUEST)
+             LENGTH(LENGTH OF WS-DB2-REQUEST)
+        END-EXEC
     ELSE
-        DISPLAY 'Connection failed: ' DB2-ERROR-MSG
+        DISPLAY 'Connection failed: ' WS-ERROR-MSG
     END-IF
 ```
 
-### Disconnecting
+## Design Considerations
 
-```cobol
-    MOVE 'D' TO DB2-REQUEST-TYPE
-    
-    EXEC CICS LINK PROGRAM('DB2ONLN')
-              COMMAREA(WS-DB2-REQUEST)
-              LENGTH(LENGTH OF WS-DB2-REQUEST)
-    END-EXEC
-    
-    IF DB2-RESPONSE-CODE NOT = 0
-        DISPLAY 'Disconnect warning: ' DB2-ERROR-MSG
-    END-IF
-```
+### Connection Pool Limits
 
-### Checking Pool Status
+The program enforces a maximum of 100 concurrent connections (`WS-MAX-CONNECTIONS`). This limit:
+- Prevents DB2 thread exhaustion
+- Ensures fair resource allocation across transactions
+- Can be adjusted based on DB2 subsystem capacity
 
-```cobol
-    MOVE 'S' TO DB2-REQUEST-TYPE
-    
-    EXEC CICS LINK PROGRAM('DB2ONLN')
-              COMMAREA(WS-DB2-REQUEST)
-              LENGTH(LENGTH OF WS-DB2-REQUEST)
-    END-EXEC
-    
-    DISPLAY 'Active connections: ' DB2-RESPONSE-CODE
-```
+### Connection Tokens
 
-## CICS Integration
+The token generation mechanism creates unique identifiers by combining timestamp and connection count. This allows:
+- Connection tracking across transaction boundaries
+- Debugging and audit trail capabilities
+- Potential future connection affinity features
 
-### CICS Commands Used
+### CICS Integration
 
-| Command | Purpose | Location |
-|---------|---------|----------|
-| `EXEC CICS RETURN` | Return control to CICS | End of PROCEDURE DIVISION |
+The program uses `EXEC CICS RETURN` rather than `GOBACK` or `STOP RUN`, which is appropriate for CICS programs. It:
+- Returns control to CICS transaction manager
+- Preserves the COMMAREA for the calling program
+- Allows CICS to manage transaction completion
 
-### SQL Statements Used
+### Limitations
 
-| Statement | Purpose | Paragraph |
-|-----------|---------|-----------|
-| `CONNECT TO POSMVP` | Establish DB2 connection | P110-ESTABLISH-CONNECTION |
-| `DISCONNECT` | Release DB2 connection | P200-PROCESS-DISCONNECT |
-| `SELECT CURRENT SERVER` | Test connection / get server name | P300-CHECK-STATUS |
+:::note Working Storage State
+The `WS-ACTIVE-CONNECTIONS` counter in working storage is reset each time the program is loaded. In a production environment, connection pool state should be maintained in:
+- CICS Temporary Storage (TS) queues
+- Shared memory areas
+- DB2 tables
 
-### Transaction Context
-
-- DB2ONLN operates within the calling program's CICS transaction
-- Connections are managed at the task level
-- The pool statistics are maintained in working storage
-
-## Technical Notes
-
-### Connection Pool Design
-
-The connection pool implementation tracks:
-- **Active Connections**: Currently in use by online transactions
-- **Maximum Connections**: Hard limit of 100 (configurable via `WS-MAX-CONNECTIONS`)
-- **Connection Tokens**: Unique identifiers for tracking individual connections
-
-### DB2 Subsystem
-
-The program connects to the `POSMVP` (Portfolio Management MVP) DB2 subsystem. This is hardcoded in the `CONNECT` statement.
-
-### Error Information
-
-When errors occur:
-- `DB2-SQLCODE` contains the actual SQL return code
-- `DB2-ERROR-MSG` contains either:
-  - `SQLERRMC` (SQL error message text) for SQL errors
-  - Custom messages like "Maximum connections reached" for application errors
-
-### Recovery Integration
-
-DB2ONLN is designed to work with DB2RECV for connection recovery:
-
-```mermaid
-sequenceDiagram
-    participant App as Application
-    participant RECV as DB2RECV
-    participant ONLN as DB2ONLN
-    participant DB2 as DB2
-
-    App->>RECV: Connection failure detected
-    RECV->>ONLN: Request connect (C)
-    ONLN->>DB2: EXEC SQL CONNECT
-    DB2-->>ONLN: SQLCODE
-    ONLN-->>RECV: Response
-    RECV-->>App: Recovery status
-```
-
-### PERFORM THRU Pattern
-
-This program uses the `PERFORM ... THRU` pattern with explicit EXIT paragraphs:
-
-```cobol
-PERFORM P100-PROCESS-CONNECT
-   THRU P100-EXIT
-```
-
-This mainframe COBOL pattern ensures clean paragraph boundaries and supports structured error handling.
-
-### Thread Safety in CICS
-
-- Each CICS task gets its own copy of working storage
-- Pool statistics in `WS-POOL-STATS` are task-local
-- For true connection pooling across tasks, consider using CICS DB2CONN resources
-
-## Configuration
-
-### Pool Limits
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| WS-MAX-CONNECTIONS | 100 | Maximum concurrent connections |
-
-To modify pool limits, change the VALUE clause in working storage:
-
-```cobol
-05 WS-MAX-CONNECTIONS PIC S9(8) COMP VALUE 100.
-```
-
-### Target Database
-
-The target DB2 subsystem is currently hardcoded as `POSMVP`. To connect to a different subsystem, modify:
-
-```cobol
-EXEC SQL CONNECT TO POSMVP END-EXEC.
-```
+This implementation provides the framework but would need enhancement for true connection pooling across multiple program invocations.
+:::

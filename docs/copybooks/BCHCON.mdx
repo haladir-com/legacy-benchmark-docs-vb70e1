@@ -1,279 +1,294 @@
 ---
 title: "BCHCON"
-description: "Batch Control Constants - Defines standard constants for batch job control, status values, return codes, and process management"
+description: "Batch control constants copybook defining standard values for process status, return codes, control parameters, and messages"
 ---
 
 ## Overview
 
-BCHCON (Batch Control Constants) is a copybook that defines standardized constants used throughout the batch processing subsystem. It provides a centralized repository of values for process status indicators, return code thresholds, process control parameters, and standard messages.
+BCHCON (Batch Control Constants) is a copybook that defines standard constants used across batch processing programs in the portfolio management system. It provides a centralized repository of constant values for process status tracking, return code thresholds, control parameters, and standard messages.
 
-By centralizing these constants in a single copybook, the batch processing programs maintain consistency in status codes, return values, and operational parameters. Changes to thresholds or values can be made in one place and automatically propagate to all programs that include this copybook.
+By centralizing these definitions in a copybook, the system ensures:
+- **Consistency**: All batch programs use the same values for status codes and thresholds
+- **Maintainability**: Changes to standard values only need to be made in one place
+- **Readability**: Meaningful names instead of magic numbers throughout the code
+- **Standards Compliance**: Enforced adherence to system-wide conventions
 
-## Data Structure
+## Structure Diagram
 
+```mermaid
+graph TD
+    A[BATCH-CONTROL-CONSTANTS] --> B[BCT-STAT-VALUES]
+    A --> C[BCT-RC-THRESHOLDS]
+    A --> D[BCT-CTRL-VALUES]
+    A --> E[BCT-PROC-TYPES]
+    A --> F[BCT-DEP-TYPES]
+    A --> G[BCT-PROC-NAMES]
+    A --> H[BCT-REC-TYPES]
+    A --> I[BCT-MESSAGES]
+    
+    B --> B1[BCT-STAT-READY]
+    B --> B2[BCT-STAT-ACTIVE]
+    B --> B3[BCT-STAT-WAITING]
+    B --> B4[BCT-STAT-DONE]
+    B --> B5[BCT-STAT-ERROR]
+    
+    C --> C1[BCT-RC-SUCCESS]
+    C --> C2[BCT-RC-WARNING]
+    C --> C3[BCT-RC-ERROR]
+    C --> C4[BCT-RC-SEVERE]
+    C --> C5[BCT-RC-CRITICAL]
 ```
-01  BATCH-CONTROL-CONSTANTS
-    05  BCT-STAT-VALUES          Process status codes
-    05  BCT-RC-THRESHOLDS        Return code values
-    05  BCT-CTRL-VALUES          Control parameters
-    05  BCT-PROC-TYPES           Process type codes
-    05  BCT-DEP-TYPES            Dependency type codes
-    05  BCT-PROC-NAMES           Special process names
-    05  BCT-REC-TYPES            Record type codes
-    05  BCT-MESSAGES             Standard messages
-```
 
-## Field Definitions
+## Data Definitions
 
-### BCT-STAT-VALUES - Process Status Codes
+### BATCH-CONTROL-CONSTANTS (Level 01)
 
-Status codes used to track the state of batch processes.
+The main group item containing all batch control constants.
 
-| Field | Picture | Value | Description |
-|-------|---------|-------|-------------|
-| BCT-STAT-READY | X(1) | 'R' | Process is ready to execute |
-| BCT-STAT-ACTIVE | X(1) | 'A' | Process is currently executing |
-| BCT-STAT-WAITING | X(1) | 'W' | Process is waiting for prerequisites |
-| BCT-STAT-DONE | X(1) | 'D' | Process completed successfully |
-| BCT-STAT-ERROR | X(1) | 'E' | Process completed with error |
+### BCT-STAT-VALUES - Process Status Values
+
+Status codes indicating the current state of a batch process.
+
+| Level | Name | Picture | Value | Description |
+|-------|------|---------|-------|-------------|
+| 05 | BCT-STAT-VALUES | - | - | Process status group |
+| 10 | BCT-STAT-READY | X(1) | 'R' | Process ready to run |
+| 10 | BCT-STAT-ACTIVE | X(1) | 'A' | Process currently executing |
+| 10 | BCT-STAT-WAITING | X(1) | 'W' | Process waiting for prerequisites |
+| 10 | BCT-STAT-DONE | X(1) | 'D' | Process completed successfully |
+| 10 | BCT-STAT-ERROR | X(1) | 'E' | Process ended with error |
+
+**Status State Diagram:**
 
 ```mermaid
 stateDiagram-v2
-    [*] --> READY: Job Submitted
-    READY --> ACTIVE: Started
-    READY --> WAITING: Prerequisites Pending
-    WAITING --> READY: Prerequisites Met
-    ACTIVE --> DONE: Success
-    ACTIVE --> ERROR: Failure
-    DONE --> [*]
-    ERROR --> [*]
+    [*] --> Ready: Process scheduled
+    Ready --> Active: Started
+    Ready --> Waiting: Prerequisites pending
+    Waiting --> Ready: Prerequisites met
+    Active --> Done: Success
+    Active --> Error: Failure
+    Done --> [*]
+    Error --> Ready: Restart
 ```
 
-### BCT-RC-THRESHOLDS - Return Code Values
+### BCT-RC-THRESHOLDS - Return Code Thresholds
 
-Standard return codes aligned with IBM batch processing conventions.
+Standard return code values following IBM z/OS conventions.
 
-| Field | Picture | Value | Description |
-|-------|---------|-------|-------------|
-| BCT-RC-SUCCESS | S9(4) COMP | +0 | Successful completion |
-| BCT-RC-WARNING | S9(4) COMP | +4 | Completed with warnings |
-| BCT-RC-ERROR | S9(4) COMP | +8 | Error occurred |
-| BCT-RC-SEVERE | S9(4) COMP | +12 | Severe error |
-| BCT-RC-CRITICAL | S9(4) COMP | +16 | Critical/terminal error |
+| Level | Name | Picture | Value | Description |
+|-------|------|---------|-------|-------------|
+| 05 | BCT-RC-THRESHOLDS | - | - | Return code group |
+| 10 | BCT-RC-SUCCESS | S9(4) COMP | +0 | Successful completion |
+| 10 | BCT-RC-WARNING | S9(4) COMP | +4 | Completed with warnings |
+| 10 | BCT-RC-ERROR | S9(4) COMP | +8 | Error occurred |
+| 10 | BCT-RC-SEVERE | S9(4) COMP | +12 | Severe error |
+| 10 | BCT-RC-CRITICAL | S9(4) COMP | +16 | Critical failure |
 
-```mermaid
-graph LR
-    subgraph Return Code Severity
-        A[0 - SUCCESS] --> B[4 - WARNING]
-        B --> C[8 - ERROR]
-        C --> D[12 - SEVERE]
-        D --> E[16 - CRITICAL]
-    end
-    
-    style A fill:#90EE90
-    style B fill:#FFE4B5
-    style C fill:#FFB6C1
-    style D fill:#FF6B6B
-    style E fill:#8B0000,color:#fff
-```
+**Return Code Decision Matrix:**
 
-### BCT-CTRL-VALUES - Process Control Parameters
+| Return Code | Continue Processing? | Requires Attention? | Typical Action |
+|-------------|---------------------|---------------------|----------------|
+| 0 (SUCCESS) | Yes | No | Continue normally |
+| 4 (WARNING) | Yes | Optional | Log and continue |
+| 8 (ERROR) | Conditional | Yes | Review and decide |
+| 12 (SEVERE) | No | Yes | Stop and investigate |
+| 16 (CRITICAL) | No | Immediate | Emergency response |
 
-Operational limits and timing parameters for batch control.
+### BCT-CTRL-VALUES - Process Control Values
 
-| Field | Picture | Value | Description |
-|-------|---------|-------|-------------|
-| BCT-MAX-PREREQ | 9(2) COMP | 10 | Maximum prerequisites per job |
-| BCT-MAX-RESTARTS | 9(2) COMP | 3 | Maximum restart attempts |
-| BCT-WAIT-INTERVAL | 9(4) COMP | 300 | Wait interval in seconds (5 min) |
-| BCT-MAX-WAIT-TIME | 9(4) COMP | 3600 | Maximum wait time in seconds (1 hour) |
+Operational parameters for batch process control.
 
-### BCT-PROC-TYPES - Process Type Codes
+| Level | Name | Picture | Value | Description |
+|-------|------|---------|-------|-------------|
+| 05 | BCT-CTRL-VALUES | - | - | Control values group |
+| 10 | BCT-MAX-PREREQ | 9(2) COMP | 10 | Maximum prerequisites per process |
+| 10 | BCT-MAX-RESTARTS | 9(2) COMP | 3 | Maximum restart attempts |
+| 10 | BCT-WAIT-INTERVAL | 9(4) COMP | 300 | Wait interval in seconds (5 min) |
+| 10 | BCT-MAX-WAIT-TIME | 9(4) COMP | 3600 | Maximum wait time in seconds (1 hr) |
 
-Codes identifying the category of batch process.
+### BCT-PROC-TYPES - Process Types
 
-| Field | Picture | Value | Description |
-|-------|---------|-------|-------------|
-| BCT-TYPE-INITIAL | X(3) | 'INI' | Initialization process |
-| BCT-TYPE-UPDATE | X(3) | 'UPD' | Update/maintenance process |
-| BCT-TYPE-REPORT | X(3) | 'RPT' | Reporting process |
-| BCT-TYPE-CLEANUP | X(3) | 'CLN' | Cleanup/housekeeping process |
+Classification codes for different types of batch processes.
 
-### BCT-DEP-TYPES - Dependency Type Codes
+| Level | Name | Picture | Value | Description |
+|-------|------|---------|-------|-------------|
+| 05 | BCT-PROC-TYPES | - | - | Process types group |
+| 10 | BCT-TYPE-INITIAL | X(3) | 'INI' | Initialization process |
+| 10 | BCT-TYPE-UPDATE | X(3) | 'UPD' | Update/maintenance process |
+| 10 | BCT-TYPE-REPORT | X(3) | 'RPT' | Reporting process |
+| 10 | BCT-TYPE-CLEANUP | X(3) | 'CLN' | Cleanup/housekeeping process |
 
-Codes defining the nature of job dependencies.
+### BCT-DEP-TYPES - Dependency Types
 
-| Field | Picture | Value | Description |
-|-------|---------|-------|-------------|
-| BCT-DEP-REQUIRED | X(1) | 'R' | Required dependency - must complete successfully |
-| BCT-DEP-OPTIONAL | X(1) | 'O' | Optional dependency - proceed even if failed |
-| BCT-DEP-EXCLUSIVE | X(1) | 'X' | Exclusive - cannot run concurrently |
+Classification codes for process dependencies.
+
+| Level | Name | Picture | Value | Description |
+|-------|------|---------|-------|-------------|
+| 05 | BCT-DEP-TYPES | - | - | Dependency types group |
+| 10 | BCT-DEP-REQUIRED | X(1) | 'R' | Required dependency (must complete) |
+| 10 | BCT-DEP-OPTIONAL | X(1) | 'O' | Optional dependency (nice to have) |
+| 10 | BCT-DEP-EXCLUSIVE | X(1) | 'X' | Exclusive (cannot run concurrently) |
+
+**Dependency Type Behavior:**
+
+| Type | Predecessor Failed | Predecessor Not Run | Predecessor Running |
+|------|-------------------|---------------------|---------------------|
+| Required | Block | Block | Wait |
+| Optional | Continue | Continue | Continue |
+| Exclusive | Continue | Continue | Wait |
 
 ### BCT-PROC-NAMES - Special Process Names
 
-Reserved process names for system-level batch operations.
+Reserved names for system-level batch processes.
 
-| Field | Picture | Value | Description |
-|-------|---------|-------|-------------|
-| BCT-START-OF-DAY | X(8) | 'STARTDAY' | Start-of-day initialization marker |
-| BCT-END-OF-DAY | X(8) | 'ENDDAY' | End-of-day completion marker |
-| BCT-EMERGENCY | X(8) | 'EMERGENCY' | Emergency/priority process marker |
+| Level | Name | Picture | Value | Description |
+|-------|------|---------|-------|-------------|
+| 05 | BCT-PROC-NAMES | - | - | Process names group |
+| 10 | BCT-START-OF-DAY | X(8) | 'STARTDAY' | Start-of-day initialization |
+| 10 | BCT-END-OF-DAY | X(8) | 'ENDDAY' | End-of-day processing |
+| 10 | BCT-EMERGENCY | X(8) | 'EMERGENCY' | Emergency/recovery process |
 
-### BCT-REC-TYPES - Record Type Codes
+### BCT-REC-TYPES - Control File Record Types
 
-Codes identifying types of records in the batch control file.
+Type codes for batch control file records.
 
-| Field | Picture | Value | Description |
-|-------|---------|-------|-------------|
-| BCT-REC-CONTROL | X(1) | 'C' | Control record |
-| BCT-REC-PROCESS | X(1) | 'P' | Process definition record |
-| BCT-REC-DEPEND | X(1) | 'D' | Dependency definition record |
-| BCT-REC-HISTORY | X(1) | 'H' | Historical/audit record |
+| Level | Name | Picture | Value | Description |
+|-------|------|---------|-------|-------------|
+| 05 | BCT-REC-TYPES | - | - | Record types group |
+| 10 | BCT-REC-CONTROL | X(1) | 'C' | Control record |
+| 10 | BCT-REC-PROCESS | X(1) | 'P' | Process definition record |
+| 10 | BCT-REC-DEPEND | X(1) | 'D' | Dependency definition record |
+| 10 | BCT-REC-HISTORY | X(1) | 'H' | History/audit record |
 
 ### BCT-MESSAGES - Standard Messages
 
-Pre-defined messages for consistent logging and display.
+Pre-defined message text for consistent logging and display.
 
-| Field | Picture | Value | Description |
-|-------|---------|-------|-------------|
-| BCT-MSG-STARTING | X(30) | 'Process starting...' | Process initiation message |
-| BCT-MSG-COMPLETE | X(30) | 'Process completed successfully' | Success message |
-| BCT-MSG-FAILED | X(30) | 'Process failed - check errors' | Failure message |
-| BCT-MSG-WAITING | X(30) | 'Waiting for prerequisites' | Waiting status message |
+| Level | Name | Picture | Value | Description |
+|-------|------|---------|-------|-------------|
+| 05 | BCT-MESSAGES | - | - | Messages group |
+| 10 | BCT-MSG-STARTING | X(30) | 'Process starting...' | Process initiation message |
+| 10 | BCT-MSG-COMPLETE | X(30) | 'Process completed successfully' | Successful completion message |
+| 10 | BCT-MSG-FAILED | X(30) | 'Process failed - check errors' | Failure message |
+| 10 | BCT-MSG-WAITING | X(30) | 'Waiting for prerequisites' | Waiting status message |
 
-## Usage Examples
+## Usage
 
-### Setting Process Status
+### Including the Copybook
 
 ```cobol
-WORKING-STORAGE SECTION.
-    COPY BCHCON.
+       WORKING-STORAGE SECTION.
+           COPY BCHCON.
+```
 
-PROCEDURE DIVISION.
-*   Set process to active when starting
-    MOVE BCT-STAT-ACTIVE TO BCT-STATUS
-    
-*   Set process to done when complete
-    IF process-successful
-        MOVE BCT-STAT-DONE TO BCT-STATUS
-    ELSE
-        MOVE BCT-STAT-ERROR TO BCT-STATUS
-    END-IF
+### Using Status Values
+
+```cobol
+       IF PROCESS-STATUS = BCT-STAT-READY
+           PERFORM START-PROCESS
+       END-IF
+       
+       IF PROCESS-STATUS = BCT-STAT-ERROR
+           DISPLAY BCT-MSG-FAILED
+           MOVE BCT-RC-ERROR TO WS-RETURN-CODE
+       END-IF
 ```
 
 ### Checking Return Codes
 
 ```cobol
-*   Evaluate return code severity
-    EVALUATE TRUE
-        WHEN WS-RETURN-CODE = BCT-RC-SUCCESS
-            DISPLAY BCT-MSG-COMPLETE
-        WHEN WS-RETURN-CODE = BCT-RC-WARNING
-            DISPLAY 'Completed with warnings'
-        WHEN WS-RETURN-CODE >= BCT-RC-ERROR
-            DISPLAY BCT-MSG-FAILED
-            PERFORM ERROR-HANDLING
-    END-EVALUATE
+       IF WS-RETURN-CODE >= BCT-RC-ERROR
+           SET PROCESS-FAILED TO TRUE
+           PERFORM ERROR-HANDLING
+       END-IF
+       
+       EVALUATE TRUE
+           WHEN WS-RETURN-CODE = BCT-RC-SUCCESS
+               DISPLAY BCT-MSG-COMPLETE
+           WHEN WS-RETURN-CODE = BCT-RC-WARNING
+               DISPLAY 'Completed with warnings'
+           WHEN OTHER
+               DISPLAY BCT-MSG-FAILED
+       END-EVALUATE
 ```
 
-### Using Control Parameters
+### Managing Dependencies
 
 ```cobol
-*   Check restart limit
-    IF WS-RESTART-COUNT > BCT-MAX-RESTARTS
-        MOVE BCT-STAT-ERROR TO BCT-STATUS
-        MOVE 'Maximum restarts exceeded' TO ERR-TEXT
-        PERFORM ERROR-ROUTINE
-    END-IF
-    
-*   Check prerequisite count
-    IF WS-PREREQ-COUNT > BCT-MAX-PREREQ
-        MOVE 'Too many prerequisites defined' TO ERR-TEXT
-        PERFORM ERROR-ROUTINE
-    END-IF
+       IF DEP-TYPE = BCT-DEP-REQUIRED
+           IF PREREQ-STATUS NOT = BCT-STAT-DONE
+               SET MUST-WAIT TO TRUE
+               MOVE BCT-STAT-WAITING TO PROCESS-STATUS
+           END-IF
+       END-IF
 ```
 
-### Identifying Process Types
+### Using Control Values
 
 ```cobol
-*   Route based on process type
-    EVALUATE WS-PROCESS-TYPE
-        WHEN BCT-TYPE-INITIAL
-            PERFORM INITIALIZATION-PROCESSING
-        WHEN BCT-TYPE-UPDATE
-            PERFORM UPDATE-PROCESSING
-        WHEN BCT-TYPE-REPORT
-            PERFORM REPORT-PROCESSING
-        WHEN BCT-TYPE-CLEANUP
-            PERFORM CLEANUP-PROCESSING
-    END-EVALUATE
+       IF RESTART-COUNT > BCT-MAX-RESTARTS
+           DISPLAY 'Maximum restarts exceeded'
+           MOVE BCT-RC-CRITICAL TO WS-RETURN-CODE
+           PERFORM ABORT-PROCESS
+       END-IF
+       
+       IF WAIT-TIME > BCT-MAX-WAIT-TIME
+           DISPLAY 'Maximum wait time exceeded'
+           MOVE BCT-STAT-ERROR TO PROCESS-STATUS
+       END-IF
 ```
 
 ## Programs Using This Copybook
 
 | Program | Description |
 |---------|-------------|
-| [BCHCTL00](/docs/programs/BCHCTL00) | Batch Control Processor - Main batch control operations |
-| [HISTLD00](/docs/programs/HISTLD00) | History Load - Historical data loading |
-| [PRCSEQ00](/docs/programs/PRCSEQ00) | Process Sequencer - Job sequencing and scheduling |
-| [RCVPRC00](/docs/programs/RCVPRC00) | Recovery Processor - Process recovery operations |
+| BCHCTL00 | Batch control program - main scheduler |
+| HISTLD00 | History load program |
+| PRCSEQ00 | Process sequencing program |
+| RCVPRC00 | Recovery processing program |
 
 ## Related Copybooks
 
 | Copybook | Relationship |
 |----------|--------------|
-| [BCHCTL](/docs/copybooks/BCHCTL) | Uses status values from BCHCON for BCT-STATUS field |
-| [ERRHAND](/docs/copybooks/ERRHAND) | Complementary error handling - uses similar return code patterns |
-| [PRCSEQ](/docs/copybooks/PRCSEQ) | Process sequence definitions - uses process types |
+| BCHCTL | Batch control record layouts (uses BCHCON constants) |
+| PRCSEQ | Process sequence definitions (uses BCHCON constants) |
+| ERRHAND | Error handling definitions (complementary error codes) |
 
-## Technical Notes
+## Design Considerations
 
-### COMP Fields
+### COMP vs DISPLAY
 
-The return code and control parameter fields use `COMP` (COMPUTATIONAL) format:
-- Binary storage for efficient arithmetic operations
-- S9(4) COMP = 2 bytes (halfword)
-- 9(2) COMP = 2 bytes
-- 9(4) COMP = 2 bytes
+Return code thresholds use `COMP` (binary) format for:
+- Efficient comparison operations
+- Compatibility with system return codes
+- Proper handling of signed values
 
-### Value Clause Initialization
+Status values use `DISPLAY` (character) format for:
+- Human-readable control files
+- Easy debugging and logging
+- Compatibility with external systems
 
-All fields include VALUE clauses, so they are automatically initialized when the copybook is included. No explicit initialization is required in the using program.
+### Value Selection
 
-### Return Code Alignment
+The return code values (0, 4, 8, 12, 16) follow IBM z/OS conventions:
+- Divisible by 4 for consistent threshold checking
+- Allow for intermediate values if needed
+- Compatible with JCL COND parameter
 
-The return codes follow IBM standard conventions:
-- **0**: Success
-- **4**: Warning (processing continued)
-- **8**: Error (processing may have continued)
-- **12**: Severe error (processing stopped)
-- **16**: Critical error (immediate termination)
+### Message Padding
 
-This alignment ensures compatibility with JCL COND parameters and standard batch job monitoring.
+Standard messages are padded to 30 characters:
+- Ensures consistent log formatting
+- Prevents truncation issues
+- Allows for field overlays in reports
 
-### Timing Values
+## Maintenance Notes
 
-Wait intervals are specified in seconds:
-- BCT-WAIT-INTERVAL (300) = 5 minutes between checks
-- BCT-MAX-WAIT-TIME (3600) = 1 hour maximum wait
+When modifying this copybook:
 
-These can be used with system timing facilities or polling loops.
-
-## Best Practices
-
-1. **Always use named constants** instead of literal values for status codes and return codes
-2. **Compare against constants** rather than hardcoding values like 'R' or 8
-3. **Use standard messages** for consistent logging across programs
-4. **Respect control limits** (MAX-PREREQ, MAX-RESTARTS) for system stability
-5. **Document deviations** if a program needs to override standard values
-
-## Change Impact
-
-Changes to this copybook affect all four programs that include it. When modifying:
-
-| Change Type | Impact |
-|-------------|--------|
-| Adding new status value | Low - existing programs unaffected |
-| Changing existing value | High - all programs need testing |
-| Changing control limits | Medium - may affect runtime behavior |
-| Adding new message | Low - existing programs unaffected |
+1. **Adding new status values**: Ensure uniqueness and update all programs checking status
+2. **Changing thresholds**: Review all programs using these values for comparison logic
+3. **Modifying messages**: Verify message length compatibility with display fields
+4. **Adding control values**: Document defaults and ensure backward compatibility

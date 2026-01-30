@@ -1,274 +1,306 @@
 ---
 title: "AUDITLOG"
-description: "Audit Trail Record Definitions - standardized structure for capturing system audit events"
+description: "Audit Trail Record Definitions - standard structure for tracking system events, user actions, and transactions"
 ---
 
 ## Overview
 
-AUDITLOG is a copybook that defines the standard audit trail record structure used throughout the system. It provides a comprehensive format for capturing audit events including transactions, user actions, and system events.
+AUDITLOG is a copybook that defines the standard audit trail record structure used throughout the portfolio management system. It provides a consistent format for recording system events, user actions, and transaction activities, supporting compliance, security monitoring, and troubleshooting requirements.
 
-The audit record captures:
-- **Who** - User ID, terminal, and program information
-- **What** - Action type and detailed before/after images
-- **When** - High-precision timestamp
-- **Where** - System ID and terminal identification
-- **Result** - Success, failure, or warning status
+The audit record captures comprehensive information including timestamps, user identification, action types, success/failure status, and before/after images of data changes. This enables full traceability of all significant operations performed within the system.
 
-This copybook supports compliance requirements, security auditing, and operational troubleshooting by providing a consistent audit trail format.
-
-## Record Structure
+## Record Layout
 
 ```
 +------------------------------------------------------------------+
-|                         AUDIT-RECORD                              |
+| AUDIT-RECORD (388 bytes total)                                   |
 +------------------------------------------------------------------+
 | AUD-HEADER (58 bytes)                                            |
-|   +-- AUD-TIMESTAMP (26)    - ISO timestamp                      |
-|   +-- AUD-SYSTEM-ID (8)     - Source system                      |
-|   +-- AUD-USER-ID (8)       - User identifier                    |
-|   +-- AUD-PROGRAM (8)       - Program name                       |
-|   +-- AUD-TERMINAL (8)      - Terminal ID                        |
+|   +------------------------------------------------------------+ |
+|   | AUD-TIMESTAMP (26) | AUD-SYSTEM-ID (8) | AUD-USER-ID (8)   | |
+|   | AUD-PROGRAM (8)    | AUD-TERMINAL (8)                      | |
+|   +------------------------------------------------------------+ |
 +------------------------------------------------------------------+
-| AUD-TYPE (4)                - Event category                     |
-| AUD-ACTION (8)              - Specific action                    |
-| AUD-STATUS (4)              - Outcome status                     |
+| AUD-TYPE (4) | AUD-ACTION (8) | AUD-STATUS (4)                   |
 +------------------------------------------------------------------+
 | AUD-KEY-INFO (18 bytes)                                          |
-|   +-- AUD-PORTFOLIO-ID (8)  - Portfolio identifier               |
-|   +-- AUD-ACCOUNT-NO (10)   - Account number                     |
+|   +------------------------------------------------------------+ |
+|   | AUD-PORTFOLIO-ID (8) | AUD-ACCOUNT-NO (10)                 | |
+|   +------------------------------------------------------------+ |
 +------------------------------------------------------------------+
-| AUD-BEFORE-IMAGE (100)      - Pre-change data                    |
-| AUD-AFTER-IMAGE (100)       - Post-change data                   |
-| AUD-MESSAGE (100)           - Descriptive message                |
+| AUD-BEFORE-IMAGE (100) | AUD-AFTER-IMAGE (100) | AUD-MESSAGE(100)|
 +------------------------------------------------------------------+
-Total Record Length: 392 bytes
 ```
 
-## Field Definitions
+## Data Structure
 
-### Header Section (AUD-HEADER)
+### AUDIT-RECORD (Level 01)
 
-| Field | Picture | Description |
-|-------|---------|-------------|
-| AUD-TIMESTAMP | X(26) | ISO 8601 timestamp (YYYY-MM-DD-HH.MM.SS.FFFFFF) |
-| AUD-SYSTEM-ID | X(8) | System or subsystem identifier |
-| AUD-USER-ID | X(8) | User who initiated the action |
-| AUD-PROGRAM | X(8) | Program that logged the event |
-| AUD-TERMINAL | X(8) | Terminal or session identifier |
+The main audit record containing all audit trail information.
 
-### Event Classification
+### AUD-HEADER Group (Level 05)
 
-#### AUD-TYPE - Event Category
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | AUD-HEADER | - | Header information group |
+| 10 | AUD-TIMESTAMP | X(26) | Event timestamp (format: YYYY-MM-DD-HH.MM.SS.NNNNNN) |
+| 10 | AUD-SYSTEM-ID | X(8) | System/subsystem identifier |
+| 10 | AUD-USER-ID | X(8) | User who performed the action |
+| 10 | AUD-PROGRAM | X(8) | Program that generated the audit |
+| 10 | AUD-TERMINAL | X(8) | Terminal ID (for online transactions) |
 
-| Field | Picture | Description |
-|-------|---------|-------------|
-| AUD-TYPE | X(4) | Category of audit event |
+### AUD-TYPE (Level 05)
 
-**Condition Names:**
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | AUD-TYPE | X(4) | Type of audit event |
 
-| Level-88 | Value | Description |
-|----------|-------|-------------|
-| AUD-TRANSACTION | 'TRAN' | Business transaction event |
+**88-Level Condition Names:**
+
+| Condition | Value | Description |
+|-----------|-------|-------------|
+| AUD-TRANSACTION | 'TRAN' | Business transaction |
 | AUD-USER-ACTION | 'USER' | User-initiated action |
-| AUD-SYSTEM-EVENT | 'SYST' | System or infrastructure event |
+| AUD-SYSTEM-EVENT | 'SYST' | System-generated event |
 
-#### AUD-ACTION - Specific Action
+### AUD-ACTION (Level 05)
 
-| Field | Picture | Description |
-|-------|---------|-------------|
-| AUD-ACTION | X(8) | Specific action performed |
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | AUD-ACTION | X(8) | Action performed |
 
-**Condition Names:**
+**88-Level Condition Names:**
 
-| Level-88 | Value | Description |
-|----------|-------|-------------|
-| AUD-CREATE | 'CREATE  ' | New record created |
-| AUD-UPDATE | 'UPDATE  ' | Existing record modified |
-| AUD-DELETE | 'DELETE  ' | Record deleted |
+| Condition | Value | Description |
+|-----------|-------|-------------|
+| AUD-CREATE | 'CREATE  ' | Record creation |
+| AUD-UPDATE | 'UPDATE  ' | Record modification |
+| AUD-DELETE | 'DELETE  ' | Record deletion |
 | AUD-INQUIRE | 'INQUIRE ' | Read-only access |
-| AUD-LOGIN | 'LOGIN   ' | User session started |
-| AUD-LOGOUT | 'LOGOUT  ' | User session ended |
-| AUD-STARTUP | 'STARTUP ' | System/service started |
-| AUD-SHUTDOWN | 'SHUTDOWN' | System/service stopped |
+| AUD-LOGIN | 'LOGIN   ' | User login |
+| AUD-LOGOUT | 'LOGOUT  ' | User logout |
+| AUD-STARTUP | 'STARTUP ' | System/program startup |
+| AUD-SHUTDOWN | 'SHUTDOWN' | System/program shutdown |
 
-#### AUD-STATUS - Outcome Status
+### AUD-STATUS (Level 05)
 
-| Field | Picture | Description |
-|-------|---------|-------------|
-| AUD-STATUS | X(4) | Result of the action |
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | AUD-STATUS | X(4) | Outcome of the action |
 
-**Condition Names:**
+**88-Level Condition Names:**
 
-| Level-88 | Value | Description |
-|----------|-------|-------------|
+| Condition | Value | Description |
+|-----------|-------|-------------|
 | AUD-SUCCESS | 'SUCC' | Action completed successfully |
 | AUD-FAILURE | 'FAIL' | Action failed |
-| AUD-WARNING | 'WARN' | Completed with warnings |
+| AUD-WARNING | 'WARN' | Action completed with warnings |
 
-### Key Information (AUD-KEY-INFO)
+### AUD-KEY-INFO Group (Level 05)
 
-| Field | Picture | Description |
-|-------|---------|-------------|
-| AUD-PORTFOLIO-ID | X(8) | Portfolio identifier for the affected record |
-| AUD-ACCOUNT-NO | X(10) | Account number for the affected record |
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | AUD-KEY-INFO | - | Key identification fields |
+| 10 | AUD-PORTFOLIO-ID | X(8) | Portfolio identifier |
+| 10 | AUD-ACCOUNT-NO | X(10) | Account number |
 
-### Data Images
+### Data Image Fields (Level 05)
 
-| Field | Picture | Description |
-|-------|---------|-------------|
-| AUD-BEFORE-IMAGE | X(100) | Data state before the action (for updates/deletes) |
-| AUD-AFTER-IMAGE | X(100) | Data state after the action (for creates/updates) |
-| AUD-MESSAGE | X(100) | Free-form message or additional context |
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | AUD-BEFORE-IMAGE | X(100) | Data state before the action |
+| 05 | AUD-AFTER-IMAGE | X(100) | Data state after the action |
+| 05 | AUD-MESSAGE | X(100) | Descriptive message or details |
 
 ## Usage Examples
 
-### Logging a Transaction
+### Creating an Audit Record
 
 ```cobol
-INITIALIZE AUDIT-RECORD
+WORKING-STORAGE SECTION.
+    COPY AUDITLOG.
 
-ACCEPT AUD-TIMESTAMP FROM TIME STAMP
-MOVE 'PRODMVS' TO AUD-SYSTEM-ID
-MOVE WS-USER-ID TO AUD-USER-ID
-MOVE 'PORTTRAN' TO AUD-PROGRAM
-MOVE WS-TERMINAL TO AUD-TERMINAL
-
-SET AUD-TRANSACTION TO TRUE
-SET AUD-UPDATE TO TRUE
-SET AUD-SUCCESS TO TRUE
-
-MOVE WS-PORTFOLIO-ID TO AUD-PORTFOLIO-ID
-MOVE WS-ACCOUNT-NO TO AUD-ACCOUNT-NO
-
-MOVE WS-OLD-BALANCE TO AUD-BEFORE-IMAGE
-MOVE WS-NEW-BALANCE TO AUD-AFTER-IMAGE
-MOVE 'Balance updated per transaction' TO AUD-MESSAGE
-
-WRITE AUDIT-RECORD
+PROCEDURE DIVISION.
+    INITIALIZE AUDIT-RECORD
+    
+    ACCEPT AUD-TIMESTAMP FROM TIME STAMP
+    MOVE 'MYPROGRAM' TO AUD-PROGRAM
+    MOVE WS-USER-ID  TO AUD-USER-ID
+    MOVE 'PORTMGMT' TO AUD-SYSTEM-ID
+    
+    SET AUD-TRANSACTION TO TRUE
+    SET AUD-CREATE TO TRUE
+    SET AUD-SUCCESS TO TRUE
+    
+    MOVE WS-PORTFOLIO-ID TO AUD-PORTFOLIO-ID
+    MOVE WS-ACCOUNT-NO TO AUD-ACCOUNT-NO
+    
+    MOVE 'New portfolio created' TO AUD-MESSAGE
+    
+    CALL 'AUDPROC' USING AUDIT-RECORD
 ```
 
-### Logging a User Login
+### Using 88-Level Conditions
 
 ```cobol
-INITIALIZE AUDIT-RECORD
+* Setting action type
+SET AUD-UPDATE TO TRUE
 
-ACCEPT AUD-TIMESTAMP FROM TIME STAMP
-MOVE 'CICSPR01' TO AUD-SYSTEM-ID
-MOVE LS-USER-ID TO AUD-USER-ID
-MOVE 'SECMGR' TO AUD-PROGRAM
-MOVE EIBTRMID TO AUD-TERMINAL
-
-SET AUD-USER-ACTION TO TRUE
-SET AUD-LOGIN TO TRUE
-
-IF WS-LOGIN-VALID
-    SET AUD-SUCCESS TO TRUE
-    MOVE 'User authenticated successfully' TO AUD-MESSAGE
-ELSE
-    SET AUD-FAILURE TO TRUE
-    MOVE 'Authentication failed - invalid credentials' 
-      TO AUD-MESSAGE
+* Checking status
+IF AUD-SUCCESS
+    DISPLAY 'Audit indicates success'
 END-IF
 
-WRITE AUDIT-RECORD
+* Evaluating action
+EVALUATE TRUE
+    WHEN AUD-CREATE
+        PERFORM HANDLE-CREATE-AUDIT
+    WHEN AUD-UPDATE
+        PERFORM HANDLE-UPDATE-AUDIT
+    WHEN AUD-DELETE
+        PERFORM HANDLE-DELETE-AUDIT
+END-EVALUATE
 ```
 
-### Logging a System Event
+### Recording Before/After Images
 
 ```cobol
-INITIALIZE AUDIT-RECORD
+* Save before image
+MOVE PORT-RECORD TO AUD-BEFORE-IMAGE
 
-ACCEPT AUD-TIMESTAMP FROM TIME STAMP
-MOVE 'BATCHSYS' TO AUD-SYSTEM-ID
-MOVE 'SYSTEM' TO AUD-USER-ID
-MOVE 'BCHCTL00' TO AUD-PROGRAM
-MOVE 'BATCH' TO AUD-TERMINAL
+* Perform update
+PERFORM UPDATE-PORTFOLIO
 
-SET AUD-SYSTEM-EVENT TO TRUE
-SET AUD-STARTUP TO TRUE
-SET AUD-SUCCESS TO TRUE
+* Save after image
+MOVE PORT-RECORD TO AUD-AFTER-IMAGE
 
-MOVE 'Batch processing cycle initiated' TO AUD-MESSAGE
-
-WRITE AUDIT-RECORD
+* Build descriptive message
+STRING 'Updated portfolio balance from '
+       WS-OLD-BALANCE ' to ' WS-NEW-BALANCE
+       DELIMITED BY SIZE
+       INTO AUD-MESSAGE
 ```
 
 ## Programs Using This Copybook
 
-| Program | Description |
-|---------|-------------|
-| RPTAUD00 | Audit report generator - reads and formats audit records |
-| AUDPROC | Audit processing utility - manages audit record lifecycle |
-| PORTTRAN | Portfolio transaction processor - logs transaction events |
+### RPTAUD00 - Audit Report Generator
 
-## Design Considerations
+**Location**: `/src/programs/batch/RPTAUD00.cbl`
 
-### Before/After Images
+**Usage**: Reads audit records from an indexed AUDITLOG file to generate audit trail reports. Uses the copybook in the FILE SECTION to define the input record format.
 
-The 100-byte image fields are designed to capture:
-- Key field values that changed
-- Serialized representations of modified data
-- Truncated record snapshots for large records
-
-For complex changes, consider storing a reference ID and maintaining detailed change logs in a separate structure.
-
-### Timestamp Format
-
-The 26-character timestamp field accommodates:
-- DB2 timestamp format: `YYYY-MM-DD-HH.MM.SS.FFFFFF`
-- ISO 8601 format: `YYYY-MM-DDTHH:MM:SS.ffffff`
-- CICS ABSTIME conversions
-
-### Action Padding
-
-Action values are padded to 8 characters for consistent record layout and efficient comparison:
 ```cobol
-IF AUD-CREATE
-    ...
-END-IF
+FD  AUDIT-FILE
+    ASSIGN TO AUDITLOG
+    ORGANIZATION IS INDEXED.
+    COPY AUDITLOG.
 ```
 
-This is more readable and efficient than string comparison with SPACES handling.
+**Key Operations**:
+- Reads audit records sequentially
+- Summarizes audit activity by type, action, and status
+- Generates formatted audit reports
 
-## Record Layout Diagram
+### AUDPROC - Audit Trail Processor
 
+**Location**: `/src/programs/common/AUDPROC.cbl`
+
+**Usage**: Callable subroutine that writes audit records to the audit file. Uses the copybook in the FILE SECTION for the output record.
+
+```cobol
+FD  AUDIT-FILE
+    RECORDING MODE IS F
+    BLOCK CONTAINS 0 RECORDS.
+    COPY AUDITLOG.
 ```
-Offset  Length  Field
-------  ------  ------------------
-0       26      AUD-TIMESTAMP
-26      8       AUD-SYSTEM-ID
-34      8       AUD-USER-ID
-42      8       AUD-PROGRAM
-50      8       AUD-TERMINAL
-58      4       AUD-TYPE
-62      8       AUD-ACTION
-70      4       AUD-STATUS
-74      8       AUD-PORTFOLIO-ID
-82      10      AUD-ACCOUNT-NO
-92      100     AUD-BEFORE-IMAGE
-192     100     AUD-AFTER-IMAGE
-292     100     AUD-MESSAGE
-------  ------  ------------------
-Total:  392 bytes
+
+**Key Operations**:
+- Receives audit data via linkage section
+- Timestamps each record
+- Writes to sequential audit file
+- Returns status to caller
+
+### PORTTRAN - Portfolio Transaction Processing
+
+**Location**: `/src/programs/portfolio/PORTTRAN.cbl`
+
+**Usage**: Uses the copybook in WORKING-STORAGE to build audit records for transaction processing activities. Calls AUDPROC to write the records.
+
+```cobol
+WORKING-STORAGE SECTION.
+    COPY ERRHAND.
+    COPY AUDITLOG.
 ```
+
+**Key Operations**:
+- Creates audit records for buy, sell, transfer, and fee transactions
+- Captures before images of portfolio state
+- Maps transaction types to audit actions
+- Calls AUDPROC to persist audit trail
+
+## File Organization Options
+
+The AUDITLOG copybook can be used with different file organizations:
+
+### Sequential File (for AUDPROC)
+```cobol
+SELECT AUDIT-FILE
+    ASSIGN TO AUDFILE
+    ORGANIZATION IS SEQUENTIAL
+    FILE STATUS IS WS-FILE-STATUS.
+```
+- Best for write-heavy workloads
+- Simple append operations
+- Good for batch processing
+
+### Indexed File (for RPTAUD00)
+```cobol
+SELECT AUDIT-FILE
+    ASSIGN TO AUDITLOG
+    ORGANIZATION IS INDEXED
+    ACCESS MODE IS DYNAMIC
+    RECORD KEY IS AUD-TIMESTAMP
+    FILE STATUS IS WS-FILE-STATUS.
+```
+- Enables random access by timestamp
+- Good for queries and reporting
+- Supports key-based retrieval
+
+## Audit Type Guidelines
+
+| Type | When to Use | Examples |
+|------|-------------|----------|
+| TRAN | Business transactions | Buy/sell securities, transfers, deposits |
+| USER | User-initiated actions | Login, logout, password change, approvals |
+| SYST | System events | Batch start/end, scheduled jobs, system errors |
+
+## Action Code Guidelines
+
+| Action | When to Use | Status Usually |
+|--------|-------------|----------------|
+| CREATE | New record inserted | SUCC or FAIL |
+| UPDATE | Existing record modified | SUCC, FAIL, or WARN |
+| DELETE | Record removed/deactivated | SUCC or FAIL |
+| INQUIRE | Read-only access logged | SUCC |
+| LOGIN | User authentication | SUCC or FAIL |
+| LOGOUT | User session end | SUCC |
+| STARTUP | Program/system initialization | SUCC or FAIL |
+| SHUTDOWN | Program/system termination | SUCC or WARN |
+
+## Compliance Considerations
+
+The audit trail supports:
+- **SOX Compliance**: Change tracking with before/after images
+- **Access Monitoring**: User and terminal identification
+- **Incident Investigation**: Timestamps and detailed messages
+- **Data Integrity**: Success/failure status tracking
 
 ## Technical Notes
 
-1. **Record Length**: At 392 bytes, this record is suitable for VSAM KSDS or sequential file storage. Consider compression for high-volume audit logs.
-
-2. **Level-88 Conditions**: The extensive use of level-88 conditions makes code self-documenting and reduces magic strings. Always use the condition names rather than literal values.
-
-3. **Timestamp Precision**: The 26-character timestamp supports microsecond precision, important for sequencing events that occur in rapid succession.
-
-4. **Key Fields**: AUD-PORTFOLIO-ID and AUD-ACCOUNT-NO provide natural keys for filtering audit records. Additional key fields can be stored in AUD-MESSAGE if needed.
-
-5. **Image Fields**: The before/after image approach supports:
-   - Change tracking for compliance
-   - Rollback/recovery scenarios
-   - Difference analysis in audit reports
-
-6. **Extensibility**: The AUD-MESSAGE field provides flexibility for storing:
-   - Error details
-   - Additional context
-   - Structured data (JSON/XML) if needed
-   - Reference IDs to related records
+- **Record Size**: Total record length is 388 bytes
+- **Timestamp Format**: Uses DB2-compatible timestamp format (26 bytes)
+- **88-Level Conditions**: Enable readable code with SET and EVALUATE statements
+- **Image Fields**: 100 bytes each - may need to truncate larger records
+- **Trailing Spaces**: Action values are padded to 8 characters for consistent formatting
+- **ACCEPT TIME STAMP**: Use `ACCEPT var FROM TIME STAMP` for proper timestamp format
+- **FUNCTION CURRENT-DATE**: Alternative for timestamp, returns YYYYMMDDHHMMSSFF format

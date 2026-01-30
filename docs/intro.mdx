@@ -1,138 +1,166 @@
 ---
 title: Introduction
-description: Investment Portfolio Management System - COBOL Codebase Documentation
-sidebar_position: 1
+description: Welcome to the Portfolio Management System COBOL Documentation
+slug: /
 ---
 
-# Investment Portfolio Management System
+# Portfolio Management System
 
-Welcome to the technical documentation for the **Investment Portfolio Management System (IPMS)** - a comprehensive COBOL-based application for managing investment portfolios, transactions, and reporting.
+Welcome to the technical documentation for the Portfolio Management System COBOL application suite. This documentation provides comprehensive details about the programs, copybooks, and data structures that make up the system.
 
 ## System Overview
 
-The Investment Portfolio Management System is a mainframe application built with **COBOL**, **DB2**, and **CICS** that provides:
+The Portfolio Management System is an enterprise-grade financial application built on IBM mainframe technology. It handles:
 
-- **Portfolio Management**: Create, read, update, and delete portfolio records
-- **Transaction Processing**: Handle buy, sell, transfer, and fee transactions
-- **Position Tracking**: Maintain current position records with cost basis and market value
-- **History Management**: Archive and query historical transaction data
-- **Reporting**: Generate audit, position, and status reports
-- **Online Inquiry**: CICS-based real-time portfolio and history inquiries
+- **Portfolio Management** - Creation, maintenance, and deletion of investment portfolios
+- **Transaction Processing** - Buy, sell, transfer, and fee transactions
+- **Position Tracking** - Real-time and historical position management
+- **Reporting** - Daily reports, audit trails, and statistical analysis
+- **Online Inquiry** - CICS-based user interfaces for portfolio lookup
 
 ## Architecture
 
 ```mermaid
 graph TB
-    subgraph "Online (CICS)"
-        INQONLN[INQONLN<br/>Online Router]
-        INQPORT[INQPORT<br/>Position Inquiry]
+    subgraph Online["CICS Online"]
+        INQONLN[INQONLN<br/>Main Handler]
+        INQPORT[INQPORT<br/>Portfolio Inquiry]
         INQHIST[INQHIST<br/>History Inquiry]
         SECMGR[SECMGR<br/>Security]
     end
-
-    subgraph "Batch Processing"
+    
+    subgraph Batch["Batch Processing"]
         BCHCTL00[BCHCTL00<br/>Batch Control]
-        PRCSEQ00[PRCSEQ00<br/>Sequencing]
         HISTLD00[HISTLD00<br/>History Load]
-        PORTTRAN[PORTTRAN<br/>Transactions]
+        RPTPOS00[RPTPOS00<br/>Position Report]
     end
-
-    subgraph "DB2 Services"
-        DB2CONN[DB2CONN<br/>Connection]
-        DB2CMT[DB2CMT<br/>Commit]
-        DB2ERR[DB2ERR<br/>Errors]
+    
+    subgraph Database["DB2 Database"]
+        DB2CMT[DB2CMT<br/>Commit Controller]
+        DB2CONN[DB2CONN<br/>Connection Mgr]
+        DB2ERR[DB2ERR<br/>Error Handler]
     end
-
-    subgraph "Common Services"
-        ERRPROC[ERRPROC<br/>Error Handler]
-        AUDPROC[AUDPROC<br/>Audit Logger]
+    
+    subgraph Files["VSAM Files"]
+        PORTFILE[(Portfolio<br/>Master)]
+        TRANFILE[(Transaction<br/>History)]
+        POSFILE[(Position<br/>Master)]
     end
-
+    
     INQONLN --> INQPORT
     INQONLN --> INQHIST
     INQONLN --> SECMGR
     
-    BCHCTL00 --> PRCSEQ00
-    PRCSEQ00 --> HISTLD00
-    PRCSEQ00 --> PORTTRAN
-    
-    HISTLD00 --> DB2CONN
+    BCHCTL00 --> HISTLD00
     HISTLD00 --> DB2CMT
-    DB2CONN --> DB2ERR
     
-    PORTTRAN --> ERRPROC
-    PORTTRAN --> AUDPROC
+    INQPORT --> PORTFILE
+    HISTLD00 --> TRANFILE
+    RPTPOS00 --> POSFILE
 ```
 
 ## Program Categories
 
-The system consists of **42 programs** organized into functional categories:
+### Batch Programs (6 programs)
+Programs that run in batch mode for scheduled processing, data loads, and checkpoint/restart operations.
 
-| Category | Programs | Description |
-|----------|:--------:|-------------|
-| [Batch Control](/docs/category/batch-control-programs) | 4 | Job control, sequencing, and recovery |
-| [Batch Processing](/docs/category/batch-processing-programs) | 2 | Data loading and position updates |
-| [Batch Reporting](/docs/category/batch-reporting-programs) | 5 | Audit, position, and status reports |
-| [CICS Online](/docs/category/cics-online-programs) | 6 | Online inquiry transactions |
-| [DB2 Services](/docs/category/db2-service-programs) | 6 | Database connection and transaction management |
-| [Portfolio Management](/docs/category/portfolio-management-programs) | 8 | Portfolio CRUD operations |
-| [Common Services](/docs/category/common-service-programs) | 2 | Shared error and audit services |
-| [Utilities](/docs/category/utility-programs) | 3 | System maintenance and monitoring |
-| [Testing](/docs/category/testing-programs) | 2 | Test data generation and validation |
-| [Templates](/docs/category/template-programs) | 4 | Reference implementation patterns |
+| Program | Description |
+|---------|-------------|
+| [BCHCTL00](programs/BCHCTL00) | Batch Control Processor |
+| [CKPRST](programs/CKPRST) | Checkpoint/Restart Utility |
+| [HISTLD00](programs/HISTLD00) | Position History DB2 Load Program |
+| [PRCSEQ00](programs/PRCSEQ00) | Process Sequence Manager |
+| [RCVPRC00](programs/RCVPRC00) | Process Recovery Handler |
+| [POSUPDT](programs/POSUPDT) | Position Update |
 
-## Copybooks
+### CICS/Online Programs (8 programs)
+Programs that handle real-time user interactions through CICS terminals.
 
-The system uses **21 shared copybooks** that define common data structures:
+| Program | Description |
+|---------|-------------|
+| [CURSMGR](programs/CURSMGR) | Cursor Management for Online Programs |
+| [DB2ONLN](programs/DB2ONLN) | Online DB2 Connection Manager |
+| [DB2RECV](programs/DB2RECV) | DB2 Recovery Manager for Online Programs |
+| [ERRHNDL](programs/ERRHNDL) | Centralized Error Handler (CICS) |
+| [INQHIST](programs/INQHIST) | Transaction History Inquiry Handler |
+| [INQONLN](programs/INQONLN) | Portfolio Online Inquiry Main Handler |
+| [INQPORT](programs/INQPORT) | Portfolio Position Inquiry Handler |
+| [SECMGR](programs/SECMGR) | Security Manager for Online Programs |
 
-| Category | Copybooks | Purpose |
-|----------|:---------:|---------|
-| [Batch](/docs/category/batch-copybooks) | 4 | Batch control and sequencing structures |
-| [Common](/docs/category/common-copybooks) | 10 | Shared records, error handling, validation |
-| [DB2](/docs/category/db2-copybooks) | 3 | SQLCA, host variables, table definitions |
-| [Online](/docs/category/online-copybooks) | 3 | CICS communication areas |
+### DB2/Database Programs (4 programs)
+Programs that manage database connections, transactions, and error handling.
 
-## Key Data Flows
+| Program | Description |
+|---------|-------------|
+| [DB2CMT](programs/DB2CMT) | DB2 Commit Controller |
+| [DB2CONN](programs/DB2CONN) | DB2 Connection Manager |
+| [DB2ERR](programs/DB2ERR) | DB2 SQL Error Handler |
+| [DB2STAT](programs/DB2STAT) | DB2 Statistics Collector |
 
-### Batch Processing Flow
+### Portfolio Programs (7 programs)
+Core programs for portfolio data management and transaction processing.
 
-```mermaid
-sequenceDiagram
-    participant JCL as Job Scheduler
-    participant BCH as BCHCTL00
-    participant SEQ as PRCSEQ00
-    participant PGM as Batch Program
-    participant DB2 as DB2 Database
+| Program | Description |
+|---------|-------------|
+| [PORTADD](programs/PORTADD) | Portfolio Addition Program |
+| [PORTDEL](programs/PORTDEL) | Portfolio Deletion Program |
+| [PORTMSTR](programs/PORTMSTR) | Portfolio Master File Maintenance |
+| [PORTREAD](programs/PORTREAD) | Portfolio Record Reading Program |
+| [PORTTRAN](programs/PORTTRAN) | Portfolio Transaction Processing |
+| [PORTUPDT](programs/PORTUPDT) | Portfolio Update Program |
+| [PORTVALD](programs/PORTVALD) | Portfolio Validation Subroutine |
 
-    JCL->>BCH: Start Batch Job
-    BCH->>SEQ: Get Next Process
-    SEQ-->>BCH: Process Definition
-    BCH->>PGM: Execute Program
-    PGM->>DB2: Database Operations
-    DB2-->>PGM: Results
-    PGM-->>BCH: Return Code
-    BCH->>SEQ: Update Status
-```
+### Reporting Programs (4 programs)
+Programs that generate reports for operations, audit, and analysis.
 
-### Online Inquiry Flow
+| Program | Description |
+|---------|-------------|
+| [RPTAUD00](programs/RPTAUD00) | Audit Report Generator |
+| [RPTPOS00](programs/RPTPOS00) | Daily Position Report Generator |
+| [RPTSTA00](programs/RPTSTA00) | System Statistics Report Generator |
+| [RTNANA00](programs/RTNANA00) | Return Code Analysis Utility |
 
-```mermaid
-sequenceDiagram
-    participant User as Terminal User
-    participant CICS as CICS Region
-    participant INQ as INQONLN
-    participant PORT as INQPORT
-    participant VSAM as VSAM Files
+### Utility Programs (6 programs)
+Common utilities for error handling, validation, and system maintenance.
 
-    User->>CICS: Enter Transaction
-    CICS->>INQ: Route Request
-    INQ->>PORT: Portfolio Inquiry
-    PORT->>VSAM: Read Position
-    VSAM-->>PORT: Position Data
-    PORT-->>INQ: Format Response
-    INQ-->>CICS: Send Map
-    CICS-->>User: Display Data
-```
+| Program | Description |
+|---------|-------------|
+| [AUDPROC](programs/AUDPROC) | Audit Trail Processing Subroutine |
+| [ERRPROC](programs/ERRPROC) | Error Processing Subroutine |
+| [RTNCDE00](programs/RTNCDE00) | Standard Return Code Handler |
+| [UTLMNT00](programs/UTLMNT00) | File Maintenance Utility |
+| [UTLMON00](programs/UTLMON00) | System Monitoring Utility |
+| [UTLVAL00](programs/UTLVAL00) | Data Validation Utility |
+
+### Testing Programs (3 programs)
+Programs for test data generation and validation.
+
+| Program | Description |
+|---------|-------------|
+| [PORTTEST](programs/PORTTEST) | Portfolio Test Data Generator |
+| [TSTGEN00](programs/TSTGEN00) | Test Data Generator |
+| [TSTVAL00](programs/TSTVAL00) | Test Validation Suite |
+
+## Key Copybooks
+
+Copybooks define reusable data structures shared across programs:
+
+### Data Records
+- [PORTFLIO](copybooks/PORTFLIO) - Portfolio master record layout
+- [TRNREC](copybooks/TRNREC) - Transaction record structure
+- [POSREC](copybooks/POSREC) - Position record structure
+
+### Error Handling
+- [ERRHAND](copybooks/ERRHAND) - Batch error handling structures
+- [ERRHND](copybooks/ERRHND) - Online (CICS) error handling structures
+
+### Database
+- [SQLCA](copybooks/SQLCA) - SQL Communication Area
+- [DBPROC](copybooks/DBPROC) - Database procedure definitions
+
+### Batch Control
+- [CKPRST](copybooks/CKPRST) - Checkpoint/restart control structure
+- [BCHCTL](copybooks/BCHCTL) - Batch control record layout
 
 ## Technology Stack
 
@@ -140,51 +168,39 @@ sequenceDiagram
 |-----------|------------|
 | Language | COBOL (Enterprise COBOL for z/OS) |
 | Database | IBM DB2 for z/OS |
-| Transaction Manager | IBM CICS Transaction Server |
-| File System | VSAM (KSDS, ESDS) |
-| Reporting | Sequential files with 132-byte records |
-| Job Scheduling | JCL with conditional execution |
-
-## Getting Started
-
-### For Developers
-1. Start with the [Templates](/docs/category/template-programs) to understand coding patterns
-2. Review the [Common Copybooks](/docs/category/common-copybooks) for shared data structures
-3. Explore specific program categories based on your area of work
-
-### For Operations
-1. Review [Batch Control](/docs/category/batch-control-programs) for job scheduling
-2. Check [Utilities](/docs/category/utility-programs) for maintenance procedures
-3. See [Batch Reporting](/docs/category/batch-reporting-programs) for output specifications
-
-### For Analysts
-1. Explore [Portfolio Management](/docs/category/portfolio-management-programs) for business logic
-2. Review the copybooks for data structure definitions
-3. Check the data flow diagrams in this introduction
+| Transaction Monitor | IBM CICS |
+| File System | VSAM (KSDS, ESDS, RRDS) |
+| Job Control | JCL (Job Control Language) |
+| Operating System | z/OS |
 
 ## Documentation Conventions
 
 Throughout this documentation:
 
-- **Program names** are shown in CAPS (e.g., `BCHCTL00`)
-- **Copybook names** are shown in CAPS (e.g., `ERRHAND`)
-- **Field names** use their COBOL names with hyphens (e.g., `WS-RETURN-CODE`)
-- **88-level conditions** are documented with their valid values
-- **Mermaid diagrams** visualize program structure and data flows
-- **Code examples** demonstrate proper usage patterns
+- **Program names** are shown in uppercase (e.g., `HISTLD00`)
+- **Copybook names** are shown in uppercase (e.g., `PORTFLIO`)
+- **Field names** use their COBOL names (e.g., `PORT-ACCOUNT-NO`)
+- **88-level conditions** are documented with their values
+- **Mermaid diagrams** illustrate program flow and relationships
 
-## Return Code Standards
+## Getting Started
 
-All batch programs follow standard return code conventions:
+1. **New to the system?** Start with the [Portfolio Programs](programs/PORTMSTR) to understand core data structures
+2. **Working on batch jobs?** Review [Batch Programs](programs/BCHCTL00) and [CKPRST](copybooks/CKPRST) copybook
+3. **Developing online screens?** See [CICS/Online Programs](programs/INQONLN) section
+4. **Debugging errors?** Check [ERRHAND](copybooks/ERRHAND) and [DB2ERR](programs/DB2ERR)
 
-| Code | Meaning | Action |
-|:----:|---------|--------|
-| 0 | Success | Continue processing |
-| 4 | Warning | Continue with caution |
-| 8 | Error | Stop current step |
-| 12 | Severe Error | Abort job |
-| 16 | Critical | Immediate termination |
+## Statistics
 
-## Support
-
-For questions about this documentation or the system itself, contact the development team or refer to the operational runbooks.
+| Metric | Count |
+|--------|-------|
+| Total Programs | 42 |
+| Total Copybooks | 20 |
+| Batch Programs | 6 |
+| Online Programs | 8 |
+| Database Programs | 4 |
+| Portfolio Programs | 7 |
+| Reporting Programs | 4 |
+| Utility Programs | 6 |
+| Testing Programs | 3 |
+| Template Programs | 4 |

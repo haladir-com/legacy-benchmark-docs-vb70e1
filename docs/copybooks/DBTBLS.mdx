@@ -1,120 +1,148 @@
 ---
 title: "DBTBLS"
-description: "DB2 Table Definitions - Host variable structures for DB2 tables including Position History (POSHIST) and Error Log (ERRLOG)"
+description: "DB2 Table Definitions - COBOL host variable structures for POSHIST and ERRLOG database tables"
 ---
 
 ## Overview
 
-DBTBLS is a copybook that defines COBOL host variable structures corresponding to DB2 database tables. These structures serve as the interface between COBOL programs and DB2, allowing data to be passed to and from SQL statements.
+DBTBLS is a copybook that defines COBOL host variable structures for DB2 database tables used in the portfolio management system. It contains record layouts that map directly to DB2 table columns, enabling seamless data exchange between COBOL programs and the database.
 
-The copybook contains host variable definitions for two tables:
-- **POSHIST-RECORD** - Position History table for tracking portfolio transactions
-- **ERRLOG-RECORD** - Error Log table for recording application errors
+The copybook defines two table structures:
+- **POSHIST-RECORD**: Position History table for tracking all investment transactions
+- **ERRLOG-RECORD**: Error Log table for recording application and system errors
 
-Key characteristics:
-- **Host variables** - Designed for use within `EXEC SQL` blocks
-- **COMP-3 numerics** - Uses packed decimal for financial precision
-- **Timestamp support** - Includes fields for audit timestamps
-- **Self-documenting** - Field prefixes indicate table origin (PH-, EL-)
+These structures are designed to be used within SQL DECLARE SECTIONs, making them available as host variables for INSERT, SELECT, UPDATE, and DELETE operations.
 
-This copybook must be included within an `EXEC SQL BEGIN DECLARE SECTION` / `END DECLARE SECTION` block to be recognized as host variables by the DB2 precompiler.
+## Record Layouts
+
+### POSHIST-RECORD Structure
+
+```
++------------------------------------------------------------------+
+| POSHIST-RECORD (Position History)                                |
++------------------------------------------------------------------+
+| Identification Fields                                            |
+|   PH-ACCOUNT-NO (8) | PH-PORTFOLIO-ID (10) | PH-SECURITY-ID (12)|
++------------------------------------------------------------------+
+| Transaction Details                                              |
+|   PH-TRANS-DATE (10) | PH-TRANS-TIME (8) | PH-TRANS-TYPE (2)    |
++------------------------------------------------------------------+
+| Financial Data (COMP-3)                                          |
+|   PH-QUANTITY | PH-PRICE | PH-AMOUNT | PH-FEES | PH-TOTAL-AMOUNT|
+|   PH-COST-BASIS | PH-GAIN-LOSS                                   |
++------------------------------------------------------------------+
+| Audit Fields                                                     |
+|   PH-PROCESS-DATE (10) | PH-PROCESS-TIME (8) | PH-PROGRAM-ID (8)|
+|   PH-USER-ID (8) | PH-AUDIT-TIMESTAMP (26)                       |
++------------------------------------------------------------------+
+```
+
+### ERRLOG-RECORD Structure
+
+```
++------------------------------------------------------------------+
+| ERRLOG-RECORD (Error Log)                                        |
++------------------------------------------------------------------+
+| EL-ERROR-TIMESTAMP (26) | EL-PROGRAM-ID (8) | EL-ERROR-TYPE (1)  |
++------------------------------------------------------------------+
+| EL-ERROR-SEVERITY (COMP) | EL-ERROR-CODE (8)                     |
++------------------------------------------------------------------+
+| EL-ERROR-MESSAGE (200)                                           |
++------------------------------------------------------------------+
+| EL-PROCESS-DATE (10) | EL-PROCESS-TIME (8) | EL-USER-ID (8)      |
++------------------------------------------------------------------+
+| EL-ADDITIONAL-INFO (500)                                         |
++------------------------------------------------------------------+
+```
 
 ## Data Structures
 
-### POSHIST-RECORD (Position History Table)
+### POSHIST-RECORD (Level 01)
 
-Host variables for the POSHIST (Position History) DB2 table. This table stores transaction history for portfolio positions.
-
-#### Key Fields
-
-| Level | Name | Picture | DB2 Type | Description |
-|-------|------|---------|----------|-------------|
-| 05 | PH-ACCOUNT-NO | PIC X(8) | CHAR(8) | Account number |
-| 05 | PH-PORTFOLIO-ID | PIC X(10) | CHAR(10) | Portfolio identifier |
-| 05 | PH-TRANS-DATE | PIC X(10) | DATE | Transaction date (YYYY-MM-DD) |
-| 05 | PH-TRANS-TIME | PIC X(8) | TIME | Transaction time (HH.MM.SS) |
-| 05 | PH-TRANS-TYPE | PIC X(2) | CHAR(2) | Transaction type code |
-| 05 | PH-SECURITY-ID | PIC X(12) | CHAR(12) | Security/investment identifier |
-
-#### Financial Fields
-
-| Level | Name | Picture | DB2 Type | Description |
-|-------|------|---------|----------|-------------|
-| 05 | PH-QUANTITY | PIC S9(12)V9(3) COMP-3 | DECIMAL(15,3) | Quantity traded |
-| 05 | PH-PRICE | PIC S9(12)V9(3) COMP-3 | DECIMAL(15,3) | Trade price per unit |
-| 05 | PH-AMOUNT | PIC S9(13)V9(2) COMP-3 | DECIMAL(15,2) | Base transaction amount |
-| 05 | PH-FEES | PIC S9(13)V9(2) COMP-3 | DECIMAL(15,2) | Transaction fees/commissions |
-| 05 | PH-TOTAL-AMOUNT | PIC S9(13)V9(2) COMP-3 | DECIMAL(15,2) | Total amount (amount + fees) |
-| 05 | PH-COST-BASIS | PIC S9(13)V9(2) COMP-3 | DECIMAL(15,2) | Cost basis for tax purposes |
-| 05 | PH-GAIN-LOSS | PIC S9(13)V9(2) COMP-3 | DECIMAL(15,2) | Realized gain or loss |
-
-#### Audit Fields
-
-| Level | Name | Picture | DB2 Type | Description |
-|-------|------|---------|----------|-------------|
-| 05 | PH-PROCESS-DATE | PIC X(10) | DATE | Date record was processed |
-| 05 | PH-PROCESS-TIME | PIC X(8) | TIME | Time record was processed |
-| 05 | PH-PROGRAM-ID | PIC X(8) | CHAR(8) | Program that created record |
-| 05 | PH-USER-ID | PIC X(8) | CHAR(8) | User who initiated transaction |
-| 05 | PH-AUDIT-TIMESTAMP | PIC X(26) | TIMESTAMP | Full audit timestamp |
-
-#### Transaction Type Codes
-
-| Code | Description |
-|------|-------------|
-| `BU` | Buy |
-| `SL` | Sell |
-| `TR` | Transfer |
-| `DV` | Dividend |
-| `IN` | Interest |
-| `FE` | Fee |
-
-### ERRLOG-RECORD (Error Log Table)
-
-Host variables for the ERRLOG (Error Log) DB2 table. This table stores application error information for troubleshooting and audit purposes.
+Position History table record for tracking investment transactions.
 
 #### Identification Fields
 
 | Level | Name | Picture | DB2 Type | Description |
 |-------|------|---------|----------|-------------|
-| 05 | EL-ERROR-TIMESTAMP | PIC X(26) | TIMESTAMP | When error occurred |
-| 05 | EL-PROGRAM-ID | PIC X(8) | CHAR(8) | Program where error occurred |
-| 05 | EL-ERROR-TYPE | PIC X(1) | CHAR(1) | Error category |
-| 05 | EL-ERROR-SEVERITY | PIC S9(4) COMP | SMALLINT | Severity level |
-| 05 | EL-ERROR-CODE | PIC X(8) | CHAR(8) | Specific error code |
+| 05 | PH-ACCOUNT-NO | X(8) | CHAR(8) | Account number |
+| 05 | PH-PORTFOLIO-ID | X(10) | CHAR(10) | Portfolio identifier |
+| 05 | PH-SECURITY-ID | X(12) | CHAR(12) | Security/investment identifier |
 
-#### EL-ERROR-TYPE Values (88-Level Conditions)
-
-| Condition Name | Value | Description |
-|----------------|-------|-------------|
-| EL-TYPE-SYSTEM | `S` | System/infrastructure error |
-| EL-TYPE-APP | `A` | Application logic error |
-| EL-TYPE-DATA | `D` | Data validation error |
-
-#### EL-ERROR-SEVERITY Values (88-Level Conditions)
-
-| Condition Name | Value | Description |
-|----------------|-------|-------------|
-| EL-SEV-INFO | 1 | Informational message |
-| EL-SEV-WARN | 2 | Warning - processing continued |
-| EL-SEV-ERROR | 3 | Error - partial failure |
-| EL-SEV-SEVERE | 4 | Severe - processing stopped |
-
-#### Message Fields
+#### Transaction Details
 
 | Level | Name | Picture | DB2 Type | Description |
 |-------|------|---------|----------|-------------|
-| 05 | EL-ERROR-MESSAGE | PIC X(200) | VARCHAR(200) | Error message text |
-| 05 | EL-PROCESS-DATE | PIC X(10) | DATE | Processing date |
-| 05 | EL-PROCESS-TIME | PIC X(8) | TIME | Processing time |
-| 05 | EL-USER-ID | PIC X(8) | CHAR(8) | User ID associated with error |
-| 05 | EL-ADDITIONAL-INFO | PIC X(500) | VARCHAR(500) | Extended error details |
+| 05 | PH-TRANS-DATE | X(10) | DATE | Transaction date (YYYY-MM-DD) |
+| 05 | PH-TRANS-TIME | X(8) | TIME | Transaction time (HH.MM.SS) |
+| 05 | PH-TRANS-TYPE | X(2) | CHAR(2) | Transaction type code |
 
-## Programs Using This Copybook
+**Transaction Type Codes:**
 
-| Program | Usage |
-|---------|-------|
-| HISTLD00 | Uses POSHIST-RECORD to INSERT transaction history into DB2 |
+| Code | Description |
+|------|-------------|
+| BU | Buy |
+| SL | Sell |
+| DV | Dividend |
+| IN | Interest |
+| TR | Transfer |
+| FE | Fee |
+
+#### Financial Data
+
+| Level | Name | Picture | DB2 Type | Description |
+|-------|------|---------|----------|-------------|
+| 05 | PH-QUANTITY | S9(12)V9(3) COMP-3 | DECIMAL(15,3) | Number of shares/units |
+| 05 | PH-PRICE | S9(12)V9(3) COMP-3 | DECIMAL(15,3) | Price per share/unit |
+| 05 | PH-AMOUNT | S9(13)V9(2) COMP-3 | DECIMAL(15,2) | Transaction amount |
+| 05 | PH-FEES | S9(13)V9(2) COMP-3 | DECIMAL(15,2) | Transaction fees |
+| 05 | PH-TOTAL-AMOUNT | S9(13)V9(2) COMP-3 | DECIMAL(15,2) | Total including fees |
+| 05 | PH-COST-BASIS | S9(13)V9(2) COMP-3 | DECIMAL(15,2) | Cost basis for position |
+| 05 | PH-GAIN-LOSS | S9(13)V9(2) COMP-3 | DECIMAL(15,2) | Realized gain/loss |
+
+#### Audit Fields
+
+| Level | Name | Picture | DB2 Type | Description |
+|-------|------|---------|----------|-------------|
+| 05 | PH-PROCESS-DATE | X(10) | DATE | Processing date |
+| 05 | PH-PROCESS-TIME | X(8) | TIME | Processing time |
+| 05 | PH-PROGRAM-ID | X(8) | CHAR(8) | Program that created record |
+| 05 | PH-USER-ID | X(8) | CHAR(8) | User who initiated |
+| 05 | PH-AUDIT-TIMESTAMP | X(26) | TIMESTAMP | Full audit timestamp |
+
+### ERRLOG-RECORD (Level 01)
+
+Error Log table record for recording application errors.
+
+| Level | Name | Picture | DB2 Type | Description |
+|-------|------|---------|----------|-------------|
+| 05 | EL-ERROR-TIMESTAMP | X(26) | TIMESTAMP | When error occurred |
+| 05 | EL-PROGRAM-ID | X(8) | CHAR(8) | Program that had error |
+| 05 | EL-ERROR-TYPE | X(1) | CHAR(1) | Error type code |
+| 05 | EL-ERROR-SEVERITY | S9(4) COMP | SMALLINT | Severity level |
+| 05 | EL-ERROR-CODE | X(8) | CHAR(8) | Error code |
+| 05 | EL-ERROR-MESSAGE | X(200) | VARCHAR(200) | Error message text |
+| 05 | EL-PROCESS-DATE | X(10) | DATE | Processing date |
+| 05 | EL-PROCESS-TIME | X(8) | TIME | Processing time |
+| 05 | EL-USER-ID | X(8) | CHAR(8) | User identifier |
+| 05 | EL-ADDITIONAL-INFO | X(500) | VARCHAR(500) | Additional context |
+
+#### EL-ERROR-TYPE 88-Level Conditions
+
+| Condition | Value | Description |
+|-----------|-------|-------------|
+| EL-TYPE-SYSTEM | 'S' | System/infrastructure error |
+| EL-TYPE-APP | 'A' | Application logic error |
+| EL-TYPE-DATA | 'D' | Data validation error |
+
+#### EL-ERROR-SEVERITY 88-Level Conditions
+
+| Condition | Value | Description |
+|-----------|-------|-------------|
+| EL-SEV-INFO | 1 | Informational |
+| EL-SEV-WARN | 2 | Warning |
+| EL-SEV-ERROR | 3 | Error |
+| EL-SEV-SEVERE | 4 | Severe/Critical |
 
 ## DB2 Table DDL
 
@@ -122,26 +150,26 @@ Host variables for the ERRLOG (Error Log) DB2 table. This table stores applicati
 
 ```sql
 CREATE TABLE POSHIST (
-    PH_ACCOUNT_NO      CHAR(8)        NOT NULL,
-    PH_PORTFOLIO_ID    CHAR(10)       NOT NULL,
-    PH_TRANS_DATE      DATE           NOT NULL,
-    PH_TRANS_TIME      TIME           NOT NULL,
-    PH_TRANS_TYPE      CHAR(2)        NOT NULL,
-    PH_SECURITY_ID     CHAR(12)       NOT NULL,
-    PH_QUANTITY        DECIMAL(15,3),
-    PH_PRICE           DECIMAL(15,3),
-    PH_AMOUNT          DECIMAL(15,2),
-    PH_FEES            DECIMAL(15,2),
-    PH_TOTAL_AMOUNT    DECIMAL(15,2),
-    PH_COST_BASIS      DECIMAL(15,2),
-    PH_GAIN_LOSS       DECIMAL(15,2),
-    PH_PROCESS_DATE    DATE,
-    PH_PROCESS_TIME    TIME,
-    PH_PROGRAM_ID      CHAR(8),
-    PH_USER_ID         CHAR(8),
-    PH_AUDIT_TIMESTAMP TIMESTAMP,
-    PRIMARY KEY (PH_ACCOUNT_NO, PH_PORTFOLIO_ID, 
-                 PH_TRANS_DATE, PH_TRANS_TIME, PH_SECURITY_ID)
+    ACCOUNT_NO       CHAR(8)        NOT NULL,
+    PORTFOLIO_ID     CHAR(10)       NOT NULL,
+    TRANS_DATE       DATE           NOT NULL,
+    TRANS_TIME       TIME           NOT NULL,
+    TRANS_TYPE       CHAR(2)        NOT NULL,
+    SECURITY_ID      CHAR(12)       NOT NULL,
+    QUANTITY         DECIMAL(15,3),
+    PRICE            DECIMAL(15,3),
+    AMOUNT           DECIMAL(15,2),
+    FEES             DECIMAL(15,2),
+    TOTAL_AMOUNT     DECIMAL(15,2),
+    COST_BASIS       DECIMAL(15,2),
+    GAIN_LOSS        DECIMAL(15,2),
+    PROCESS_DATE     DATE,
+    PROCESS_TIME     TIME,
+    PROGRAM_ID       CHAR(8),
+    USER_ID          CHAR(8),
+    AUDIT_TIMESTAMP  TIMESTAMP,
+    PRIMARY KEY (ACCOUNT_NO, PORTFOLIO_ID, TRANS_DATE, 
+                 TRANS_TIME, SECURITY_ID)
 );
 ```
 
@@ -149,17 +177,17 @@ CREATE TABLE POSHIST (
 
 ```sql
 CREATE TABLE ERRLOG (
-    EL_ERROR_TIMESTAMP  TIMESTAMP      NOT NULL,
-    EL_PROGRAM_ID       CHAR(8)        NOT NULL,
-    EL_ERROR_TYPE       CHAR(1),
-    EL_ERROR_SEVERITY   SMALLINT,
-    EL_ERROR_CODE       CHAR(8),
-    EL_ERROR_MESSAGE    VARCHAR(200),
-    EL_PROCESS_DATE     DATE,
-    EL_PROCESS_TIME     TIME,
-    EL_USER_ID          CHAR(8),
-    EL_ADDITIONAL_INFO  VARCHAR(500),
-    PRIMARY KEY (EL_ERROR_TIMESTAMP, EL_PROGRAM_ID)
+    ERROR_TIMESTAMP  TIMESTAMP      NOT NULL,
+    PROGRAM_ID       CHAR(8)        NOT NULL,
+    ERROR_TYPE       CHAR(1),
+    ERROR_SEVERITY   SMALLINT,
+    ERROR_CODE       CHAR(8),
+    ERROR_MESSAGE    VARCHAR(200),
+    PROCESS_DATE     DATE,
+    PROCESS_TIME     TIME,
+    USER_ID          CHAR(8),
+    ADDITIONAL_INFO  VARCHAR(500),
+    PRIMARY KEY (ERROR_TIMESTAMP, PROGRAM_ID)
 );
 ```
 
@@ -177,35 +205,27 @@ WORKING-STORAGE SECTION.
 ### Inserting a Position History Record
 
 ```cobol
-* Populate host variables
 INITIALIZE POSHIST-RECORD
 
-MOVE WS-ACCOUNT       TO PH-ACCOUNT-NO
-MOVE WS-PORTFOLIO     TO PH-PORTFOLIO-ID
-MOVE WS-TRANS-DATE    TO PH-TRANS-DATE
-MOVE WS-TRANS-TIME    TO PH-TRANS-TIME
-MOVE 'BU'             TO PH-TRANS-TYPE
-MOVE WS-SECURITY      TO PH-SECURITY-ID
-MOVE WS-QTY           TO PH-QUANTITY
-MOVE WS-PRICE         TO PH-PRICE
+MOVE WS-ACCOUNT      TO PH-ACCOUNT-NO
+MOVE WS-PORTFOLIO    TO PH-PORTFOLIO-ID
+MOVE WS-DATE         TO PH-TRANS-DATE
+MOVE WS-TIME         TO PH-TRANS-TIME
+MOVE 'BU'            TO PH-TRANS-TYPE
+MOVE WS-SECURITY     TO PH-SECURITY-ID
+MOVE WS-QUANTITY     TO PH-QUANTITY
+MOVE WS-PRICE        TO PH-PRICE
 COMPUTE PH-AMOUNT = PH-QUANTITY * PH-PRICE
-MOVE WS-FEES          TO PH-FEES
+MOVE WS-FEES         TO PH-FEES
 COMPUTE PH-TOTAL-AMOUNT = PH-AMOUNT + PH-FEES
-MOVE WS-COST-BASIS    TO PH-COST-BASIS
-MOVE ZEROS            TO PH-GAIN-LOSS
-MOVE FUNCTION CURRENT-DATE(1:10) TO PH-PROCESS-DATE
-MOVE FUNCTION CURRENT-DATE(12:8) TO PH-PROCESS-TIME
-MOVE 'HISTLD00'       TO PH-PROGRAM-ID
-MOVE WS-USER-ID       TO PH-USER-ID
 
-* Insert using host variable structure
 EXEC SQL
     INSERT INTO POSHIST
     VALUES (:POSHIST-RECORD)
 END-EXEC
 
 IF SQLCODE = 0
-    ADD 1 TO WS-INSERT-COUNT
+    DISPLAY 'Record inserted successfully'
 ELSE
     PERFORM HANDLE-SQL-ERROR
 END-IF
@@ -214,107 +234,138 @@ END-IF
 ### Logging an Error
 
 ```cobol
-* Populate error log record
 INITIALIZE ERRLOG-RECORD
 
-MOVE FUNCTION CURRENT-DATE TO EL-ERROR-TIMESTAMP
-MOVE 'HISTLD00'         TO EL-PROGRAM-ID
-SET EL-TYPE-DATA        TO TRUE
-SET EL-SEV-ERROR        TO TRUE
-MOVE 'E005'             TO EL-ERROR-CODE
+ACCEPT EL-ERROR-TIMESTAMP FROM TIME STAMP
+MOVE 'MYPROG01'      TO EL-PROGRAM-ID
+SET EL-TYPE-DATA     TO TRUE
+SET EL-SEV-ERROR     TO TRUE
+MOVE 'VAL-0042'      TO EL-ERROR-CODE
 MOVE 'Invalid account number format' 
-                        TO EL-ERROR-MESSAGE
-MOVE FUNCTION CURRENT-DATE(1:10) TO EL-PROCESS-DATE
-MOVE FUNCTION CURRENT-DATE(12:8) TO EL-PROCESS-TIME
-MOVE WS-USER-ID         TO EL-USER-ID
-STRING 'Account: ' WS-ACCOUNT-NO
-       ' Portfolio: ' WS-PORTFOLIO-ID
-       DELIMITED SIZE INTO EL-ADDITIONAL-INFO
+                     TO EL-ERROR-MESSAGE
+MOVE FUNCTION CURRENT-DATE(1:10) 
+                     TO EL-PROCESS-DATE
+MOVE WS-USER-ID      TO EL-USER-ID
+STRING 'Account: ' WS-ACCOUNT ' Value: ' WS-INPUT
+    DELIMITED BY SIZE INTO EL-ADDITIONAL-INFO
 
-* Insert error record
 EXEC SQL
     INSERT INTO ERRLOG
     VALUES (:ERRLOG-RECORD)
 END-EXEC
 ```
 
-### Querying Position History
+### Selecting Position History
 
 ```cobol
-* Declare cursor for position history
+MOVE WS-ACCOUNT   TO PH-ACCOUNT-NO
+MOVE WS-PORTFOLIO TO PH-PORTFOLIO-ID
+
 EXEC SQL
-    DECLARE POSHIST-CURSOR CURSOR FOR
-    SELECT *
+    SELECT TRANS_DATE, TRANS_TYPE, QUANTITY, 
+           PRICE, TOTAL_AMOUNT
+    INTO :PH-TRANS-DATE, :PH-TRANS-TYPE,
+         :PH-QUANTITY, :PH-PRICE, :PH-TOTAL-AMOUNT
     FROM POSHIST
-    WHERE PH_ACCOUNT_NO = :WS-ACCOUNT
-      AND PH_TRANS_DATE BETWEEN :WS-START-DATE 
-                            AND :WS-END-DATE
-    ORDER BY PH_TRANS_DATE, PH_TRANS_TIME
+    WHERE ACCOUNT_NO = :PH-ACCOUNT-NO
+      AND PORTFOLIO_ID = :PH-PORTFOLIO-ID
+    ORDER BY TRANS_DATE DESC
+    FETCH FIRST 1 ROW ONLY
 END-EXEC
-
-* Open and fetch
-EXEC SQL OPEN POSHIST-CURSOR END-EXEC
-
-PERFORM UNTIL SQLCODE = 100
-    EXEC SQL
-        FETCH POSHIST-CURSOR INTO :POSHIST-RECORD
-    END-EXEC
-    
-    IF SQLCODE = 0
-        PERFORM PROCESS-HISTORY-RECORD
-    END-IF
-END-PERFORM
-
-EXEC SQL CLOSE POSHIST-CURSOR END-EXEC
 ```
 
-## COMP-3 (Packed Decimal) Details
+### Using ERRLOG for Error Queries
 
-The financial fields use `COMP-3` (packed decimal) format for several reasons:
+```cobol
+MOVE 'HISTLD00' TO EL-PROGRAM-ID
 
-| Aspect | Benefit |
-|--------|---------|
-| **Precision** | Exact decimal representation, no floating-point errors |
-| **DB2 Compatibility** | Direct mapping to DB2 DECIMAL type |
-| **Storage Efficiency** | Two digits per byte plus sign nibble |
-| **Arithmetic** | Native support for decimal arithmetic |
+EXEC SQL
+    SELECT COUNT(*)
+    INTO :WS-ERROR-COUNT
+    FROM ERRLOG
+    WHERE PROGRAM_ID = :EL-PROGRAM-ID
+      AND ERROR_SEVERITY >= 3
+      AND PROCESS_DATE = CURRENT DATE
+END-EXEC
+```
 
-### Storage Calculation
+## Programs Using This Copybook
 
-For `PIC S9(13)V9(2) COMP-3`:
-- Total digits: 13 + 2 = 15
-- Bytes required: (15 + 1) / 2 = 8 bytes
-- Range: -9,999,999,999,999.99 to +9,999,999,999,999.99
+### HISTLD00 - Position History DB2 Load Program
 
-### Precision Mapping
+**Location**: `/src/programs/batch/HISTLD00.cbl`
 
-| COBOL Picture | DB2 Type | Max Value |
-|---------------|----------|-----------|
-| S9(12)V9(3) COMP-3 | DECIMAL(15,3) | 999,999,999,999.999 |
-| S9(13)V9(2) COMP-3 | DECIMAL(15,2) | 9,999,999,999,999.99 |
+**Usage**: Uses DBTBLS within an SQL DECLARE SECTION to load transaction history data into the POSHIST DB2 table.
 
-## Best Practices
+```cobol
+WORKING-STORAGE SECTION.
+    EXEC SQL BEGIN DECLARE SECTION END-EXEC.
+    COPY DBTBLS.
+    EXEC SQL END DECLARE SECTION END-EXEC.
+```
 
-1. **Always use DECLARE SECTION** - Enclose the COPY statement within SQL declare section markers
+**Key Operations**:
+- Reads transaction history from VSAM file
+- Maps VSAM record fields to POSHIST-RECORD structure
+- Inserts records into POSHIST table using host variable
+- Handles duplicate key errors (SQLCODE -803)
+- Commits in batches of 1000 records for performance
+- Uses checkpoint/restart for recoverability
 
-2. **Initialize before use** - Use `INITIALIZE record-name` to clear host variables before populating
+**Code Example from HISTLD00**:
+```cobol
+2200-LOAD-TO-DB2.
+    INITIALIZE POSHIST-RECORD
+    
+    MOVE TH-ACCOUNT-NO    TO PH-ACCOUNT-NO
+    MOVE TH-PORTFOLIO-ID  TO PH-PORTFOLIO-ID
+    MOVE TH-TRANS-DATE    TO PH-TRANS-DATE
+    MOVE TH-TRANS-TIME    TO PH-TRANS-TIME
+    MOVE TH-TRANS-TYPE    TO PH-TRANS-TYPE
+    MOVE TH-SECURITY-ID   TO PH-SECURITY-ID
+    MOVE TH-QUANTITY      TO PH-QUANTITY
+    MOVE TH-PRICE         TO PH-PRICE
+    ...
+    
+    EXEC SQL
+        INSERT INTO POSHIST
+        VALUES (:POSHIST-RECORD)
+    END-EXEC
+```
 
-3. **Check SQLCODE** - Always check SQLCODE after SQL operations:
-   - 0 = Success
-   - 100 = Not found / End of data
-   - Negative = Error
+## Field Mapping
 
-4. **Handle duplicates** - SQLCODE -803 indicates duplicate key; decide whether to update or skip
+### COMP-3 to DB2 DECIMAL Mapping
 
-5. **Use structure INSERT** - `VALUES (:POSHIST-RECORD)` is cleaner than listing individual fields
+| COBOL Picture | Bytes | DB2 Type | Precision |
+|---------------|-------|----------|-----------|
+| S9(12)V9(3) COMP-3 | 8 | DECIMAL(15,3) | 15 digits, 3 decimal |
+| S9(13)V9(2) COMP-3 | 8 | DECIMAL(15,2) | 15 digits, 2 decimal |
+| S9(4) COMP | 2 | SMALLINT | -32768 to 32767 |
 
-6. **Commit regularly** - For batch loads, commit every N records to manage lock duration
+### Character Field Mapping
+
+| COBOL Picture | DB2 Type | Notes |
+|---------------|----------|-------|
+| X(n) | CHAR(n) | Fixed-length, padded with spaces |
+| X(26) timestamp | TIMESTAMP | Format: YYYY-MM-DD-HH.MM.SS.NNNNNN |
+| X(10) date | DATE | Format: YYYY-MM-DD |
+| X(8) time | TIME | Format: HH.MM.SS |
+
+## Technical Notes
+
+- **DECLARE SECTION**: The copybook must be included within `EXEC SQL BEGIN DECLARE SECTION` and `EXEC SQL END DECLARE SECTION` to make structures available as host variables
+- **COMP-3 (Packed Decimal)**: Maps directly to DB2 DECIMAL type for precise financial calculations
+- **Timestamp Format**: Uses 26-byte DB2 timestamp format for full precision
+- **Host Variable Syntax**: Use `:POSHIST-RECORD` or `:field-name` in SQL statements
+- **Null Indicators**: For nullable columns, define separate indicator variables
+- **VARCHAR Handling**: COBOL X(n) maps to CHAR(n); for true VARCHAR, use 49-level structure with length prefix
 
 ## Related Copybooks
 
 | Copybook | Relationship |
 |----------|--------------|
-| SQLCA | SQL Communication Area for checking SQLCODE |
-| DBPROC | Standard DB2 procedures (connect, error handling) |
-| HISTREC | VSAM history record that maps to POSHIST fields |
-| ERRHAND | Error handling that may log to ERRLOG table |
+| SQLCA | SQL Communication Area for error handling |
+| DBPROC | DB2 procedure templates (CONNECT, COMMIT, etc.) |
+| HISTREC | VSAM history record that feeds POSHIST |
+| ERRHAND | Error handling that uses ERRLOG |

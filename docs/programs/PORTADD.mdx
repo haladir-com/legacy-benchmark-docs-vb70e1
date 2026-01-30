@@ -1,118 +1,72 @@
 ---
 title: "PORTADD"
-description: "Portfolio Addition Program - Creates new portfolio records from a sequential input file into an indexed master file"
+description: "Portfolio Addition Program - creates new portfolio records from a sequential input file into an indexed master file"
 ---
 
 ## Overview
 
-PORTADD is a batch program that creates new portfolio records by reading from a sequential input file and writing to an indexed portfolio master file. It performs validation on incoming records, handles duplicate key conditions, and provides comprehensive statistics on processing results.
+PORTADD is a batch program that creates new portfolio records by reading from a sequential input file and writing to an indexed VSAM master file. The program validates each input record before insertion and handles duplicate key conditions gracefully.
 
-The program follows a standard batch processing pattern: initialize (open files), process (read input, validate, write output), and terminate (close files, display statistics). Input records are validated for required fields and correct status before being written to the portfolio file.
+The program is part of the portfolio management system and works alongside PORTREAD, PORTUPDT, PORTDEL, and PORTTEST programs that share the same PORTFLIO record structure. It provides comprehensive statistics on records processed, including counts of successful additions, duplicates detected, and errors encountered.
 
-PORTADD is designed for bulk loading of new portfolio accounts, typically used during system initialization, data migration, or batch account creation processes.
+Input records must have an active status ('A') and contain valid portfolio ID and client name values. The program automatically stamps each new record with the current date for both creation date and last maintenance date fields.
 
 ## Program Structure
 
 ```mermaid
 graph TD
     A[0000-MAIN] --> B[1000-INITIALIZE]
-    A --> C[2000-PROCESS]
-    A --> D[3000-TERMINATE]
+    B --> C{Files opened OK?}
+    C -->|No| D[Display error]
+    D --> E[3000-TERMINATE]
+    C -->|Yes| F[2000-PROCESS]
+    F --> G{END-OF-FILE?}
+    G -->|No| F
+    G -->|Yes| E
     
     B --> B1[Initialize work areas]
     B --> B2[Accept current date]
-    B --> B3[Open files]
-    B --> B4{Files opened OK?}
-    B4 -->|No| D
+    B --> B3[Open PORTFOLIO-FILE I-O]
+    B --> B4[Open INPUT-FILE INPUT]
     
-    C --> C1[READ INPUT-FILE]
-    C1 --> C2{End of file?}
-    C2 -->|Yes| D
-    C2 -->|No| C3[2100-VALIDATE-AND-ADD]
+    F --> F1[READ INPUT-FILE]
+    F --> F2{AT END?}
+    F2 -->|Yes| F3[Set END-OF-FILE]
+    F2 -->|No| F4[2100-VALIDATE-AND-ADD]
     
-    C3 --> V1{Valid data?}
+    F4 --> V1{Valid data?}
     V1 -->|No| V2[Increment error count]
     V1 -->|Yes| V3[Set dates]
     V3 --> V4[WRITE PORT-RECORD]
-    V4 --> V5{WRITE result}
-    V5 -->|Success| V6[Increment add count]
-    V5 -->|Duplicate| V7[Increment dup count]
-    V5 -->|Error| V8[Increment error count]
+    V4 --> V5{File Status?}
+    V5 -->|00| V6[Increment add count]
+    V5 -->|22| V7[Increment dup count]
+    V5 -->|Other| V8[Increment error count]
     
-    C3 --> C
-    
-    D --> D1[Close files]
-    D --> D2[Display statistics]
-    D --> D3[Set return code]
+    E --> E1[Close files]
+    E --> E2[Display statistics]
+    E --> E3[Set RETURN-CODE]
 ```
 
 ## Data Structures
 
-### Working Storage - Constants
+### Portfolio Record (PORTFLIO Copybook)
 
-| Level | Name | Picture | Value | Description |
-|-------|------|---------|-------|-------------|
-| 01 | WS-CONSTANTS | - | - | Constants group |
-| 05 | WS-PROGRAM-NAME | X(8) | 'PORTADD' | Program identifier |
-| 05 | WS-SUCCESS | S9(4) | +0 | Success return code |
-| 05 | WS-ERROR | S9(4) | +8 | Error return code |
-
-### Working Storage - Switches
-
-| Level | Name | Picture | Description |
-|-------|------|---------|-------------|
-| 01 | WS-SWITCHES | - | Switch/flag group |
-| 05 | WS-FILE-STATUS | X(2) | Portfolio file status |
-| 05 | WS-INPUT-STATUS | X(2) | Input file status |
-| 05 | WS-END-OF-FILE-SW | X | End of file switch |
-
-#### WS-FILE-STATUS Condition Names
-
-| Condition | Value | Description |
-|-----------|-------|-------------|
-| WS-SUCCESS-STATUS | '00' | Successful operation |
-| WS-DUP-STATUS | '22' | Duplicate key on WRITE |
-| WS-EOF-STATUS | '10' | End of file reached |
-
-#### WS-INPUT-STATUS Condition Names
-
-| Condition | Value | Description |
-|-----------|-------|-------------|
-| WS-INPUT-SUCCESS | '00' | Successful operation |
-| WS-INPUT-EOF | '10' | End of file reached |
-
-#### WS-END-OF-FILE-SW Condition Names
-
-| Condition | Value | Description |
-|-----------|-------|-------------|
-| END-OF-FILE | 'Y' | End of file reached |
-| NOT-END-OF-FILE | 'N' | More records to process |
-
-### Working Storage - Work Areas
-
-| Level | Name | Picture | Initial | Description |
-|-------|------|---------|---------|-------------|
-| 05 | WS-ADD-COUNT | 9(7) | ZERO | Records successfully added |
-| 05 | WS-ERROR-COUNT | 9(7) | ZERO | Records with errors |
-| 05 | WS-DUP-COUNT | 9(7) | ZERO | Duplicate records skipped |
-| 05 | WS-RETURN-CODE | S9(4) | +0 | Program return code |
-| 05 | WS-CURRENT-DATE | 9(8) | - | Current date YYYYMMDD |
-
-### Portfolio Record (from PORTFLIO copybook)
+The portfolio master record layout used for both input and output:
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
 | 01 | PORT-RECORD | - | Portfolio master record |
-| 05 | PORT-KEY | - | Composite primary key |
+| 05 | PORT-KEY | - | Composite record key |
 | 10 | PORT-ID | X(8) | Portfolio identifier |
 | 10 | PORT-ACCOUNT-NO | X(10) | Account number |
 | 05 | PORT-CLIENT-INFO | - | Client information group |
 | 10 | PORT-CLIENT-NAME | X(30) | Client name |
-| 10 | PORT-CLIENT-TYPE | X(1) | Client type code |
-| 05 | PORT-PORTFOLIO-INFO | - | Portfolio information group |
-| 10 | PORT-CREATE-DATE | 9(8) | Creation date YYYYMMDD |
-| 10 | PORT-LAST-MAINT | 9(8) | Last maintenance date |
-| 10 | PORT-STATUS | X(1) | Portfolio status |
+| 10 | PORT-CLIENT-TYPE | X(1) | Client type: I=Individual, C=Corporate, T=Trust |
+| 05 | PORT-PORTFOLIO-INFO | - | Portfolio status group |
+| 10 | PORT-CREATE-DATE | 9(8) | Creation date (YYYYMMDD) |
+| 10 | PORT-LAST-MAINT | 9(8) | Last maintenance date (YYYYMMDD) |
+| 10 | PORT-STATUS | X(1) | Status: A=Active, C=Closed, S=Suspended |
 | 05 | PORT-FINANCIAL-INFO | - | Financial data group |
 | 10 | PORT-TOTAL-VALUE | S9(13)V99 COMP-3 | Total portfolio value |
 | 10 | PORT-CASH-BALANCE | S9(13)V99 COMP-3 | Cash balance |
@@ -121,21 +75,33 @@ graph TD
 | 10 | PORT-LAST-TRANS | 9(8) | Last transaction date |
 | 05 | PORT-FILLER | X(50) | Reserved space |
 
-#### PORT-CLIENT-TYPE Condition Names
+### Working Storage
 
-| Condition | Value | Description |
-|-----------|-------|-------------|
-| PORT-INDIVIDUAL | 'I' | Individual client |
-| PORT-CORPORATE | 'C' | Corporate client |
-| PORT-TRUST | 'T' | Trust account |
+#### Constants
 
-#### PORT-STATUS Condition Names
+| Level | Name | Picture | Value | Description |
+|-------|------|---------|-------|-------------|
+| 05 | WS-PROGRAM-NAME | X(8) | 'PORTADD' | Program identifier |
+| 05 | WS-SUCCESS | S9(4) | +0 | Success return code |
+| 05 | WS-ERROR | S9(4) | +8 | Error return code |
 
-| Condition | Value | Description |
-|-----------|-------|-------------|
-| PORT-ACTIVE | 'A' | Active portfolio |
-| PORT-CLOSED | 'C' | Closed portfolio |
-| PORT-SUSPENDED | 'S' | Suspended portfolio |
+#### Switches and Status Fields
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | WS-FILE-STATUS | X(2) | Portfolio file status |
+| 05 | WS-INPUT-STATUS | X(2) | Input file status |
+| 05 | WS-END-OF-FILE-SW | X | EOF switch (Y/N) |
+
+#### Counters and Work Areas
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | WS-ADD-COUNT | 9(7) | Records successfully added |
+| 05 | WS-ERROR-COUNT | 9(7) | Records with errors |
+| 05 | WS-DUP-COUNT | 9(7) | Duplicate records skipped |
+| 05 | WS-RETURN-CODE | S9(4) | Program return code |
+| 05 | WS-CURRENT-DATE | 9(8) | Current date (YYYYMMDD) |
 
 ## File I/O
 
@@ -143,128 +109,158 @@ graph TD
 
 | Attribute | Value |
 |-----------|-------|
+| Logical Name | PORTFOLIO-FILE |
 | DD Name | PORTFILE |
 | Organization | INDEXED (VSAM KSDS) |
 | Access Mode | RANDOM |
 | Record Key | PORT-KEY (PORT-ID + PORT-ACCOUNT-NO) |
-| File Status | WS-FILE-STATUS |
 | Open Mode | I-O |
-
-**Operations:**
-- **WRITE** - Adds new portfolio records
+| File Status | WS-FILE-STATUS |
 
 ### INPUT-FILE
 
 | Attribute | Value |
 |-----------|-------|
+| Logical Name | INPUT-FILE |
 | DD Name | INPTFILE |
 | Organization | SEQUENTIAL |
-| File Status | WS-INPUT-STATUS |
 | Open Mode | INPUT |
+| File Status | WS-INPUT-STATUS |
 
-**Operations:**
-- **READ** - Reads input records for processing
+### File Status Codes
+
+| Status | Condition Name | Description |
+|--------|----------------|-------------|
+| '00' | WS-SUCCESS-STATUS | Operation successful |
+| '10' | WS-EOF-STATUS | End of file reached |
+| '22' | WS-DUP-STATUS | Duplicate key on WRITE |
 
 ## Control Flow
-
-### 0000-MAIN
-
-Main driver paragraph that orchestrates processing:
-1. Performs initialization
-2. Loops through 2000-PROCESS until END-OF-FILE
-3. Performs termination
-4. Returns to caller via GOBACK
 
 ### 1000-INITIALIZE
 
 Prepares the program for processing:
-1. Initializes all work area counters to zero
+1. Initializes WS-WORK-AREAS (counters set to zero)
 2. Accepts current date in YYYYMMDD format
-3. Opens PORTFOLIO-FILE for I-O (read/write access)
+3. Opens PORTFOLIO-FILE for I-O (read and write)
 4. Opens INPUT-FILE for INPUT
-5. Checks file status; if either file fails to open:
+5. If either file fails to open:
    - Displays error message with both file statuses
-   - Sets return code to error (8)
-   - Jumps to 3000-TERMINATE
+   - Sets return code to 8 (error)
+   - Calls 3000-TERMINATE to end processing
 
 ### 2000-PROCESS
 
-Main processing loop - reads and processes one input record:
-1. Reads next record from INPUT-FILE into PORT-RECORD
-2. On end of file: Sets END-OF-FILE switch to 'Y'
-3. On successful read: Calls 2100-VALIDATE-AND-ADD
+Main processing loop executed until end of file:
+1. Reads a record from INPUT-FILE into PORT-RECORD
+2. On AT END: Sets END-OF-FILE switch to 'Y'
+3. On NOT AT END: Calls 2100-VALIDATE-AND-ADD
 
 ### 2100-VALIDATE-AND-ADD
 
-Validates input data and writes to portfolio file:
+Validates and writes each input record:
 
 **Validation Rules:**
-1. PORT-ID must not be spaces
-2. PORT-CLIENT-NAME must not be spaces
-3. PORT-STATUS must be 'A' (Active)
+- PORT-ID must not be spaces
+- PORT-CLIENT-NAME must not be spaces
+- PORT-STATUS must be 'A' (Active)
 
 If validation fails:
 - Increments WS-ERROR-COUNT
 - Displays error message with PORT-ID
-- Exits paragraph (skips to next record)
+- Exits paragraph (skips write)
 
 If validation passes:
 1. Sets PORT-CREATE-DATE to current date
 2. Sets PORT-LAST-MAINT to current date
 3. Writes PORT-RECORD to PORTFOLIO-FILE
-4. Evaluates write result:
-   - **Success ('00')**: Increments WS-ADD-COUNT
-   - **Duplicate ('22')**: Increments WS-DUP-COUNT, displays message
-   - **Other error**: Increments WS-ERROR-COUNT, displays message
+4. Evaluates file status:
+   - '00' (Success): Increments WS-ADD-COUNT
+   - '22' (Duplicate): Increments WS-DUP-COUNT, displays message
+   - Other: Increments WS-ERROR-COUNT, displays message
 
 ### 3000-TERMINATE
 
-Finalizes processing:
-1. Closes both files
+Closes files and reports results:
+1. Closes PORTFOLIO-FILE and INPUT-FILE
 2. Displays processing statistics:
    - Records added
    - Duplicate records
    - Errors occurred
-3. Moves WS-RETURN-CODE to RETURN-CODE special register
+3. Moves WS-RETURN-CODE to RETURN-CODE
 
-## Validation Rules
+## Validation Logic
 
 ```mermaid
 flowchart TD
     A[Input Record] --> B{PORT-ID = SPACES?}
-    B -->|Yes| X[REJECT - Error]
-    B -->|No| C{PORT-CLIENT-NAME = SPACES?}
-    C -->|Yes| X
-    C -->|No| D{PORT-STATUS = 'A'?}
-    D -->|No| X
-    D -->|Yes| E[ACCEPT - Write Record]
+    B -->|Yes| C[INVALID]
+    B -->|No| D{PORT-CLIENT-NAME = SPACES?}
+    D -->|Yes| C
+    D -->|No| E{PORT-STATUS = 'A'?}
+    E -->|No| C
+    E -->|Yes| F[VALID]
     
-    style X fill:#FF6B6B
-    style E fill:#90EE90
+    C --> G[Increment error count]
+    C --> H[Display error]
+    C --> I[Skip record]
+    
+    F --> J[Set dates]
+    F --> K[Write record]
 ```
 
-| Field | Rule | Failure Action |
-|-------|------|----------------|
-| PORT-ID | Must not be spaces | Reject record, increment error count |
-| PORT-CLIENT-NAME | Must not be spaces | Reject record, increment error count |
-| PORT-STATUS | Must equal 'A' (Active) | Reject record, increment error count |
+## Return Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Successful completion (may include duplicates) |
+| 8 | Error occurred (file open failure) |
+
+## Sample Output
+
+```
+Error opening files: PORT=35INPT=00
+```
+or on successful processing:
+```
+Records added:    0001234
+Duplicate records:0000015
+Errors occurred:  0000003
+```
 
 ## Dependencies
 
 ### Copybooks
 
-- **PORTFLIO** - Portfolio master record layout (used for both input and output files)
-
-### Called Programs
-
-None - this is a standalone batch program.
+- **PORTFLIO** - Portfolio master record layout
 
 ### Related Programs
 
-- **PORTUPDT** - Portfolio Update Program (updates existing records)
-- **PORTDEL** - Portfolio Delete Program (removes records)
-- **PORTREAD** - Portfolio Read Program (retrieves records)
-- **PORTMSTR** - Portfolio Master Program (main driver)
+Programs that share the PORTFLIO copybook:
+
+- **PORTREAD** - Portfolio inquiry/read program
+- **PORTUPDT** - Portfolio update program
+- **PORTDEL** - Portfolio deletion program
+- **PORTTEST** - Portfolio testing utility
+- **TSTGEN00** - Test data generation
+
+## Technical Notes
+
+1. **ACCEPT FROM DATE YYYYMMDD**: This IBM extension retrieves the current system date in YYYYMMDD format (8 digits). Used to timestamp new portfolio records.
+
+2. **EXIT PARAGRAPH**: Transfers control to the end of the current paragraph without executing remaining statements. Used here to skip the WRITE when validation fails.
+
+3. **Random Access Mode**: The portfolio file uses RANDOM access because records are written by key without sequential browsing. This is efficient for batch insert operations.
+
+4. **File Status '22'**: Indicates a duplicate key condition on WRITE. The program treats this as a warning rather than an error, allowing processing to continue.
+
+5. **I-O Open Mode**: The portfolio file is opened for I-O (input-output) even though the program only writes. This is because VSAM KSDS files require I-O mode for WRITE operations in some environments.
+
+6. **COMP-3 (Packed Decimal)**: Financial fields use packed decimal format (`S9(13)V99 COMP-3`) for efficient storage and accurate decimal arithmetic. Each field stores up to 13 integer digits and 2 decimal places.
+
+7. **Composite Key**: The record key consists of PORT-ID (8 bytes) + PORT-ACCOUNT-NO (10 bytes) = 18 bytes total. Both fields together uniquely identify a portfolio.
+
+8. **READ INTO**: The `READ INPUT-FILE INTO PORT-RECORD` statement reads directly into the portfolio file's record area, avoiding the need for a separate input buffer.
 
 ## JCL Example
 
@@ -272,77 +268,6 @@ None - this is a standalone batch program.
 //PORTADD  EXEC PGM=PORTADD
 //STEPLIB  DD DSN=your.loadlib,DISP=SHR
 //PORTFILE DD DSN=your.portfolio.master,DISP=SHR
-//INPTFILE DD DSN=your.input.file,DISP=SHR
+//INPTFILE DD DSN=your.portfolio.input,DISP=SHR
 //SYSOUT   DD SYSOUT=*
 ```
-
-## Sample Output
-
-```
-Records added:    0001234
-Duplicate records:0000056
-Errors occurred:  0000012
-```
-
-Error messages during processing:
-```
-Invalid record data: PORT1234
-Duplicate record: PORT5678
-Write error for: PORT9999
-```
-
-## Technical Notes
-
-### Date Handling
-
-The program uses `ACCEPT ... FROM DATE YYYYMMDD` to get the current date in 8-digit format. This date is automatically applied to:
-- PORT-CREATE-DATE (creation timestamp)
-- PORT-LAST-MAINT (last maintenance timestamp)
-
-### File Status Handling
-
-The program uses VSAM file status codes:
-- **'00'** - Successful completion
-- **'10'** - End of file (AT END condition)
-- **'22'** - Duplicate key on WRITE (record already exists)
-
-### EXIT PARAGRAPH Statement
-
-The `EXIT PARAGRAPH` statement in 2100-VALIDATE-AND-ADD provides early exit when validation fails, skipping the write operation and returning to the calling paragraph.
-
-### COMP-3 (Packed Decimal)
-
-Financial fields (PORT-TOTAL-VALUE, PORT-CASH-BALANCE) use COMP-3 format:
-- S9(13)V99 = 13 digits before decimal, 2 after
-- Efficient storage: (15+1)/2 = 8 bytes
-- Suitable for financial calculations
-
-### Return Code Behavior
-
-| Condition | Return Code | Description |
-|-----------|-------------|-------------|
-| Normal completion | 0 | All processing successful |
-| File open error | 8 | Could not open required files |
-
-**Note:** Duplicate records and validation errors increment counters but do not change the return code. The program completes normally even if some records fail.
-
-## Error Handling
-
-| Error Type | Detection | Response |
-|------------|-----------|----------|
-| File open failure | WS-FILE-STATUS or WS-INPUT-STATUS ≠ '00' | Display error, set RC=8, terminate |
-| Validation failure | Empty required fields or wrong status | Increment error count, display, skip record |
-| Duplicate key | WS-FILE-STATUS = '22' | Increment dup count, display, continue |
-| Write error | WS-FILE-STATUS ≠ '00' and ≠ '22' | Increment error count, display, continue |
-
-## Processing Statistics
-
-The program maintains three counters for operational visibility:
-
-| Counter | Description |
-|---------|-------------|
-| WS-ADD-COUNT | Records successfully written to portfolio file |
-| WS-DUP-COUNT | Records rejected due to duplicate key |
-| WS-ERROR-COUNT | Records rejected due to validation or write errors |
-
-These statistics help operations staff verify batch processing results and identify data quality issues.

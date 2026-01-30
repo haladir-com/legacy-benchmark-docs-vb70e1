@@ -1,15 +1,15 @@
 ---
 title: "ERRHNDL"
-description: "Centralized Error Handler - Processes, logs, and manages error recovery for CICS online transactions"
+description: "Centralized Error Handler - processes online errors, logs to DB2, formats messages, and controls recovery actions"
 ---
 
 ## Overview
 
-ERRHNDL is a centralized error handler for CICS online transactions. It provides a standardized approach to error processing across all online programs by logging errors to a DB2 table, formatting user-friendly error messages, and determining the appropriate recovery action based on error severity.
+ERRHNDL is a centralized error handling program for CICS online applications. It provides a standardized approach to error processing across the online system by logging errors to a DB2 table, formatting user-friendly error messages, and determining the appropriate recovery action based on error severity.
 
-The program operates as a CICS-linked program that receives error information through the COMMAREA. When an error occurs in any online program, that program populates the error communication area and links to ERRHNDL for centralized processing. This design ensures consistent error handling, comprehensive error logging, and traceable error recovery across the entire online application suite.
+The program is designed to be called via CICS LINK from any online program that encounters an error. It receives error details through the DFHCOMMAREA, processes the error, and returns with an action code indicating how the calling program should proceed (continue, return to menu, or abend).
 
-Each error is assigned a unique trace ID for correlation, enabling operations staff to track errors from user screens through to the error log database for troubleshooting and root cause analysis.
+This error handler integrates with other online programs including DB2ONLN, DB2RECV, INQONLN, and SECMGR, providing consistent error handling and traceability across the online subsystem through unique trace IDs.
 
 ## Program Structure
 
@@ -21,338 +21,243 @@ graph TD
     D --> E[P400-DETERMINE-ACTION]
     E --> F[EXEC CICS RETURN]
     
-    B --> B1[Copy COMMAREA to Working Storage]
-    B --> B2[Set Timestamp]
-    B --> B3[Generate Trace ID if needed]
+    B --> B1[Copy DFHCOMMAREA to working storage]
+    B --> B2[Set ERR-TIMESTAMP]
+    B --> B3{ERR-TRACE-ID = SPACES?}
+    B3 -->|Yes| B4[Generate random trace ID]
+    B3 -->|No| B5[Keep existing trace ID]
     
-    C --> C1[Move fields to log record]
-    C --> C2[INSERT into ERRLOG]
+    C --> C1[Move error fields to LOG record]
+    C --> C2[INSERT INTO ERRLOG]
+    C --> C3{SQLCODE = 0?}
+    C3 -->|No| C4[Set ERR-FATAL]
     
-    D --> D1[Format error message with STRING]
+    D --> D1[STRING error message with context]
     
-    E --> E1{Evaluate Severity}
-    E1 -->|FATAL| E2[Set ABEND action]
-    E1 -->|WARNING| E3[Set CONTINUE action]
-    E1 -->|INFO| E4[Set CONTINUE action]
-    E1 -->|OTHER| E5[Set RETURN action]
-    E --> E6[Copy back to COMMAREA]
+    E --> E1{ERR-SEVERITY?}
+    E1 -->|Fatal| E2[Set ERR-ABEND]
+    E1 -->|Warning| E3[Set ERR-CONTINUE]
+    E1 -->|Info| E4[Set ERR-CONTINUE]
+    E1 -->|Other| E5[Set ERR-RETURN]
+    E --> E6[Copy WS-ERROR-AREA to DFHCOMMAREA]
 ```
 
 ## Data Structures
 
-### Working Storage
+### DFHCOMMAREA (ERRHND Copybook)
 
-#### WS-ERROR-AREA (from ERRHND copybook)
+The error information is passed through the CICS communication area:
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | ERROR-HANDLING | - | Main error data structure |
-| 05 | ERR-PROGRAM | X(8) | Program where error occurred |
-| 05 | ERR-PARAGRAPH | X(30) | Paragraph where error occurred |
-| 05 | ERR-SQLCODE | S9(9) COMP | DB2 SQLCODE value |
+| 01 | ERROR-HANDLING | - | Error handling data structure |
+| 05 | ERR-PROGRAM | X(8) | Program that encountered the error |
+| 05 | ERR-PARAGRAPH | X(30) | Paragraph or section where error occurred |
+| 05 | ERR-SQLCODE | S9(9) COMP | DB2 SQLCODE (0 if not DB2 error) |
 | 05 | ERR-CICS-RESP | S9(8) COMP | CICS EIBRESP value |
 | 05 | ERR-CICS-RESP2 | S9(8) COMP | CICS EIBRESP2 value |
-| 05 | ERR-SEVERITY | X | Error severity level |
+| 05 | ERR-SEVERITY | X | Severity: F=Fatal, W=Warning, I=Info |
 | 05 | ERR-MESSAGE | X(80) | Error message text |
-| 05 | ERR-ACTION | X | Determined recovery action |
-| 05 | ERR-TRACE | - | Trace information group |
+| 05 | ERR-ACTION | X | Action: R=Return, C=Continue, A=Abend |
 | 10 | ERR-TRACE-ID | X(16) | Unique trace identifier |
 | 10 | ERR-TIMESTAMP | X(26) | Error timestamp |
 
-#### ERR-SEVERITY Condition Names
+### Working Storage - Error Log Record
 
-| Condition | Value | Description |
-|-----------|-------|-------------|
-| ERR-FATAL | 'F' | Fatal error - processing cannot continue |
-| ERR-WARNING | 'W' | Warning - processing can continue with caution |
-| ERR-INFO | 'I' | Informational - no impact on processing |
-
-#### ERR-ACTION Condition Names
-
-| Condition | Value | Description |
-|-----------|-------|-------------|
-| ERR-RETURN | 'R' | Return to calling program normally |
-| ERR-CONTINUE | 'C' | Continue processing |
-| ERR-ABEND | 'A' | Abend the transaction |
-
-#### WS-ERRLOG-RECORD (SQL Declare Section)
+DB2 host variables for the ERRLOG table:
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
+| 01 | WS-ERRLOG-RECORD | - | DB2 host variable structure |
 | 05 | LOG-TIMESTAMP | X(26) | When error occurred |
-| 05 | LOG-PROGRAM | X(8) | Source program |
-| 05 | LOG-PARAGRAPH | X(30) | Source paragraph |
-| 05 | LOG-SQLCODE | S9(9) COMP | DB2 error code |
+| 05 | LOG-PROGRAM | X(8) | Originating program |
+| 05 | LOG-PARAGRAPH | X(30) | Location in program |
+| 05 | LOG-SQLCODE | S9(9) COMP | DB2 return code |
 | 05 | LOG-CICS-RESP | S9(8) COMP | CICS response code |
-| 05 | LOG-SEVERITY | X | Severity indicator |
-| 05 | LOG-MESSAGE | X(80) | Error message |
-| 05 | LOG-TRACE-ID | X(16) | Trace identifier |
-
-### Linkage Section (DFHCOMMAREA)
-
-The DFHCOMMAREA uses the same ERRHND copybook structure as working storage, enabling bidirectional communication with calling programs.
+| 05 | LOG-SEVERITY | X | Error severity level |
+| 05 | LOG-MESSAGE | X(80) | Error description |
+| 05 | LOG-TRACE-ID | X(16) | Trace ID for correlation |
 
 ## Database Operations
 
 ### ERRLOG Table
 
-The program logs all errors to the ERRLOG DB2 table.
+The program logs all errors to the ERRLOG DB2 table:
 
-#### Table Structure (inferred from INSERT)
+| Column | Type | Source Field | Description |
+|--------|------|--------------|-------------|
+| TIMESTAMP | CHAR(26) | LOG-TIMESTAMP | Error occurrence time |
+| PROGRAM | CHAR(8) | LOG-PROGRAM | Program name |
+| PARAGRAPH | CHAR(30) | LOG-PARAGRAPH | Code location |
+| SQLCODE | INTEGER | LOG-SQLCODE | DB2 error code |
+| CICS_RESP | INTEGER | LOG-CICS-RESP | CICS response |
+| SEVERITY | CHAR(1) | LOG-SEVERITY | F/W/I severity |
+| MESSAGE | CHAR(80) | LOG-MESSAGE | Error message |
+| TRACE_ID | CHAR(16) | LOG-TRACE-ID | Correlation ID |
 
-| Column | Type | Description |
-|--------|------|-------------|
-| TIMESTAMP | CHAR(26) | When the error was logged |
-| PROGRAM | CHAR(8) | Program that generated the error |
-| PARAGRAPH | CHAR(30) | Paragraph where error occurred |
-| SQLCODE | INTEGER | DB2 SQLCODE (0 if not DB2 error) |
-| CICS_RESP | INTEGER | CICS response code |
-| SEVERITY | CHAR(1) | Error severity (F/W/I) |
-| MESSAGE | CHAR(80) | Error message text |
-| TRACE_ID | CHAR(16) | Unique trace identifier |
+### SQL Statement
 
-#### SQL Operations
-
-| Operation | Paragraph | Description |
-|-----------|-----------|-------------|
-| INSERT | P200-LOG-ERROR | Logs error details to ERRLOG table |
-
-## CICS Integration
-
-### CICS Commands Used
-
-| Command | Purpose |
-|---------|---------|
-| `EXEC CICS RETURN` | Returns control to CICS after processing |
-
-### Communication Mechanism
-
-The program uses the standard CICS COMMAREA (DFHCOMMAREA) for receiving error information from calling programs and returning the determined action.
-
-**Flow:**
-1. Calling program detects error
-2. Calling program populates ERRHND structure
-3. Calling program executes `EXEC CICS LINK PROGRAM('ERRHNDL') COMMAREA(...)`
-4. ERRHNDL processes error and sets ERR-ACTION
-5. ERRHNDL returns via `EXEC CICS RETURN`
-6. Calling program checks ERR-ACTION and responds accordingly
+**Insert Error Log (P200-LOG-ERROR)**:
+```sql
+INSERT INTO ERRLOG
+VALUES (:LOG-TIMESTAMP,
+        :LOG-PROGRAM,
+        :LOG-PARAGRAPH,
+        :LOG-SQLCODE,
+        :LOG-CICS-RESP,
+        :LOG-SEVERITY,
+        :LOG-MESSAGE,
+        :LOG-TRACE-ID)
+```
 
 ## Control Flow
 
 ### P100-INIT-ERROR-HANDLER
 
 Initializes the error handler:
-
 1. Copies DFHCOMMAREA to WS-ERROR-AREA for processing
 2. Sets ERR-TIMESTAMP using `FUNCTION CURRENT-DATE`
-3. Generates ERR-TRACE-ID using `FUNCTION RANDOM` if not already set
-   - This allows calling programs to pre-set trace IDs for correlation
+3. Generates a random trace ID if not already provided (using `FUNCTION RANDOM`)
+
+The trace ID allows correlation of errors across multiple program calls in a single transaction.
 
 ### P200-LOG-ERROR
 
-Persists error information to DB2:
+Persists the error to DB2:
+1. Moves all error fields from working storage to LOG record structure
+2. Executes INSERT into ERRLOG table
+3. If INSERT fails (SQLCODE ≠ 0), escalates to fatal error
 
-1. Moves all error fields to the SQL host variable structure
-2. Inserts record into ERRLOG table
-3. If INSERT fails (SQLCODE ≠ 0):
-   - Sets ERR-MESSAGE to 'Error logging failed'
-   - Escalates severity to FATAL
-
-**Note:** The program handles logging failures gracefully by escalating severity rather than aborting, ensuring the calling program receives notification of the logging issue.
+**Note**: If logging itself fails, the error is marked as fatal to prevent silent failures.
 
 ### P300-FORMAT-MESSAGE
 
-Formats a user-friendly error message using STRING:
+Formats a user-friendly error message:
+1. Uses STRING statement to concatenate:
+   - "Error in " prefix
+   - Program name (ERR-PROGRAM)
+   - " - " separator
+   - Original error message (ERR-MESSAGE)
+   - Trace ID in parentheses
 
-**Format:** `Error in {PROGRAM} - {MESSAGE} ({TRACE-ID})`
+**Example output**:
+```
+Error in INQONLN - Record not found (A1B2C3D4E5F6G7H8)
+```
 
-This provides:
-- Context (which program failed)
-- Description (what went wrong)
-- Traceability (unique ID for support reference)
+The trace ID in the message allows support staff to locate the full error details in the ERRLOG table.
 
 ### P400-DETERMINE-ACTION
 
 Determines recovery action based on severity:
 
-| Severity | Action Set | Meaning |
-|----------|------------|---------|
-| FATAL (F) | ERR-ABEND | Transaction should abend |
-| WARNING (W) | ERR-CONTINUE | Processing can continue |
-| INFO (I) | ERR-CONTINUE | Processing can continue |
-| Other | ERR-RETURN | Default: return normally |
+| Severity | Condition | Action Set | Meaning |
+|----------|-----------|------------|---------|
+| Fatal | ERR-FATAL ('F') | ERR-ABEND ('A') | Terminate transaction |
+| Warning | ERR-WARNING ('W') | ERR-CONTINUE ('C') | Continue processing |
+| Info | ERR-INFO ('I') | ERR-CONTINUE ('C') | Continue processing |
+| Other | Default | ERR-RETURN ('R') | Return to calling menu |
 
-After determining action, copies WS-ERROR-AREA back to DFHCOMMAREA so the calling program receives the updated information.
+After setting the action, copies WS-ERROR-AREA back to DFHCOMMAREA for the calling program.
 
-## Error Severity and Action Matrix
+## Error Severity Levels
 
 ```mermaid
-graph LR
-    subgraph Input Severity
-        F[FATAL - F]
-        W[WARNING - W]
-        I[INFO - I]
-        O[Other]
-    end
+flowchart LR
+    A[Error Occurs] --> B{Severity?}
+    B -->|F - Fatal| C[ABEND]
+    B -->|W - Warning| D[CONTINUE]
+    B -->|I - Info| E[CONTINUE]
+    B -->|Other| F[RETURN]
     
-    subgraph Output Action
-        A[ABEND - A]
-        C[CONTINUE - C]
-        R[RETURN - R]
-    end
-    
-    F --> A
-    W --> C
-    I --> C
-    O --> R
-    
-    style F fill:#FF6B6B
-    style A fill:#FF6B6B
-    style W fill:#FFE4B5
-    style I fill:#90EE90
-    style C fill:#90EE90
-    style O fill:#87CEEB
-    style R fill:#87CEEB
+    C --> G[Transaction terminates abnormally]
+    D --> H[Caller continues with warning displayed]
+    E --> I[Caller continues with info displayed]
+    F --> J[Caller returns to previous screen/menu]
 ```
+
+## Error Actions
+
+| Action | Code | Description |
+|--------|------|-------------|
+| ERR-ABEND | 'A' | Transaction should abend immediately |
+| ERR-CONTINUE | 'C' | Continue processing, display message to user |
+| ERR-RETURN | 'R' | Return to previous screen or main menu |
+
+## CICS Commands
+
+| Command | Purpose |
+|---------|---------|
+| `EXEC CICS RETURN END-EXEC` | Returns control to CICS after processing |
+
+The program uses `RETURN` without TRANSID, returning control to the program that linked to it.
 
 ## Dependencies
 
 ### Copybooks
 
-- **ERRHND** - Online error handling data structure (used in both working storage and linkage)
+- **ERRHND** - Online error handling data structure with severity and action codes
 
-### DB2 Includes
+### DB2 Resources
 
-- **SQLCA** - SQL Communication Area (via EXEC SQL INCLUDE)
-
-### Called Programs
-
-None - this program is called by other programs.
+- **SQLCA** - SQL Communication Area (included via EXEC SQL INCLUDE)
+- **ERRLOG** - Error logging table
 
 ### Related Programs
 
-All CICS online programs that require centralized error handling can link to ERRHNDL.
+Programs that use the ERRHND copybook and call this handler:
 
-## Usage Example
-
-A calling CICS program would use ERRHNDL as follows:
-
-```cobol
-WORKING-STORAGE SECTION.
-01  WS-ERROR-AREA.
-    COPY ERRHND.
-
-PROCEDURE DIVISION.
-*  ... perform database operation ...
-   EXEC SQL
-       SELECT ... INTO ...
-       FROM CUSTOMER
-       WHERE CUST-ID = :WS-CUST-ID
-   END-EXEC
-   
-   IF SQLCODE NOT = 0
-*     Populate error information
-      MOVE 'CUSTINQ' TO ERR-PROGRAM
-      MOVE 'READ-CUSTOMER' TO ERR-PARAGRAPH
-      MOVE SQLCODE TO ERR-SQLCODE
-      MOVE EIBRESP TO ERR-CICS-RESP
-      MOVE EIBRESP2 TO ERR-CICS-RESP2
-      SET ERR-FATAL TO TRUE
-      MOVE 'Customer record not found' TO ERR-MESSAGE
-      MOVE SPACES TO ERR-TRACE-ID
-      
-*     Call centralized error handler
-      EXEC CICS LINK
-           PROGRAM('ERRHNDL')
-           COMMAREA(WS-ERROR-AREA)
-           LENGTH(LENGTH OF WS-ERROR-AREA)
-      END-EXEC
-      
-*     Check determined action
-      EVALUATE TRUE
-          WHEN ERR-ABEND
-               EXEC CICS ABEND ABCODE('UERR') END-EXEC
-          WHEN ERR-CONTINUE
-               CONTINUE
-          WHEN ERR-RETURN
-               EXEC CICS RETURN END-EXEC
-      END-EVALUATE
-   END-IF.
-```
-
-### Using Pre-set Trace IDs
-
-For correlated error tracking across multiple operations:
-
-```cobol
-*  Generate trace ID at transaction start
-   MOVE FUNCTION RANDOM TO WS-TRANSACTION-TRACE-ID
-
-*  ... later, when error occurs ...
-   MOVE WS-TRANSACTION-TRACE-ID TO ERR-TRACE-ID
-   EXEC CICS LINK PROGRAM('ERRHNDL') ... END-EXEC
-```
+- **DB2ONLN** - Online DB2 operations
+- **DB2RECV** - DB2 recovery handler
+- **INQONLN** - Online inquiry program
+- **SECMGR** - Security manager
 
 ## Technical Notes
 
-### Intrinsic Functions Used
+1. **FUNCTION CURRENT-DATE**: Returns a 21-character string (YYYYMMDDHHMMSSHHNNNN) containing the current date and time. Used to timestamp each error.
 
-| Function | Usage | Description |
-|----------|-------|-------------|
-| `FUNCTION CURRENT-DATE` | P100 | Gets current date/time for timestamp |
-| `FUNCTION RANDOM` | P100 | Generates pseudo-random trace ID |
+2. **FUNCTION RANDOM**: Generates a pseudo-random number between 0 and 1. Used here to create unique trace IDs when one isn't already provided. The random value is moved directly to ERR-TRACE-ID.
 
-### STRING Statement
+3. **STRING Statement**: Concatenates multiple source fields into a single destination. The `DELIMITED BY SIZE` clause uses the full field length, while `DELIMITED BY SPACE` trims trailing spaces.
 
-The STRING statement in P300 concatenates multiple fields with delimiters:
-- `DELIMITED BY SIZE` - Uses entire field length
-- `DELIMITED BY SPACE` - Truncates at first space (for program name)
-- `INTO` - Target field for concatenated result
+4. **DFHCOMMAREA**: The CICS communication area passed between programs. Both working storage and linkage section contain a copy of the ERRHND structure for data exchange.
 
-### PERFORM...THRU Pattern
+5. **Level-88 Conditions**: The copybook defines condition names for severity (ERR-FATAL, ERR-WARNING, ERR-INFO) and action (ERR-RETURN, ERR-CONTINUE, ERR-ABEND) for readable code.
 
-The program uses the PERFORM...THRU pattern with explicit EXIT paragraphs for clear paragraph boundaries and consistent structure.
+6. **Error Escalation**: If the error logging INSERT fails, the program escalates to ERR-FATAL. This ensures that logging failures don't go unnoticed and the transaction properly abends rather than continuing with unlogged errors.
 
-### Error Logging Resilience
+7. **Trace ID Correlation**: The trace ID enables correlation of errors across a transaction. If a calling program already assigned a trace ID, ERRHNDL preserves it; otherwise, it generates a new one.
 
-If the INSERT to ERRLOG fails, the program:
-1. Does NOT abend or fail
-2. Sets a descriptive message
-3. Escalates to FATAL severity
-4. Continues to return to caller
+8. **No Explicit COMMIT**: The INSERT is not followed by a COMMIT. In CICS, syncpoint (commit) handling is typically managed by the calling program or at transaction end.
 
-This ensures the calling program always receives a response, even if logging infrastructure fails.
+## Usage Example
 
-## Error Handling
+A calling program would typically:
 
-| Condition | Response | Description |
-|-----------|----------|-------------|
-| Normal processing | As determined | Action based on input severity |
-| ERRLOG INSERT fails | Escalate to FATAL | Logging failure is critical |
-| Missing trace ID | Generate new | Ensures traceability |
+```cobol
+* Set up error information
+MOVE 'INQONLN' TO ERR-PROGRAM
+MOVE '2000-READ-CUSTOMER' TO ERR-PARAGRAPH
+MOVE SQLCODE TO ERR-SQLCODE
+MOVE EIBRESP TO ERR-CICS-RESP
+MOVE EIBRESP2 TO ERR-CICS-RESP2
+SET ERR-WARNING TO TRUE
+MOVE 'Customer record not found' TO ERR-MESSAGE
 
-## Operational Considerations
+* Call error handler
+EXEC CICS LINK
+    PROGRAM('ERRHNDL')
+    COMMAREA(ERROR-HANDLING)
+    LENGTH(LENGTH OF ERROR-HANDLING)
+END-EXEC
 
-### Error Log Queries
-
-Sample query to find errors by trace ID:
-```sql
-SELECT * FROM ERRLOG
-WHERE TRACE_ID = 'ABC123...'
-ORDER BY TIMESTAMP;
+* Check action and respond
+EVALUATE TRUE
+    WHEN ERR-ABEND
+        EXEC CICS ABEND ABCODE('ERRF') END-EXEC
+    WHEN ERR-CONTINUE
+        PERFORM DISPLAY-WARNING-MESSAGE
+    WHEN ERR-RETURN
+        EXEC CICS XCTL PROGRAM('MAINMENU') END-EXEC
+END-EVALUATE
 ```
-
-Sample query to find recent fatal errors:
-```sql
-SELECT * FROM ERRLOG
-WHERE SEVERITY = 'F'
-  AND TIMESTAMP >= CURRENT TIMESTAMP - 1 HOUR
-ORDER BY TIMESTAMP DESC;
-```
-
-### Monitoring Recommendations
-
-- Monitor ERRLOG table for FATAL severity entries
-- Alert on high volume of errors from specific programs
-- Track error patterns by paragraph for targeted code review
-- Use trace IDs to correlate user-reported issues with log entries

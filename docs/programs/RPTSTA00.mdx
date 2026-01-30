@@ -1,18 +1,18 @@
 ---
 title: "RPTSTA00"
-description: "System Statistics Report Generator - produces performance metrics and trend analysis reports"
+description: "System Statistics Report Generator - produces performance and statistics reports from DB2 and batch processing data"
 ---
 
 ## Overview
 
-RPTSTA00 is a batch COBOL program that generates comprehensive system statistics and performance reports. It collects and consolidates metrics from both DB2 operations and batch job execution, producing formatted reports that include:
+RPTSTA00 is a batch report generation program that consolidates system performance data from multiple sources to produce a comprehensive statistics report. The program reads from two indexed input files—DB2 statistics and batch job statistics—and generates a formatted 132-character report file containing performance metrics, processing summaries, and trend analysis.
 
-- **Processing Statistics**: Record counts, transaction volumes, and throughput metrics
-- **Performance Metrics**: CPU time, elapsed time, wait time, and response times
-- **Resource Utilization**: DB2 call statistics and batch job execution rates
-- **Trend Analysis**: Historical performance patterns and comparative metrics
+This program is part of the batch reporting subsystem and provides visibility into system health by tracking:
+- **DB2 database operations**: Call counts, response times, CPU usage, and wait times
+- **Batch job execution**: Job counts, success/failure rates, and elapsed times
+- **Performance trends**: Calculated metrics for capacity planning and optimization
 
-This program is part of the Investment Portfolio Management System's reporting infrastructure, providing operational visibility into system health and performance.
+The report is designed for operations staff and system administrators to monitor system performance and identify potential bottlenecks or issues.
 
 ## Program Structure
 
@@ -52,47 +52,54 @@ graph TD
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | WS-FILE-STATUS | - | File status container |
+| 01 | WS-FILE-STATUS | Group | File status codes container |
 | 05 | WS-DB2-STATUS | XX | DB2 statistics file status |
 | 05 | WS-BCH-STATUS | XX | Batch statistics file status |
 | 05 | WS-REPORT-STATUS | XX | Report output file status |
+
+#### Report Headers
+
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 01 | WS-REPORT-HEADERS | Group | Report header lines |
+| 05 | WS-HEADER1 | X(132) | Border line (asterisks) |
+| 05 | WS-HEADER2 | X(132) | Report title line |
+| 05 | WS-HEADER3 | Group | Date line |
+| 10 | WS-REPORT-DATE | X(10) | Report generation date |
 
 #### Performance Metrics Accumulators
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | WS-PERFORMANCE-METRICS | - | Metrics accumulator area |
-| 05 | WS-DB2-METRICS | - | DB2 performance data |
+| 01 | WS-PERFORMANCE-METRICS | Group | Accumulated statistics |
+| 05 | WS-DB2-METRICS | Group | DB2 performance data |
 | 10 | WS-DB2-CALLS | 9(9) | Total DB2 call count |
-| 10 | WS-DB2-ELAPSED | 9(9)V99 | Total elapsed time (seconds) |
-| 10 | WS-DB2-CPU | 9(9)V99 | Total CPU time (seconds) |
-| 10 | WS-DB2-WAIT | 9(9)V99 | Total wait time (seconds) |
-| 05 | WS-BATCH-METRICS | - | Batch job metrics |
-| 10 | WS-BATCH-JOBS | 9(9) | Total batch job count |
+| 10 | WS-DB2-ELAPSED | 9(9)V99 | Total elapsed time |
+| 10 | WS-DB2-CPU | 9(9)V99 | Total CPU time |
+| 10 | WS-DB2-WAIT | 9(9)V99 | Total wait time |
+| 05 | WS-BATCH-METRICS | Group | Batch processing data |
+| 10 | WS-BATCH-JOBS | 9(9) | Total batch jobs processed |
 | 10 | WS-BATCH-SUCCESS | 9(9) | Successful job count |
 | 10 | WS-BATCH-FAILED | 9(9) | Failed job count |
 | 10 | WS-BATCH-ELAPSED | 9(9)V99 | Total batch elapsed time |
 
-#### Report Detail Lines
+#### Detail Output Lines
 
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 05 | WS-DB2-DETAIL | - | DB2 statistics line |
+| 01 | WS-DETAIL-LINES | Group | Formatted output lines |
+| 05 | WS-DB2-DETAIL | Group | DB2 statistics line |
 | 10 | WS-DB2-CALLS-OUT | ZZZ,ZZZ,ZZ9 | Formatted call count |
-| 10 | WS-DB2-AVG-RESP | ZZ,ZZ9.999 | Average response time (ms) |
-| 05 | WS-BATCH-DETAIL | - | Batch statistics line |
-| 10 | WS-BATCH-TOTAL | ZZZ,ZZ9 | Total jobs formatted |
+| 10 | WS-DB2-AVG-RESP | ZZ,ZZ9.999 | Average response time |
+| 05 | WS-BATCH-DETAIL | Group | Batch statistics line |
+| 10 | WS-BATCH-TOTAL | ZZZ,ZZ9 | Formatted job count |
 | 10 | WS-SUCCESS-RATE | ZZ9.99 | Success rate percentage |
 
-### Report Headers
+### File Section
 
-The program generates a 132-character wide report with formatted headers:
-
-```
-****************************************************************************************************
-                        SYSTEM STATISTICS AND PERFORMANCE REPORT
-REPORT DATE: YYYY-MM-DD
-```
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 01 | REPORT-RECORD | X(132) | Fixed-length report output record |
 
 ## File I/O
 
@@ -100,141 +107,134 @@ REPORT DATE: YYYY-MM-DD
 
 | File Name | DD Name | Organization | Access | Key | Description |
 |-----------|---------|--------------|--------|-----|-------------|
-| DB2-STATS | DB2STATS | Indexed (VSAM KSDS) | Sequential | STAT-KEY | DB2 statistics records |
-| BATCH-STATS | BCHSTATS | Indexed (VSAM KSDS) | Sequential | BCH-KEY | Batch control/statistics records |
-| REPORT-FILE | RPTFILE | Sequential | Output | N/A | Fixed 132-byte report output |
+| DB2-STATS | DB2STATS | Indexed (VSAM KSDS) | Sequential | STAT-KEY | DB2 performance statistics |
+| BATCH-STATS | BCHSTATS | Indexed (VSAM KSDS) | Sequential | BCH-KEY | Batch job execution statistics |
+| REPORT-FILE | RPTFILE | Sequential | Sequential | N/A | Generated report output |
 
 ### I/O Operations
 
-| Operation | File | Paragraph | Description |
+| Paragraph | File | Operation | Description |
 |-----------|------|-----------|-------------|
-| OPEN INPUT | DB2-STATS | 1100-OPEN-FILES | Open DB2 stats for reading |
-| OPEN INPUT | BATCH-STATS | 1100-OPEN-FILES | Open batch stats for reading |
-| OPEN OUTPUT | REPORT-FILE | 1100-OPEN-FILES | Open report file for writing |
-| READ | DB2-STATS | 2100-PROCESS-DB2-STATS | Read DB2 statistics records |
-| READ | BATCH-STATS | 2200-PROCESS-BATCH-STATS | Read batch control records |
-| WRITE | REPORT-RECORD | 1200-WRITE-HEADERS | Write report headers |
-| CLOSE | All files | 3000-CLEANUP | Close all files |
+| 1100-OPEN-FILES | DB2-STATS | OPEN INPUT | Open for sequential read |
+| 1100-OPEN-FILES | BATCH-STATS | OPEN INPUT | Open for sequential read |
+| 1100-OPEN-FILES | REPORT-FILE | OPEN OUTPUT | Open for report writing |
+| 1200-WRITE-HEADERS | REPORT-RECORD | WRITE | Write report header lines |
+| 2100-PROCESS-DB2-STATS | DB2-STATS | READ | Read DB2 statistics records |
+| 2200-PROCESS-BATCH-STATS | BATCH-STATS | READ | Read batch statistics records |
+| 3000-CLEANUP | All files | CLOSE | Close all files |
 
 ## Control Flow
 
 ### Main Processing Logic
 
-1. **Initialization Phase** (`1000-INITIALIZE`)
-   - Opens all input and output files with status checking
-   - Writes report headers with current date
-   - Initializes all metric accumulators to zero
+1. **Initialization (1000-INITIALIZE)**
+   - Opens all input and output files with error checking
+   - Writes report headers including timestamp
+   - Initializes all accumulator fields to zero
 
-2. **Statistics Collection** (`2000-PROCESS-REPORT`)
-   - **DB2 Statistics Processing** (`2100-PROCESS-DB2-STATS`): Reads through DB2 statistics file, accumulating call counts, elapsed time, CPU time, and wait time metrics
-   - **Batch Statistics Processing** (`2200-PROCESS-BATCH-STATS`): Reads batch control records, counting total jobs, successes, and failures
+2. **Report Processing (2000-PROCESS-REPORT)**
+   - **DB2 Statistics Processing**: Reads all records from DB2-STATS file sequentially, accumulating call counts, elapsed times, CPU times, and wait times
+   - **Batch Statistics Processing**: Reads all records from BATCH-STATS file, counting total jobs, successful completions, and failures
+   - **Metrics Calculation**: Computes derived metrics such as average response time and success rate percentages
+   - **Report Writing**: Outputs formatted sections for DB2 statistics, batch statistics, and trend analysis
 
-3. **Metrics Calculation** (`2300-CALCULATE-METRICS`)
-   - Calculates average response times from accumulated DB2 metrics
-   - Computes batch job success rates as percentages
-   - Derives performance trends from historical data
-
-4. **Report Generation** (`2400-WRITE-REPORT`)
-   - Writes DB2 performance section with call volumes and response times
-   - Writes batch job section with success/failure rates
-   - Generates trend analysis comparing current vs historical metrics
-
-5. **Cleanup** (`3000-CLEANUP`)
-   - Closes all files
+3. **Cleanup (3000-CLEANUP)**
+   - Closes all open files
 
 ### Error Handling
 
-The program uses a centralized error handler (`9999-ERROR-HANDLER`) that:
+The program uses a centralized error handler (9999-ERROR-HANDLER) that:
 - Displays the error message stored in `WS-ERROR-MESSAGE` (from ERRHAND copybook)
-- Sets return code to 12 (severe error)
-- Terminates program execution with GOBACK
+- Sets return code 12 to indicate severe error
+- Terminates processing via GOBACK
 
-File status codes are checked after each OPEN operation:
-- `'00'` = Success
-- Any other value triggers error handling
+File status is checked after each OPEN operation, and errors trigger immediate termination.
+
+### Processing Loops
+
+The program uses COBOL's `PERFORM UNTIL` construct for reading input files:
+
+```cobol
+READ DB2-STATS
+    AT END SET END-OF-DB2-STATS TO TRUE
+END-READ
+
+PERFORM UNTIL END-OF-DB2-STATS
+    PERFORM 2110-ACCUMULATE-DB2-STATS
+    READ DB2-STATS
+        AT END SET END-OF-DB2-STATS TO TRUE
+    END-READ
+END-PERFORM
+```
+
+This pattern reads all records sequentially until end-of-file, accumulating statistics from each record.
 
 ## Dependencies
 
 ### Copybooks
 
-| Copybook | Location | Purpose |
-|----------|----------|---------|
-| DB2STAT | File Section | DB2 statistics record structure |
-| BCHCTL | File Section | Batch control record structure |
-| RTNCODE | Working-Storage | Return code management definitions |
-| ERRHAND | Working-Storage | Standard error handling definitions |
+| Copybook | Section | Description |
+|----------|---------|-------------|
+| DB2STAT | FILE SECTION | DB2 statistics file record layout |
+| BCHCTL | FILE SECTION | Batch control file record layout with job status and timing data |
+| RTNCODE | WORKING-STORAGE | Return code management and status flags |
+| ERRHAND | WORKING-STORAGE | Standard error handling definitions and VSAM status codes |
+
+### Called Programs
+
+*None* - This program is a standalone batch report generator.
 
 ### Related Programs
 
-| Program | Relationship | Description |
-|---------|--------------|-------------|
-| DB2STAT | Data Source | Collects DB2 statistics used by this report |
-| BCHCTL00 | Data Source | Manages batch control records read by this report |
-| UTLMON00 | Related | System monitor that also uses DB2STAT copybook |
-| RPTAUD00 | Sibling | Audit report generator (shares ERRHAND, RTNCODE) |
-| RPTPOS00 | Sibling | Position report generator (shares ERRHAND, RTNCODE) |
+Programs that share copybooks or have related functionality:
 
-### Shared Copybook Usage
-
-The following programs share copybooks with RPTSTA00:
-
-- **BCHCTL**: BCHCTL00, HISTLD00, PRCSEQ00, RCVPRC00
-- **RTNCODE**: RPTAUD00, RPTPOS00, RTNCDE00, TSTGEN00, TSTVAL00, UTLMNT00, UTLMON00, UTLVAL00
-- **ERRHAND**: Multiple batch, online, and utility programs
-- **DB2STAT**: UTLMON00
-
-## Report Output
-
-### Sample Report Structure
-
-```
-************************************************************************
-                 SYSTEM STATISTICS AND PERFORMANCE REPORT
-REPORT DATE: 2024-04-09
-************************************************************************
-
-DB2 PERFORMANCE SECTION
------------------------
-DB2 CALLS:     123,456,789    AVG RESPONSE:   12.345 ms
-[Additional DB2 metrics...]
-
-BATCH JOB SECTION
------------------
-BATCH JOBS:   1,234    SUCCESS RATE:  98.75%
-[Additional batch metrics...]
-
-TREND ANALYSIS
---------------
-[Historical comparison data...]
-```
-
-### Report Specifications
-
-| Attribute | Value |
-|-----------|-------|
-| Record Length | 132 bytes |
-| Recording Mode | Fixed (F) |
-| Block Size | System-determined (0) |
+| Program | Relationship |
+|---------|--------------|
+| UTLMON00 | Also uses DB2STAT copybook for DB2 monitoring |
+| BCHCTL00 | Uses BCHCTL copybook; manages batch control records |
+| HISTLD00 | Uses BCHCTL copybook; batch history loading |
+| PRCSEQ00 | Uses BCHCTL copybook; process sequencing |
+| RCVPRC00 | Uses BCHCTL copybook; recovery processing |
+| RPTAUD00 | Also uses RTNCODE/ERRHAND; audit reporting |
+| RPTPOS00 | Also uses RTNCODE/ERRHAND; position reporting |
 
 ## JCL Requirements
 
+The program requires JCL with the following DD statements:
+
 ```jcl
-//RPTSTA00 EXEC PGM=RPTSTA00
-//STEPLIB  DD   DSN=your.load.library,DISP=SHR
-//DB2STATS DD   DSN=your.db2.stats.vsam,DISP=SHR
-//BCHSTATS DD   DSN=your.batch.stats.vsam,DISP=SHR
-//RPTFILE  DD   DSN=your.stats.report,
-//             DISP=(NEW,CATLG,DELETE),
-//             SPACE=(CYL,(5,2),RLSE),
-//             DCB=(RECFM=FB,LRECL=132,BLKSIZE=0)
-//SYSOUT   DD   SYSOUT=*
-//SYSPRINT DD   SYSOUT=*
+//STEPNAME EXEC PGM=RPTSTA00
+//DB2STATS DD DSN=your.db2.stats.file,DISP=SHR
+//BCHSTATS DD DSN=your.batch.stats.file,DISP=SHR
+//RPTFILE  DD DSN=your.report.output,
+//            DISP=(NEW,CATLG,DELETE),
+//            DCB=(RECFM=F,LRECL=132,BLKSIZE=0),
+//            SPACE=(CYL,(1,1))
 ```
 
-## Technical Notes
+## Return Codes
 
-- **VSAM Sequential Access**: Both input files are indexed VSAM files accessed sequentially, allowing efficient full-file scans for statistics collection
-- **Numeric Precision**: Elapsed and CPU times use `9(9)V99` format providing up to 999,999,999.99 seconds capacity
-- **Edit Patterns**: Output fields use Z-suppression (`ZZZ,ZZ9`) for clean numeric formatting with thousands separators
-- **88-Level Conditions**: The program relies on 88-level condition names (e.g., `END-OF-DB2-STATS`, `END-OF-BATCH-STATS`) defined in copybooks for EOF detection
-- **Return Codes**: Returns 0 for success, 12 for any error condition
+| Code | Meaning |
+|------|---------|
+| 0 | Successful completion |
+| 12 | Severe error (file open failure or processing error) |
+
+## Report Output Format
+
+The generated report has a 132-character fixed record length with the following sections:
+
+1. **Header Section**
+   - Border line of asterisks
+   - Centered title: "SYSTEM STATISTICS AND PERFORMANCE REPORT"
+   - Report date
+
+2. **DB2 Statistics Section**
+   - Total DB2 calls with formatted count
+   - Average response time
+
+3. **Batch Statistics Section**
+   - Total batch jobs processed
+   - Success rate percentage
+
+4. **Trend Analysis Section**
+   - Performance trends and recommendations (written by 2430-WRITE-TREND-ANALYSIS)

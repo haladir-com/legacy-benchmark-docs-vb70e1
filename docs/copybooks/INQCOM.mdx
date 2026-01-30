@@ -1,109 +1,93 @@
 ---
 title: "INQCOM"
-description: "Online Inquiry Communication Area - CICS COMMAREA structure for passing data between online inquiry programs"
+description: "Online Inquiry Communication Area - defines the COMMAREA structure for CICS inquiry transactions"
 ---
 
 ## Overview
 
-INQCOM is a copybook that defines the communication area (COMMAREA) structure used by the online inquiry subsystem in CICS. It provides a standardized interface for passing request parameters and response data between the main inquiry handler and its sub-programs.
+INQCOM is a copybook that defines the communication area (COMMAREA) structure used by CICS online inquiry programs in the Portfolio Management System. It provides a standardized interface for passing data between inquiry programs, including function codes, account identifiers, response codes, and error messages.
 
-The copybook defines a compact structure containing:
-- **Function code** - Identifies the type of inquiry operation
-- **Account number** - Primary search key for inquiries
-- **Response code** - Status of the operation
-- **Error message** - Human-readable error description
+The copybook serves as the contract between:
+- **INQONLN**: The main inquiry handler that routes requests
+- **INQPORT**: The portfolio position inquiry handler
+- **INQHIST**: The transaction history inquiry handler
 
-This structure serves as the contract between:
-- **INQONLN** - Main inquiry transaction handler (router)
-- **INQPORT** - Portfolio position inquiry
-- **INQHIST** - Transaction history inquiry
-
-The COMMAREA pattern is fundamental to CICS pseudo-conversational programming, allowing data to persist across transaction boundaries while minimizing resource usage.
+By using a common COMMAREA structure, these programs can seamlessly exchange data and maintain conversation state across pseudo-conversational CICS transactions.
 
 ## Data Structure
 
 ### INQCOM-AREA
 
+The complete communication area structure:
+
 | Level | Name | Picture | Description |
 |-------|------|---------|-------------|
-| 01 | INQCOM-AREA | - | Main communication area (~96 bytes) |
-| 05 | INQCOM-FUNCTION | PIC X(4) | Function/operation code |
-| 05 | INQCOM-ACCOUNT-NO | PIC X(10) | Account number for inquiry |
-| 05 | INQCOM-RESPONSE-CODE | PIC S9(8) COMP | Operation response code |
-| 05 | INQCOM-ERROR-MSG | PIC X(80) | Error message text |
+| 01 | INQCOM-AREA | Group | Inquiry communication area (98 bytes) |
+| 05 | INQCOM-FUNCTION | X(4) | Function/navigation code |
+| 88 | INQCOM-MENU | 'MENU' | Return to main menu |
+| 88 | INQCOM-PORTFOLIO | 'INQP' | Portfolio position inquiry |
+| 88 | INQCOM-HISTORY | 'INQH' | Transaction history inquiry |
+| 88 | INQCOM-EXIT | 'EXIT' | Exit the application |
+| 05 | INQCOM-ACCOUNT-NO | X(10) | Account number for inquiry |
+| 05 | INQCOM-RESPONSE-CODE | S9(8) COMP | Response/return code |
+| 05 | INQCOM-ERROR-MSG | X(80) | Error message text |
 
-### INQCOM-FUNCTION Values (88-Level Conditions)
+### Record Layout
 
-| Condition Name | Value | Description |
-|----------------|-------|-------------|
-| INQCOM-MENU | `MENU` | Display main inquiry menu |
-| INQCOM-PORTFOLIO | `INQP` | Portfolio position inquiry |
-| INQCOM-HISTORY | `INQH` | Transaction history inquiry |
-| INQCOM-EXIT | `EXIT` | Exit inquiry transaction |
+```
+INQCOM-AREA (98 bytes total)
+├── INQCOM-FUNCTION      [4 bytes]   - Function code
+├── INQCOM-ACCOUNT-NO    [10 bytes]  - Account number
+├── INQCOM-RESPONSE-CODE [4 bytes]   - Response code (COMP)
+└── INQCOM-ERROR-MSG     [80 bytes]  - Error message
+```
 
-### Response Codes
+## Field Details
 
-| Code | Meaning |
-|------|---------|
+### INQCOM-FUNCTION
+
+A 4-character code that controls navigation and processing:
+
+| Value | 88-Level | Description | Action |
+|-------|----------|-------------|--------|
+| 'MENU' | INQCOM-MENU | Main menu | Display the main inquiry menu |
+| 'INQP' | INQCOM-PORTFOLIO | Portfolio inquiry | Link to INQPORT for position data |
+| 'INQH' | INQCOM-HISTORY | History inquiry | Link to INQHIST for transaction history |
+| 'EXIT' | INQCOM-EXIT | Exit application | Terminate the CICS conversation |
+
+### INQCOM-ACCOUNT-NO
+
+The 10-character account number used as the key for inquiries:
+- Used by INQPORT to look up portfolio positions
+- Used by INQHIST to retrieve transaction history
+- Typically entered by the user on the inquiry screen
+- Should be validated before processing
+
+### INQCOM-RESPONSE-CODE
+
+A signed 8-digit binary field (COMP) for return codes:
+
+| Value | Meaning |
+|-------|---------|
 | 0 | Success |
-| > 0 | CICS RESP code or application error |
-| < 0 | DB2 SQLCODE (for history inquiries) |
+| > 0 | Warning or informational |
+| < 0 | Error condition |
 
-## Record Layout
+Common values used in the inquiry subsystem:
+- DFHRESP(NORMAL) = 0: Successful completion
+- DFHRESP(NOTFND) = 13: Record not found
+- SQLCODE values when DB2 errors occur
 
-```
-+------------------------------------------------------------------+
-| INQCOM-AREA (Total: ~96 bytes)                                   |
-+------------------------------------------------------------------+
-| Offset | Length | Field                | Content                 |
-+--------+--------+----------------------+-------------------------+
-|   0    |   4    | INQCOM-FUNCTION      | 'MENU'/'INQP'/'INQH'/   |
-|        |        |                      | 'EXIT'                  |
-+--------+--------+----------------------+-------------------------+
-|   4    |  10    | INQCOM-ACCOUNT-NO    | Account number          |
-+--------+--------+----------------------+-------------------------+
-|  14    |   4    | INQCOM-RESPONSE-CODE | Binary response code    |
-+--------+--------+----------------------+-------------------------+
-|  18    |  80    | INQCOM-ERROR-MSG     | Error message text      |
-+--------+--------+----------------------+-------------------------+
-```
+### INQCOM-ERROR-MSG
 
-## Programs Using This Copybook
+An 80-character field for error or informational messages:
+- Populated when errors occur during processing
+- Displayed to the user on the screen
+- Cleared on successful operations
 
-| Program | Role | Usage |
-|---------|------|-------|
-| INQONLN | Router | Routes requests based on INQCOM-FUNCTION; receives from BMS map |
-| INQPORT | Handler | Receives account number; returns position data or error |
-| INQHIST | Handler | Receives account number; returns history data or error |
+## Usage
 
-## Program Interaction Flow
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant INQONLN
-    participant INQPORT
-    participant INQHIST
-    
-    User->>INQONLN: Enter account + select function
-    INQONLN->>INQONLN: RECEIVE MAP into INQCOM
-    
-    alt INQCOM-FUNCTION = 'INQP'
-        INQONLN->>INQPORT: LINK with COMMAREA
-        INQPORT->>INQPORT: Read position data
-        INQPORT-->>INQONLN: Return with response
-    else INQCOM-FUNCTION = 'INQH'
-        INQONLN->>INQHIST: LINK with COMMAREA
-        INQHIST->>INQHIST: Query DB2 history
-        INQHIST-->>INQONLN: Return with response
-    end
-    
-    INQONLN->>User: Display results or error
-```
-
-## Usage Examples
-
-### Declaring in Working Storage (Caller)
+### In Working Storage
 
 ```cobol
 WORKING-STORAGE SECTION.
@@ -111,7 +95,7 @@ WORKING-STORAGE SECTION.
     COPY INQCOM.
 ```
 
-### Declaring in Linkage Section (Called Program)
+### In Linkage Section (for DFHCOMMAREA)
 
 ```cobol
 LINKAGE SECTION.
@@ -119,15 +103,9 @@ LINKAGE SECTION.
     COPY INQCOM.
 ```
 
-### Receiving Input from BMS Map (INQONLN)
+### Processing Function Codes
 
 ```cobol
-EXEC CICS RECEIVE MAP('INQMAP')
-          MAPSET('INQSET')
-          INTO(WS-COMMAREA)
-          RESP(WS-RESPONSE-CODE)
-END-EXEC
-
 EVALUATE TRUE
     WHEN INQCOM-MENU
         PERFORM DISPLAY-MENU
@@ -137,163 +115,138 @@ EVALUATE TRUE
         PERFORM HISTORY-INQUIRY
     WHEN INQCOM-EXIT
         SET SESSION-TERMINATED TO TRUE
+    WHEN OTHER
+        MOVE 'Invalid function' TO INQCOM-ERROR-MSG
+        PERFORM ERROR-ROUTINE
 END-EVALUATE
 ```
 
-### Linking to Sub-Program (INQONLN)
+### Linking to Sub-Programs
 
 ```cobol
-* Call portfolio inquiry
+* Link to portfolio inquiry
+MOVE 'INQP' TO INQCOM-FUNCTION
+MOVE WS-ACCOUNT TO INQCOM-ACCOUNT-NO
+
 EXEC CICS LINK PROGRAM('INQPORT')
           COMMAREA(WS-COMMAREA)
           LENGTH(LENGTH OF WS-COMMAREA)
-          RESP(WS-RESPONSE-CODE)
 END-EXEC
 
-* Check response
-IF INQCOM-RESPONSE-CODE OF WS-COMMAREA NOT = 0
+IF INQCOM-RESPONSE-CODE NOT = 0
+    DISPLAY 'Error: ' INQCOM-ERROR-MSG
+END-IF
+```
+
+### Setting Error Information
+
+```cobol
+* On error in sub-program
+MOVE 'Position not found for account' 
+  TO INQCOM-ERROR-MSG
+MOVE DFHRESP(NOTFND) TO INQCOM-RESPONSE-CODE
+MOVE WS-COMMAREA TO DFHCOMMAREA
+```
+
+### Checking Response
+
+```cobol
+* After LINK returns
+IF INQCOM-RESPONSE-CODE = 0
+    PERFORM DISPLAY-RESULTS
+ELSE
     PERFORM DISPLAY-ERROR
 END-IF
 ```
 
-### Receiving COMMAREA (INQPORT/INQHIST)
+## Programs Using This Copybook
 
-```cobol
-PROCEDURE DIVISION.
-    * Copy COMMAREA to working storage
-    MOVE DFHCOMMAREA TO WS-COMMAREA
+| Program | Role | Usage |
+|---------|------|-------|
+| INQONLN | Main Handler | Routes requests based on INQCOM-FUNCTION; receives user input; passes COMMAREA to sub-programs |
+| INQPORT | Portfolio Inquiry | Receives account number; returns position data or error message |
+| INQHIST | History Inquiry | Receives account number; returns transaction history or error message |
+
+## Transaction Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant INQONLN
+    participant INQPORT
+    participant INQHIST
     
-    * Use account number for lookup
-    MOVE INQCOM-ACCOUNT-NO OF WS-COMMAREA
-      TO WS-SEARCH-KEY
+    User->>INQONLN: Enter account, select function
     
-    PERFORM LOOKUP-POSITION
-    ...
+    alt INQCOM-PORTFOLIO ('INQP')
+        INQONLN->>INQPORT: LINK with COMMAREA
+        INQPORT->>INQPORT: Read VSAM position
+        INQPORT-->>INQONLN: Return COMMAREA
+    else INQCOM-HISTORY ('INQH')
+        INQONLN->>INQHIST: LINK with COMMAREA
+        INQHIST->>INQHIST: Query DB2 history
+        INQHIST-->>INQONLN: Return COMMAREA
+    else INQCOM-EXIT ('EXIT')
+        INQONLN->>User: End session
+    end
+    
+    INQONLN->>User: Display results/error
 ```
-
-### Setting Error Response (Called Program)
-
-```cobol
-* Position not found
-MOVE 'Position not found for account' 
-  TO INQCOM-ERROR-MSG OF WS-COMMAREA
-MOVE 8 TO INQCOM-RESPONSE-CODE OF WS-COMMAREA
-
-* Copy back to DFHCOMMAREA for return
-MOVE WS-COMMAREA TO DFHCOMMAREA
-
-EXEC CICS RETURN END-EXEC
-```
-
-### Setting Success Response
-
-```cobol
-* Clear error fields
-MOVE ZEROS TO INQCOM-RESPONSE-CODE OF WS-COMMAREA
-MOVE SPACES TO INQCOM-ERROR-MSG OF WS-COMMAREA
-
-* Copy back for return
-MOVE WS-COMMAREA TO DFHCOMMAREA
-
-EXEC CICS RETURN END-EXEC
-```
-
-## CICS COMMAREA Pattern
-
-### Why Use COMMAREA?
-
-| Aspect | Benefit |
-|--------|---------|
-| **State Preservation** | Data survives across pseudo-conversational transactions |
-| **Resource Efficiency** | No files or queues needed for temporary data |
-| **Simplicity** | Direct memory-to-memory data passing |
-| **Performance** | Fast access without I/O overhead |
-
-### COMMAREA Flow in Pseudo-Conversational Design
-
-```
-Transaction 1 (Display Menu):
-  ┌─────────────────────────────────────┐
-  │ 1. RECEIVE MAP (get user input)     │
-  │ 2. Store data in COMMAREA           │
-  │ 3. RETURN TRANSID('INQ1')           │
-  │    COMMAREA(WS-COMMAREA)            │
-  └─────────────────────────────────────┘
-                    │
-                    ▼ (COMMAREA preserved)
-  ┌─────────────────────────────────────┐
-Transaction 2 (Process Request):
-  │ 1. Access DFHCOMMAREA               │
-  │ 2. Process based on function        │
-  │ 3. LINK to INQPORT/INQHIST          │
-  │ 4. RETURN TRANSID('INQ1')           │
-  │    COMMAREA(WS-COMMAREA)            │
-  └─────────────────────────────────────┘
-```
-
-### Working Storage vs Linkage Section
-
-| Section | Purpose | Qualified Name |
-|---------|---------|----------------|
-| WORKING-STORAGE | Local copy for manipulation | `INQCOM-FUNCTION OF WS-COMMAREA` |
-| LINKAGE | Reference to passed COMMAREA | `INQCOM-FUNCTION OF DFHCOMMAREA` |
-
-Always copy DFHCOMMAREA to working storage before modifying, then copy back before RETURN.
-
-## Best Practices
-
-1. **Always qualify field names** - Use `OF WS-COMMAREA` or `OF DFHCOMMAREA` to avoid ambiguity when copybook is used in both sections
-
-2. **Copy before modifying** - Move DFHCOMMAREA to working storage before changes:
-   ```cobol
-   MOVE DFHCOMMAREA TO WS-COMMAREA
-   ```
-
-3. **Copy back before return** - Ensure changes are returned to caller:
-   ```cobol
-   MOVE WS-COMMAREA TO DFHCOMMAREA
-   ```
-
-4. **Initialize on first call** - Check EIBCALEN to detect first invocation:
-   ```cobol
-   IF EIBCALEN = 0
-       INITIALIZE WS-COMMAREA
-   ELSE
-       MOVE DFHCOMMAREA TO WS-COMMAREA
-   END-IF
-   ```
-
-5. **Clear error fields on success** - Always clear error message and set response code to zero on success
-
-6. **Preserve function code** - Don't modify INQCOM-FUNCTION in called programs unless intentionally redirecting
-
-## Field Naming Convention
-
-The copybook uses the `INQCOM-` prefix for all fields:
-
-| Prefix | Meaning |
-|--------|---------|
-| `INQCOM-` | **INQ**uiry **COM**munication area |
-
-This prevents naming conflicts when the copybook is used alongside other structures.
 
 ## Related Copybooks
 
 | Copybook | Relationship |
 |----------|--------------|
-| ERRHND | Online error handling structure, complements INQCOM-ERROR-MSG |
-| POSREC | Position record structure retrieved by INQPORT |
-| DBTBLS | DB2 tables queried by INQHIST |
+| ERRHND | Error handling - used alongside INQCOM for detailed error tracking in INQONLN |
+| POSREC | Position record - used by INQPORT for VSAM position data |
 
-## BMS Map Integration
+## Related BMS Maps
 
-The INQCOM structure is designed to integrate with BMS maps in the INQSET mapset:
+The inquiry programs use maps from the INQSET mapset:
 
-| Map | Purpose | INQCOM Fields Used |
-|-----|---------|-------------------|
-| INQMAP | Main inquiry input | INQCOM-FUNCTION, INQCOM-ACCOUNT-NO |
-| INQMNU | Menu display | - |
-| POSMAP | Position display | Results from INQPORT |
-| HISMAP | History display | Results from INQHIST |
+| Map | Purpose |
+|-----|---------|
+| INQMAP | Input map for receiving inquiry requests |
+| INQMNU | Main menu display |
+| POSMAP | Portfolio position display (used by INQPORT) |
+| HISMAP | Transaction history display (used by INQHIST) |
 
-The function code and account number are typically received from INQMAP, while results are displayed through the appropriate output maps.
+## Design Notes
+
+### COMMAREA Size
+
+The INQCOM-AREA is 98 bytes, which is well within CICS COMMAREA limits. This compact size:
+- Minimizes storage usage
+- Enables efficient pseudo-conversational processing
+- Leaves room for future field additions
+
+### Pseudo-Conversational Pattern
+
+The copybook supports CICS pseudo-conversational programming:
+1. User enters data on screen
+2. Program receives COMMAREA from previous interaction
+3. Program processes request based on function code
+4. Program returns with updated COMMAREA
+5. CICS presents next screen to user
+
+### Function Code Design
+
+The 4-character function codes are:
+- **Mnemonic**: Easy to remember (MENU, EXIT)
+- **Consistent length**: Simplifies EVALUATE logic
+- **88-level conditions**: Enable readable code (`WHEN INQCOM-PORTFOLIO`)
+
+### Error Message Capacity
+
+The 80-character error message field:
+- Matches typical screen line width
+- Provides sufficient space for descriptive messages
+- Can be displayed directly on BMS maps
+
+### Extensibility
+
+To add a new inquiry function:
+1. Add a new 88-level condition under INQCOM-FUNCTION
+2. Add handling in INQONLN's EVALUATE statement
+3. Create the new inquiry program using INQCOM for its COMMAREA
+4. Add corresponding BMS map if needed

@@ -1,127 +1,114 @@
 ---
 title: "POSREC"
-description: "Position Record Structure for tracking investment holdings with quantity, cost basis, and market value"
+description: "Position Record Structure - defines investment holdings with quantity, cost basis, market value, and audit information"
 ---
 
 ## Overview
 
-POSREC is a copybook that defines the Position Record structure used for tracking investment holdings within portfolios. Each position record represents a specific investment held in a portfolio on a particular date, capturing the quantity held, cost basis, current market value, and status information.
+POSREC is a copybook that defines the standard Position Record structure used to track investment holdings within the portfolio management system. Each position record represents a specific investment holding for a portfolio on a given date, containing quantity, cost basis, market value, and status information.
 
-This copybook is fundamental to the portfolio management system, providing the data structure for:
-- Recording daily position snapshots
-- Tracking investment quantities and values
-- Calculating gains/losses (market value vs. cost basis)
-- Supporting position inquiries and reporting
+The position record serves as a fundamental data structure for portfolio valuation, performance reporting, and transaction processing. It supports multi-currency portfolios and maintains a complete audit trail of maintenance activities.
 
 ## Record Layout
 
 ```
-+---------------------------+--------------------------------+
-|        POS-KEY            |           POS-DATA             |
-|       (26 bytes)          |          (~27 bytes)           |
-+---------------------------+--------------------------------+
-|      POS-AUDIT            |         POS-FILLER             |
-|       (34 bytes)          |          (50 bytes)            |
-+---------------------------+--------------------------------+
++------------------------------------------------------------------+
+| POSITION-RECORD (approximately 150 bytes)                        |
++------------------------------------------------------------------+
+| POS-KEY (26 bytes)                                               |
+|   +------------------------------------------------------------+ |
+|   | POS-PORTFOLIO-ID (8) | POS-DATE (8) | POS-INVESTMENT-ID(10)| |
+|   +------------------------------------------------------------+ |
++------------------------------------------------------------------+
+| POS-DATA (36 bytes)                                              |
+|   +------------------------------------------------------------+ |
+|   | POS-QUANTITY (8)   | POS-COST-BASIS (8) | POS-MARKET-VAL(8)| |
+|   | POS-CURRENCY (3)   | POS-STATUS (1)                        | |
+|   +------------------------------------------------------------+ |
++------------------------------------------------------------------+
+| POS-AUDIT (34 bytes)                                             |
+|   +------------------------------------------------------------+ |
+|   | POS-LAST-MAINT-DATE (26) | POS-LAST-MAINT-USER (8)         | |
+|   +------------------------------------------------------------+ |
++------------------------------------------------------------------+
+| POS-FILLER (50 bytes)                                            |
++------------------------------------------------------------------+
 ```
-
-**Total Record Length:** Approximately 137 bytes
 
 ## Data Structure
 
-### POS-KEY (Record Key)
+### POSITION-RECORD (Level 01)
 
-The composite key uniquely identifies a position by portfolio, date, and investment.
+The main position record containing all investment holding information.
 
-| Level | Name | Picture | Length | Description |
-|-------|------|---------|--------|-------------|
-| 05 | POS-KEY | - | 26 | Composite record key |
-| 10 | POS-PORTFOLIO-ID | X(8) | 8 | Portfolio identifier |
-| 10 | POS-DATE | X(8) | 8 | Position date (YYYYMMDD) |
-| 10 | POS-INVESTMENT-ID | X(10) | 10 | Investment/security identifier |
+### POS-KEY Group (Level 05)
 
-The key structure enables:
-- Retrieving all positions for a portfolio (partial key)
-- Retrieving positions as of a specific date
-- Accessing a specific investment within a portfolio on a date
+The composite primary key uniquely identifying each position.
 
-```mermaid
-graph LR
-    A[POS-KEY] --> B[POS-PORTFOLIO-ID<br/>8 chars]
-    A --> C[POS-DATE<br/>YYYYMMDD]
-    A --> D[POS-INVESTMENT-ID<br/>10 chars]
-    
-    style A fill:#f9f,stroke:#333
-    style B fill:#bbf,stroke:#333
-    style C fill:#bbf,stroke:#333
-    style D fill:#bbf,stroke:#333
-```
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | POS-KEY | - | Composite record key |
+| 10 | POS-PORTFOLIO-ID | X(8) | Portfolio identifier |
+| 10 | POS-DATE | X(8) | Position date (YYYYMMDD format) |
+| 10 | POS-INVESTMENT-ID | X(10) | Investment/security identifier |
 
-### POS-DATA (Position Information)
+### POS-DATA Group (Level 05)
 
-Contains the financial details of the position.
+The core position data fields.
 
-| Level | Name | Picture | Length | Description |
-|-------|------|---------|--------|-------------|
-| 05 | POS-DATA | - | ~27 | Position data group |
-| 10 | POS-QUANTITY | S9(11)V9(4) COMP-3 | 8 | Holding quantity (4 decimals) |
-| 10 | POS-COST-BASIS | S9(13)V9(2) COMP-3 | 8 | Total cost basis (2 decimals) |
-| 10 | POS-MARKET-VALUE | S9(13)V9(2) COMP-3 | 8 | Current market value (2 decimals) |
-| 10 | POS-CURRENCY | X(3) | 3 | Currency code (ISO 4217) |
-| 10 | POS-STATUS | X(1) | 1 | Position status |
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | POS-DATA | - | Position data group |
+| 10 | POS-QUANTITY | S9(11)V9(4) COMP-3 | Holding quantity (supports fractional shares) |
+| 10 | POS-COST-BASIS | S9(13)V9(2) COMP-3 | Total cost basis (purchase cost) |
+| 10 | POS-MARKET-VALUE | S9(13)V9(2) COMP-3 | Current market value |
+| 10 | POS-CURRENCY | X(3) | ISO currency code (e.g., USD, EUR, GBP) |
+| 10 | POS-STATUS | X(1) | Position status code |
 
-#### Position Status Values
+**POS-STATUS 88-Level Condition Names:**
 
-| Condition Name | Value | Description |
-|----------------|-------|-------------|
-| POS-STATUS-ACTIVE | A | Active position, currently held |
-| POS-STATUS-CLOSED | C | Closed position, fully liquidated |
-| POS-STATUS-PEND | P | Pending position, awaiting settlement |
+| Condition | Value | Description |
+|-----------|-------|-------------|
+| POS-STATUS-ACTIVE | 'A' | Active position |
+| POS-STATUS-CLOSED | 'C' | Closed/liquidated position |
+| POS-STATUS-PEND | 'P' | Pending settlement |
 
-```mermaid
-stateDiagram-v2
-    [*] --> PENDING: Trade Executed
-    PENDING --> ACTIVE: Settlement Complete
-    ACTIVE --> ACTIVE: Value Update
-    ACTIVE --> CLOSED: Full Liquidation
-    CLOSED --> [*]
-    
-    note right of PENDING: Awaiting T+2 settlement
-    note right of ACTIVE: Normal holding state
-    note right of CLOSED: Position fully sold
-```
+### POS-AUDIT Group (Level 05)
 
-### POS-AUDIT (Audit Information)
+Audit trail information for the position record.
 
-Tracks when and by whom the record was last modified.
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | POS-AUDIT | - | Audit information group |
+| 10 | POS-LAST-MAINT-DATE | X(26) | Last maintenance timestamp |
+| 10 | POS-LAST-MAINT-USER | X(8) | User ID who last modified |
 
-| Level | Name | Picture | Length | Description |
-|-------|------|---------|--------|-------------|
-| 05 | POS-AUDIT | - | 34 | Audit information group |
-| 10 | POS-LAST-MAINT-DATE | X(26) | 26 | Last maintenance timestamp |
-| 10 | POS-LAST-MAINT-USER | X(8) | 8 | User ID of last modifier |
+### POS-FILLER (Level 05)
 
-### POS-FILLER
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 05 | POS-FILLER | X(50) | Reserved for future expansion |
 
-| Level | Name | Picture | Length | Description |
-|-------|------|---------|--------|-------------|
-| 05 | POS-FILLER | X(50) | 50 | Reserved for future use |
+## Field Specifications
 
-## Field Details
+### Numeric Field Details
 
-### Numeric Field Formats
+| Field | Bytes | Decimal | Max Value | Notes |
+|-------|-------|---------|-----------|-------|
+| POS-QUANTITY | 8 | 4 | 99,999,999,999.9999 | Supports fractional shares |
+| POS-COST-BASIS | 8 | 2 | 9,999,999,999,999.99 | Total cost, not per-share |
+| POS-MARKET-VALUE | 8 | 2 | 9,999,999,999,999.99 | Current total value |
 
-The financial fields use COMP-3 (packed decimal) format for efficient storage and precise decimal arithmetic:
+### Date Formats
 
-| Field | Format | Range | Example |
-|-------|--------|-------|---------|
-| POS-QUANTITY | S9(11)V9(4) | ±99,999,999,999.9999 | 1,000.5000 shares |
-| POS-COST-BASIS | S9(13)V9(2) | ±9,999,999,999,999.99 | $125,500.00 |
-| POS-MARKET-VALUE | S9(13)V9(2) | ±9,999,999,999,999.99 | $132,750.50 |
+| Field | Format | Example |
+|-------|--------|---------|
+| POS-DATE | YYYYMMDD | '20240315' |
+| POS-LAST-MAINT-DATE | Timestamp (26) | '2024-03-15-14.30.45.123456' |
 
 ### Currency Codes
 
-The POS-CURRENCY field uses ISO 4217 three-character currency codes:
+Common ISO 4217 currency codes used:
 
 | Code | Currency |
 |------|----------|
@@ -131,179 +118,214 @@ The POS-CURRENCY field uses ISO 4217 three-character currency codes:
 | JPY | Japanese Yen |
 | CAD | Canadian Dollar |
 
-### Date Formats
-
-| Field | Format | Example |
-|-------|--------|---------|
-| POS-DATE | YYYYMMDD | 20240315 |
-| POS-LAST-MAINT-DATE | Timestamp (26 chars) | 2024-03-15-14.30.45.123456 |
-
 ## Usage Examples
 
 ### Reading a Position Record
 
 ```cobol
-* Set up key for position lookup
-MOVE 'PORT0001' TO POS-PORTFOLIO-ID
-MOVE '20240315' TO POS-DATE
-MOVE 'AAPL      ' TO POS-INVESTMENT-ID
-
-READ POSITION-FILE
-    KEY IS POS-KEY
+WORKING-STORAGE SECTION.
+    COPY POSREC.
     
-IF WS-FILE-STATUS = '00'
-    DISPLAY 'Quantity: ' POS-QUANTITY
-    DISPLAY 'Cost Basis: ' POS-COST-BASIS
-    DISPLAY 'Market Value: ' POS-MARKET-VALUE
+PROCEDURE DIVISION.
+    MOVE 'PORT0001' TO POS-PORTFOLIO-ID
+    MOVE '20240315' TO POS-DATE
+    MOVE 'AAPL      ' TO POS-INVESTMENT-ID
     
-    COMPUTE WS-GAIN-LOSS = 
-        POS-MARKET-VALUE - POS-COST-BASIS
-END-IF
+    READ POSITION-MASTER
+        INVALID KEY
+            DISPLAY 'Position not found'
+    END-READ
+    
+    IF POS-STATUS-ACTIVE
+        COMPUTE WS-GAIN-LOSS = 
+            POS-MARKET-VALUE - POS-COST-BASIS
+    END-IF
 ```
 
 ### Creating a New Position
 
 ```cobol
-* Initialize the position record
-INITIALIZE POSITION-RECORD
-
-* Set key fields
-MOVE WS-PORTFOLIO-ID TO POS-PORTFOLIO-ID
-MOVE WS-POSITION-DATE TO POS-DATE
-MOVE WS-SECURITY-ID TO POS-INVESTMENT-ID
-
-* Set data fields
-MOVE WS-SHARES TO POS-QUANTITY
-MOVE WS-TOTAL-COST TO POS-COST-BASIS
-MOVE WS-CURRENT-VALUE TO POS-MARKET-VALUE
-MOVE 'USD' TO POS-CURRENCY
-SET POS-STATUS-ACTIVE TO TRUE
-
-* Set audit fields
-ACCEPT POS-LAST-MAINT-DATE FROM TIME STAMP
-MOVE WS-USER-ID TO POS-LAST-MAINT-USER
-
-WRITE POSITION-RECORD
+    INITIALIZE POSITION-RECORD
+    
+    MOVE 'PORT0001'    TO POS-PORTFOLIO-ID
+    MOVE WS-TODAY      TO POS-DATE
+    MOVE 'MSFT      '  TO POS-INVESTMENT-ID
+    MOVE 100.0000      TO POS-QUANTITY
+    MOVE 25000.00      TO POS-COST-BASIS
+    MOVE 27500.00      TO POS-MARKET-VALUE
+    MOVE 'USD'         TO POS-CURRENCY
+    SET POS-STATUS-ACTIVE TO TRUE
+    
+    ACCEPT POS-LAST-MAINT-DATE FROM TIME STAMP
+    MOVE WS-USER-ID    TO POS-LAST-MAINT-USER
+    
+    WRITE POSITION-RECORD
+        INVALID KEY
+            PERFORM HANDLE-DUPLICATE-KEY
+    END-WRITE
 ```
 
-### Reading All Positions for a Portfolio
+### Calculating Unrealized Gain/Loss
 
 ```cobol
-* Position to first record for portfolio
-MOVE 'PORT0001' TO POS-PORTFOLIO-ID
-MOVE LOW-VALUES TO POS-DATE
-MOVE LOW-VALUES TO POS-INVESTMENT-ID
-
-START POSITION-FILE
-    KEY IS >= POS-KEY
-
-PERFORM UNTIL WS-END-OF-FILE OR 
-              POS-PORTFOLIO-ID NOT = 'PORT0001'
-    READ POSITION-FILE NEXT
-        AT END
-            SET WS-END-OF-FILE TO TRUE
-        NOT AT END
-            IF POS-PORTFOLIO-ID = 'PORT0001'
-                PERFORM PROCESS-POSITION
-            END-IF
-    END-READ
-END-PERFORM
+    COMPUTE WS-UNREALIZED-GAIN = 
+        POS-MARKET-VALUE - POS-COST-BASIS
+    
+    COMPUTE WS-GAIN-PERCENT = 
+        (WS-UNREALIZED-GAIN / POS-COST-BASIS) * 100
+    
+    IF WS-UNREALIZED-GAIN < 0
+        DISPLAY 'Loss: ' WS-UNREALIZED-GAIN
+    ELSE
+        DISPLAY 'Gain: ' WS-UNREALIZED-GAIN
+    END-IF
 ```
 
-### Calculating Portfolio Value
+### Using Status Conditions
 
 ```cobol
-* Sum all active positions for a portfolio
-MOVE ZEROS TO WS-TOTAL-COST
-MOVE ZEROS TO WS-TOTAL-VALUE
-
-PERFORM VARYING WS-IDX FROM 1 BY 1
-        UNTIL WS-END-OF-PORTFOLIO
-    READ POSITION-FILE NEXT
-        AT END
-            SET WS-END-OF-PORTFOLIO TO TRUE
-        NOT AT END
-            IF POS-STATUS-ACTIVE
-                ADD POS-COST-BASIS TO WS-TOTAL-COST
-                ADD POS-MARKET-VALUE TO WS-TOTAL-VALUE
-            END-IF
-    END-READ
-END-PERFORM
-
-COMPUTE WS-TOTAL-GAIN-LOSS = 
-    WS-TOTAL-VALUE - WS-TOTAL-COST
-COMPUTE WS-RETURN-PCT = 
-    (WS-TOTAL-GAIN-LOSS / WS-TOTAL-COST) * 100
+    EVALUATE TRUE
+        WHEN POS-STATUS-ACTIVE
+            PERFORM PROCESS-ACTIVE-POSITION
+        WHEN POS-STATUS-CLOSED
+            PERFORM PROCESS-CLOSED-POSITION
+        WHEN POS-STATUS-PEND
+            PERFORM PROCESS-PENDING-POSITION
+    END-EVALUATE
 ```
 
 ## Programs Using This Copybook
 
-| Program | Description | Usage |
-|---------|-------------|-------|
-| RPTPOS00 | Position Report Generator | Reads positions for reporting |
-| INQPORT | Portfolio Inquiry (Online) | Displays position information |
-| UTLVAL00 | Validation Utility | Validates position data integrity |
+### RPTPOS00 - Daily Position Report Generator
 
-## Related Copybooks
+**Location**: `/src/programs/batch/RPTPOS00.cbl`
 
-- **PORTFLIO** - Portfolio master record (parent record)
-- **TRNREC** - Transaction record (creates/modifies positions)
-- **HISTREC** - Historical position data
-
-## Technical Notes
-
-### COMP-3 (Packed Decimal) Format
-
-The financial fields use COMP-3 format which stores two digits per byte (plus sign):
-
-| Field | Picture | Bytes | Calculation |
-|-------|---------|-------|-------------|
-| POS-QUANTITY | S9(11)V9(4) | 8 | (15 digits + sign) / 2 = 8 |
-| POS-COST-BASIS | S9(13)V9(2) | 8 | (15 digits + sign) / 2 = 8 |
-| POS-MARKET-VALUE | S9(13)V9(2) | 8 | (15 digits + sign) / 2 = 8 |
-
-COMP-3 advantages:
-- Precise decimal arithmetic (no floating-point errors)
-- Compact storage (half the space of display numeric)
-- Direct use in COMPUTE statements
-
-### File Organization
-
-The position file is typically organized as:
+**Usage**: Uses POSREC in the FILE SECTION to read position records from an indexed VSAM file for report generation.
 
 ```cobol
-SELECT POSITION-FILE
-    ASSIGN TO POSFILE
+FILE SECTION.
+    COPY POSREC.
+    
+FILE-CONTROL.
+    SELECT POSITION-MASTER ASSIGN TO POSMSTRE
+        ORGANIZATION IS INDEXED
+        ACCESS MODE IS SEQUENTIAL
+        RECORD KEY IS POS-KEY
+        FILE STATUS IS WS-POSITION-STATUS.
+```
+
+**Key Operations**:
+- Sequential read of all position records
+- Formats position data for daily position report
+- Calculates change percentages from previous values
+- Generates summary totals and exception reports
+
+### INQPORT - Portfolio Position Inquiry (CICS)
+
+**Location**: `/src/programs/online/INQPORT.cbl`
+
+**Usage**: Uses POSREC in WORKING-STORAGE for online inquiry of position data via CICS.
+
+```cobol
+WORKING-STORAGE SECTION.
+01  WS-POSITION-RECORD.
+    COPY POSREC.
+```
+
+**Key Operations**:
+- Reads position records via CICS FILE commands
+- Formats position data for BMS map display
+- Handles not-found and error conditions
+- Returns position data through COMMAREA
+
+### UTLVAL00 - Data Validation Utility
+
+**Location**: `/src/programs/utility/UTLVAL00.cbl`
+
+**Usage**: Uses POSREC in the FILE SECTION to validate position data integrity.
+
+```cobol
+FILE SECTION.
+    COPY POSREC.
+    
+FILE-CONTROL.
+    SELECT POSITION-MASTER ASSIGN TO POSMSTRE
+        ORGANIZATION IS INDEXED
+        ACCESS MODE IS DYNAMIC
+        RECORD KEY IS POS-KEY
+        FILE STATUS IS WS-POS-STATUS.
+```
+
+**Key Operations**:
+- Validates position record integrity
+- Cross-references positions with transactions
+- Verifies format compliance
+- Reconciles position balances
+- Reports validation errors
+
+## File Organization
+
+The POSREC copybook is typically used with VSAM KSDS (Key-Sequenced Data Set) files:
+
+```cobol
+SELECT POSITION-MASTER
+    ASSIGN TO POSMSTRE
     ORGANIZATION IS INDEXED
     ACCESS MODE IS DYNAMIC
     RECORD KEY IS POS-KEY
     FILE STATUS IS WS-POS-STATUS.
 ```
 
-### Key Design Rationale
+### Key Structure
 
-The three-part key design supports common access patterns:
+The composite key (POS-KEY) enables:
+- **By Portfolio**: Retrieve all positions for a portfolio
+- **By Date**: Get positions as of a specific date
+- **Specific Position**: Direct access to a single holding
 
-| Access Pattern | Key Fields Used |
-|----------------|-----------------|
-| Single position | Full key |
-| Portfolio on date | POS-PORTFOLIO-ID + POS-DATE |
-| All portfolio history | POS-PORTFOLIO-ID only |
-| Date range query | START with partial key, sequential read |
+### Access Patterns
 
-### Data Integrity Considerations
+| Access Mode | Use Case |
+|-------------|----------|
+| SEQUENTIAL | Reports, batch processing |
+| RANDOM | Online inquiries, updates |
+| DYNAMIC | Mixed batch/random access |
 
-1. **POS-DATE** should always be a valid business date
-2. **POS-QUANTITY** can be negative for short positions
-3. **POS-COST-BASIS** should be positive (absolute cost)
-4. **POS-MARKET-VALUE** can be negative for liability positions
-5. **POS-STATUS** should transition through valid states only
+## Validation Rules
 
-### Gain/Loss Calculation
+### Required Fields
 
-```
-Unrealized Gain/Loss = POS-MARKET-VALUE - POS-COST-BASIS
+| Field | Rule |
+|-------|------|
+| POS-PORTFOLIO-ID | Must not be spaces |
+| POS-DATE | Must be valid YYYYMMDD |
+| POS-INVESTMENT-ID | Must not be spaces |
+| POS-CURRENCY | Must be valid ISO code |
+| POS-STATUS | Must be 'A', 'C', or 'P' |
 
-Return Percentage = ((POS-MARKET-VALUE - POS-COST-BASIS) 
-                     / POS-COST-BASIS) × 100
-```
+### Business Rules
+
+| Rule | Description |
+|------|-------------|
+| Quantity Sign | Can be negative for short positions |
+| Cost Basis | Typically positive; negative for shorts |
+| Market Value | Should match quantity × current price |
+| Closed Positions | Should have zero quantity |
+
+## Technical Notes
+
+- **COMP-3 (Packed Decimal)**: Numeric fields use packed decimal for efficient storage and precise decimal arithmetic
+- **Key Design**: 26-byte composite key allows efficient retrieval by portfolio, date, or investment
+- **Filler Space**: 50-byte filler provides room for future field additions without file conversion
+- **Timestamp Format**: POS-LAST-MAINT-DATE uses 26-byte DB2-compatible timestamp format
+- **Signed Numerics**: All numeric fields are signed (S prefix) to support short positions and adjustments
+- **4 Decimal Places**: POS-QUANTITY supports fractional shares common in mutual funds
+- **Record Size**: Approximately 150 bytes (varies slightly based on COMP-3 storage)
+
+## Related Copybooks
+
+| Copybook | Relationship |
+|----------|--------------|
+| TRNREC | Transaction records that update positions |
+| PORTFLIO | Portfolio master containing position totals |
+| HISTREC | Historical position snapshots |

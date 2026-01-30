@@ -1,154 +1,170 @@
 ---
 title: "COMMON"
-description: "Common Definitions and Constants - Provides foundational data structures for return codes, status values, transaction types, date/time fields, and audit tracking"
+description: "Common Definitions and Constants - provides standard return codes, status codes, transaction types, date/time fields, and audit structures"
 ---
+
+:::info General Utility Copybook
+This is a **general utility copybook** containing common definitions and constants used throughout the portfolio management system. It provides standardized values that ensure consistency across all programs.
+:::
 
 ## Overview
 
-COMMON is a foundational copybook that provides standardized definitions and constants used across the application. It serves as a central repository for frequently used data structures including return codes, status indicators, transaction types, date/time fields, error handling areas, audit tracking fields, and currency codes.
+COMMON is a foundational utility copybook that defines standard constants, codes, and data structures used across the portfolio management system. It establishes a single source of truth for commonly used values, promoting consistency and maintainability.
 
-This copybook promotes consistency and maintainability by defining common values in a single location. Programs including this copybook benefit from standardized field layouts and pre-defined constants that align with system-wide conventions.
+The copybook includes:
+- **Return Codes**: Standard program return codes (0, 4, 8, 12, 16)
+- **Status Codes**: Record status indicators (Active, Closed, Pending, etc.)
+- **Transaction Types**: Financial transaction type codes (Buy, Sell, Transfer, Fee)
+- **Date/Time Fields**: Common timestamp structures
+- **Error Handling**: Standard error message structure
+- **Audit Fields**: Common audit trail fields
+- **Currency Codes**: ISO currency code constants
 
-## Data Structure Summary
+By including this copybook, programs automatically gain access to these standard definitions, ensuring consistent behavior and making code more readable and maintainable.
 
-```
-01  RETURN-CODES             Standard return code values
-01  STATUS-CODES             Entity status indicators  
-01  TRANSACTION-TYPES        Financial transaction type codes
-01  COMMON-DATETIME          Date and time work fields
-01  ERROR-HANDLING           Error tracking fields
-01  AUDIT-FIELDS             Audit trail information
-01  CURRENCY-CODES           ISO currency code constants
-```
+## Data Structures
 
-## Field Definitions
+### RETURN-CODES (Level 01)
 
-### RETURN-CODES - Standard Return Code Values
+Standard program return codes aligned with mainframe conventions.
 
-Defines the standard return codes aligned with IBM batch processing conventions.
+| Level | Name | Picture | Value | Description |
+|-------|------|---------|-------|-------------|
+| 01 | RETURN-CODES | - | - | Return code constants |
+| 05 | RC-SUCCESS | S9(4) | +0 | Successful completion |
+| 05 | RC-WARNING | S9(4) | +4 | Warning condition |
+| 05 | RC-ERROR | S9(4) | +8 | Error condition |
+| 05 | RC-SEVERE | S9(4) | +12 | Severe error |
+| 05 | RC-CRITICAL | S9(4) | +16 | Critical error / abend |
 
-| Field | Picture | Value | Description |
-|-------|---------|-------|-------------|
-| RC-SUCCESS | S9(4) | +0 | Successful completion |
-| RC-WARNING | S9(4) | +4 | Completed with warnings |
-| RC-ERROR | S9(4) | +8 | Error occurred |
-| RC-SEVERE | S9(4) | +12 | Severe error |
-| RC-CRITICAL | S9(4) | +16 | Critical/terminal failure |
+**Usage Guidelines:**
+
+| Code | When to Use |
+|------|-------------|
+| 0 | Normal completion, all processing successful |
+| 4 | Minor issues encountered but processing completed |
+| 8 | Errors occurred, results may be incomplete |
+| 12 | Severe errors, processing likely incomplete |
+| 16 | Critical failure, immediate termination |
+
+### STATUS-CODES (Level 01)
+
+Standard record status indicators.
+
+| Level | Name | Picture | Value | Description |
+|-------|------|---------|-------|-------------|
+| 01 | STATUS-CODES | - | - | Status code constants |
+| 05 | STATUS-ACTIVE | X(1) | 'A' | Record is active |
+| 05 | STATUS-CLOSED | X(1) | 'C' | Record is closed |
+| 05 | STATUS-PENDING | X(1) | 'P' | Record is pending |
+| 05 | STATUS-SUSPENDED | X(1) | 'S' | Record is suspended |
+| 05 | STATUS-FAILED | X(1) | 'F' | Record processing failed |
+| 05 | STATUS-REVERSED | X(1) | 'R' | Record has been reversed |
+
+**Status Lifecycle:**
 
 ```mermaid
 graph LR
-    subgraph "Return Code Severity Scale"
-        A["0<br/>SUCCESS"] --> B["4<br/>WARNING"]
-        B --> C["8<br/>ERROR"]
-        C --> D["12<br/>SEVERE"]
-        D --> E["16<br/>CRITICAL"]
-    end
-    
-    style A fill:#90EE90
-    style B fill:#FFE4B5
-    style C fill:#FFB6C1
-    style D fill:#FF6B6B
-    style E fill:#8B0000,color:#fff
+    P[PENDING] --> A[ACTIVE]
+    A --> S[SUSPENDED]
+    S --> A
+    A --> C[CLOSED]
+    A --> F[FAILED]
+    A --> R[REVERSED]
+    P --> F
 ```
 
-### STATUS-CODES - Entity Status Indicators
+### TRANSACTION-TYPES (Level 01)
 
-Generic status codes applicable to various business entities (accounts, transactions, processes).
+Standard financial transaction type codes.
 
-| Field | Picture | Value | Description |
-|-------|---------|-------|-------------|
-| STATUS-ACTIVE | X(1) | 'A' | Entity is active and operational |
-| STATUS-CLOSED | X(1) | 'C' | Entity is closed/terminated |
-| STATUS-PENDING | X(1) | 'P' | Entity is pending approval/action |
-| STATUS-SUSPENDED | X(1) | 'S' | Entity is temporarily suspended |
-| STATUS-FAILED | X(1) | 'F' | Entity processing failed |
-| STATUS-REVERSED | X(1) | 'R' | Entity/transaction has been reversed |
+| Level | Name | Picture | Value | Description |
+|-------|------|---------|-------|-------------|
+| 01 | TRANSACTION-TYPES | - | - | Transaction type codes |
+| 05 | TRN-TYPE-BUY | X(2) | 'BU' | Buy/purchase transaction |
+| 05 | TRN-TYPE-SELL | X(2) | 'SL' | Sell transaction |
+| 05 | TRN-TYPE-TRANSFER | X(2) | 'TR' | Transfer between accounts |
+| 05 | TRN-TYPE-FEE | X(2) | 'FE' | Fee/charge transaction |
 
-```mermaid
-stateDiagram-v2
-    [*] --> PENDING: Created
-    PENDING --> ACTIVE: Approved
-    PENDING --> FAILED: Rejected
-    ACTIVE --> SUSPENDED: Hold
-    SUSPENDED --> ACTIVE: Released
-    ACTIVE --> CLOSED: Terminated
-    ACTIVE --> REVERSED: Reversal
-    FAILED --> [*]
-    CLOSED --> [*]
-    REVERSED --> [*]
-```
+**Transaction Type Details:**
 
-### TRANSACTION-TYPES - Financial Transaction Codes
+| Code | Name | Effect on Position | Effect on Cash |
+|------|------|-------------------|----------------|
+| BU | Buy | Increase quantity | Decrease balance |
+| SL | Sell | Decrease quantity | Increase balance |
+| TR | Transfer | Move between portfolios | No change |
+| FE | Fee | No change | Decrease balance |
 
-Standard codes for financial transaction processing.
+### COMMON-DATETIME (Level 01)
 
-| Field | Picture | Value | Description |
-|-------|---------|-------|-------------|
-| TRN-TYPE-BUY | X(2) | 'BU' | Purchase/buy transaction |
-| TRN-TYPE-SELL | X(2) | 'SL' | Sale/sell transaction |
-| TRN-TYPE-TRANSFER | X(2) | 'TR' | Transfer between accounts |
-| TRN-TYPE-FEE | X(2) | 'FE' | Fee/charge transaction |
+Standard date and time structure for system timestamps.
 
-### COMMON-DATETIME - Date and Time Fields
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 01 | COMMON-DATETIME | - | Date/time structure |
+| 05 | CURRENT-DATE | - | Date group |
+| 10 | CURR-YEAR | X(4) | Year (YYYY) |
+| 10 | CURR-MONTH | X(2) | Month (MM) |
+| 10 | CURR-DAY | X(2) | Day (DD) |
+| 05 | CURRENT-TIME | - | Time group |
+| 10 | CURR-HOUR | X(2) | Hour (HH) |
+| 10 | CURR-MINUTE | X(2) | Minute (MM) |
+| 10 | CURR-SECOND | X(2) | Second (SS) |
+| 10 | CURR-MSEC | X(2) | Centiseconds (CC) |
 
-Work area for capturing and manipulating date/time values.
+**Populating COMMON-DATETIME:**
 
-| Level | Field | Picture | Description |
-|-------|-------|---------|-------------|
-| 01 | COMMON-DATETIME | - | Date/time group |
-| 05 | CURRENT-DATE | - | Date subgroup |
-| 10 | CURR-YEAR | X(4) | 4-digit year (YYYY) |
-| 10 | CURR-MONTH | X(2) | 2-digit month (MM) |
-| 10 | CURR-DAY | X(2) | 2-digit day (DD) |
-| 05 | CURRENT-TIME | - | Time subgroup |
-| 10 | CURR-HOUR | X(2) | Hour (HH) 00-23 |
-| 10 | CURR-MINUTE | X(2) | Minute (MM) 00-59 |
-| 10 | CURR-SECOND | X(2) | Second (SS) 00-59 |
-| 10 | CURR-MSEC | X(2) | Milliseconds (hundredths) |
-
-**Format:** `YYYYMMDDHHMMSSMS`
-
-**Usage with ACCEPT:**
 ```cobol
-ACCEPT COMMON-DATETIME FROM DATE YYYYMMDD
-ACCEPT CURRENT-TIME FROM TIME
+MOVE FUNCTION CURRENT-DATE TO COMMON-DATETIME
 ```
 
-### ERROR-HANDLING - Error Tracking Fields
+This maps the 16-character result of FUNCTION CURRENT-DATE directly to the structure.
 
-Fields for capturing and propagating error information.
+### ERROR-HANDLING (Level 01)
 
-| Field | Picture | Description |
-|-------|---------|-------------|
-| ERROR-CODE | X(4) | Application-specific error code |
-| ERROR-MODULE | X(8) | Module/program where error occurred |
-| ERROR-ROUTINE | X(8) | Paragraph/routine where error occurred |
-| ERROR-MESSAGE | X(80) | Descriptive error message |
+Standard error message structure.
 
-### AUDIT-FIELDS - Audit Trail Information
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 01 | ERROR-HANDLING | - | Error handling fields |
+| 05 | ERROR-CODE | X(4) | Error code identifier |
+| 05 | ERROR-MODULE | X(8) | Module/program name |
+| 05 | ERROR-ROUTINE | X(8) | Paragraph/routine name |
+| 05 | ERROR-MESSAGE | X(80) | Error description |
 
-Standard fields for audit tracking across all transactions and updates.
+**Error Code Convention:**
 
-| Field | Picture | Description |
-|-------|---------|-------------|
-| AUDIT-TIMESTAMP | X(26) | Full timestamp of action |
-| AUDIT-USER | X(8) | User ID who performed action |
-| AUDIT-TERMINAL | X(8) | Terminal/workstation ID |
-| AUDIT-PROGRAM | X(8) | Program that made the change |
+```
+XXXX - 4-character error code
+  |
+  +-- First 2 chars: Category (e.g., FL=File, DB=Database, VL=Validation)
+  +-- Last 2 chars: Sequence number within category
+```
 
-**Timestamp Format:** `YYYY-MM-DD-HH.MM.SS.MMMMMM` (DB2 compatible)
+### AUDIT-FIELDS (Level 01)
 
-### CURRENCY-CODES - ISO Currency Constants
+Standard audit trail fields for record tracking.
 
-ISO 4217 currency codes for international financial processing.
+| Level | Name | Picture | Description |
+|-------|------|---------|-------------|
+| 01 | AUDIT-FIELDS | - | Audit information |
+| 05 | AUDIT-TIMESTAMP | X(26) | Full timestamp |
+| 05 | AUDIT-USER | X(8) | User who made change |
+| 05 | AUDIT-TERMINAL | X(8) | Terminal ID (online) |
+| 05 | AUDIT-PROGRAM | X(8) | Program that made change |
 
-| Field | Picture | Value | Description |
-|-------|---------|-------|-------------|
-| CURR-USD | X(3) | 'USD' | United States Dollar |
-| CURR-EUR | X(3) | 'EUR' | Euro |
-| CURR-GBP | X(3) | 'GBP' | British Pound Sterling |
-| CURR-JPY | X(3) | 'JPY' | Japanese Yen |
-| CURR-CAD | X(3) | 'CAD' | Canadian Dollar |
+### CURRENCY-CODES (Level 01)
+
+ISO 4217 currency code constants.
+
+| Level | Name | Picture | Value | Description |
+|-------|------|---------|-------|-------------|
+| 01 | CURRENCY-CODES | - | - | Currency constants |
+| 05 | CURR-USD | X(3) | 'USD' | US Dollar |
+| 05 | CURR-EUR | X(3) | 'EUR' | Euro |
+| 05 | CURR-GBP | X(3) | 'GBP' | British Pound Sterling |
+| 05 | CURR-JPY | X(3) | 'JPY' | Japanese Yen |
+| 05 | CURR-CAD | X(3) | 'CAD' | Canadian Dollar |
 
 ## Usage Examples
 
@@ -159,96 +175,99 @@ WORKING-STORAGE SECTION.
     COPY COMMON.
 
 PROCEDURE DIVISION.
-    PERFORM PROCESS-TRANSACTION
+    ...
+    IF WS-ERROR-OCCURRED
+        MOVE RC-ERROR TO RETURN-CODE
+    ELSE
+        MOVE RC-SUCCESS TO RETURN-CODE
+    END-IF
     
-    EVALUATE TRUE
-        WHEN WS-RESULT = RC-SUCCESS
-            DISPLAY 'Transaction completed successfully'
-        WHEN WS-RESULT = RC-WARNING
-            DISPLAY 'Transaction completed with warnings'
-            PERFORM LOG-WARNING
-        WHEN WS-RESULT >= RC-ERROR
-            DISPLAY 'Transaction failed'
-            PERFORM ERROR-HANDLING-ROUTINE
-    END-EVALUATE
-    
-    MOVE WS-RESULT TO RETURN-CODE
     GOBACK.
 ```
 
-### Using Status Codes
+### Checking Status Codes
 
 ```cobol
-*   Check account status before processing
-    IF ACCT-STATUS = STATUS-ACTIVE
-        PERFORM PROCESS-ACCOUNT
+    COPY COMMON.
+    
+    ...
+    
+    IF PORT-STATUS = STATUS-ACTIVE
+        PERFORM PROCESS-ACTIVE-PORTFOLIO
     ELSE
-        EVALUATE ACCT-STATUS
-            WHEN STATUS-SUSPENDED
-                MOVE 'Account is suspended' TO ERROR-MESSAGE
-            WHEN STATUS-CLOSED
-                MOVE 'Account is closed' TO ERROR-MESSAGE
-            WHEN STATUS-PENDING
-                MOVE 'Account is pending approval' TO ERROR-MESSAGE
-        END-EVALUATE
-        PERFORM REJECT-TRANSACTION
+        IF PORT-STATUS = STATUS-SUSPENDED
+            PERFORM PROCESS-SUSPENDED-PORTFOLIO
+        ELSE
+            IF PORT-STATUS = STATUS-CLOSED
+                MOVE 'Portfolio is closed' TO ERROR-MESSAGE
+                PERFORM ERROR-ROUTINE
+            END-IF
+        END-IF
     END-IF
 ```
 
-### Using Transaction Types
+### Validating Transaction Types
 
 ```cobol
-*   Route transaction based on type
-    EVALUATE TXN-TYPE
+    COPY COMMON.
+    
+    ...
+    
+    EVALUATE TRN-TYPE
         WHEN TRN-TYPE-BUY
-            PERFORM PROCESS-BUY-ORDER
+            PERFORM PROCESS-BUY
         WHEN TRN-TYPE-SELL
-            PERFORM PROCESS-SELL-ORDER
+            PERFORM PROCESS-SELL
         WHEN TRN-TYPE-TRANSFER
             PERFORM PROCESS-TRANSFER
         WHEN TRN-TYPE-FEE
-            PERFORM PROCESS-FEE-CHARGE
+            PERFORM PROCESS-FEE
         WHEN OTHER
+            MOVE 'VL01' TO ERROR-CODE
             MOVE 'Invalid transaction type' TO ERROR-MESSAGE
-            PERFORM ERROR-HANDLING-ROUTINE
+            PERFORM ERROR-ROUTINE
     END-EVALUATE
 ```
 
-### Capturing Date/Time
+### Populating Audit Fields
 
 ```cobol
-*   Get current date and time
-    ACCEPT CURRENT-DATE FROM DATE YYYYMMDD
-    ACCEPT CURRENT-TIME FROM TIME
+    COPY COMMON.
     
-*   Format for display
+    ...
+    
+    ACCEPT AUDIT-TIMESTAMP FROM TIME STAMP
+    MOVE WS-USER-ID TO AUDIT-USER
+    MOVE WS-TERMINAL-ID TO AUDIT-TERMINAL
+    MOVE 'MYPROGRAM' TO AUDIT-PROGRAM
+```
+
+### Working with Date/Time
+
+```cobol
+    COPY COMMON.
+    
+    ...
+    
+    MOVE FUNCTION CURRENT-DATE TO COMMON-DATETIME
+    
     STRING CURR-YEAR '-' CURR-MONTH '-' CURR-DAY
-           ' ' CURR-HOUR ':' CURR-MINUTE ':' CURR-SECOND
-           DELIMITED BY SIZE
-           INTO WS-FORMATTED-DATETIME
+        DELIMITED BY SIZE
+        INTO WS-FORMATTED-DATE
+    
+    STRING CURR-HOUR ':' CURR-MINUTE ':' CURR-SECOND
+        DELIMITED BY SIZE
+        INTO WS-FORMATTED-TIME
 ```
 
-### Using Audit Fields
+### Currency Validation
 
 ```cobol
-*   Populate audit trail before update
-    MOVE FUNCTION CURRENT-DATE TO AUDIT-TIMESTAMP
-    ACCEPT AUDIT-USER FROM USER-ID
-    ACCEPT AUDIT-TERMINAL FROM TERMINAL-ID
-    MOVE 'UPDTACCT' TO AUDIT-PROGRAM
+    COPY COMMON.
     
-    PERFORM UPDATE-WITH-AUDIT
-```
-
-### Using Currency Codes
-
-```cobol
-*   Validate currency and set defaults
-    IF TXN-CURRENCY = SPACES
-        MOVE CURR-USD TO TXN-CURRENCY
-    END-IF
+    ...
     
-    EVALUATE TXN-CURRENCY
+    EVALUATE WS-INPUT-CURRENCY
         WHEN CURR-USD
         WHEN CURR-EUR
         WHEN CURR-GBP
@@ -256,88 +275,99 @@ PROCEDURE DIVISION.
         WHEN CURR-CAD
             CONTINUE
         WHEN OTHER
-            MOVE 'Invalid currency code' TO ERROR-MESSAGE
-            PERFORM REJECT-TRANSACTION
+            MOVE 'VL02' TO ERROR-CODE
+            MOVE 'Unsupported currency code' TO ERROR-MESSAGE
+            PERFORM ERROR-ROUTINE
     END-EVALUATE
 ```
 
-## Programs Using This Copybook
+### Complete Error Handling Example
 
-This copybook provides foundational definitions that can be used by any program in the system. It is designed as a base-level copybook for common constants and work areas.
+```cobol
+WORKING-STORAGE SECTION.
+    COPY COMMON.
+    
+01  WS-PROCESSING-ERRORS PIC S9(4) COMP VALUE 0.
 
-:::info Reference Copybook
-COMMON serves as a reference implementation and template. Individual subsystems may have their own specialized copybooks (like BCHCON for batch control or TRNREC for transactions) that provide more specific definitions for their domain.
-:::
+PROCEDURE DIVISION.
+0000-MAIN.
+    PERFORM 1000-INITIALIZE
+    PERFORM 2000-PROCESS
+    PERFORM 3000-TERMINATE
+    
+    EVALUATE TRUE
+        WHEN WS-PROCESSING-ERRORS = 0
+            MOVE RC-SUCCESS TO RETURN-CODE
+        WHEN WS-PROCESSING-ERRORS < 10
+            MOVE RC-WARNING TO RETURN-CODE
+        WHEN WS-PROCESSING-ERRORS < 100
+            MOVE RC-ERROR TO RETURN-CODE
+        WHEN OTHER
+            MOVE RC-SEVERE TO RETURN-CODE
+    END-EVALUATE
+    
+    GOBACK.
 
-## Related Copybooks
+9000-ERROR-ROUTINE.
+    ADD 1 TO WS-PROCESSING-ERRORS
+    DISPLAY ERROR-MODULE '-' ERROR-ROUTINE ': ' 
+            ERROR-CODE
+    DISPLAY ERROR-MESSAGE.
+```
+
+## Integration with Other Copybooks
+
+The COMMON copybook complements other copybooks in the system:
 
 | Copybook | Relationship |
 |----------|--------------|
-| [BCHCON](/docs/copybooks/BCHCON) | Batch-specific constants (extends return code patterns) |
-| [ERRHAND](/docs/copybooks/ERRHAND) | Detailed error handling (extends ERROR-HANDLING) |
-| [TRNREC](/docs/copybooks/TRNREC) | Transaction records (uses transaction types) |
-| [AUDITLOG](/docs/copybooks/AUDITLOG) | Audit logging (extends AUDIT-FIELDS) |
-| [RTNCODE](/docs/copybooks/RTNCODE) | Return code management (similar to RETURN-CODES) |
-
-## Technical Notes
-
-### Field Storage
-
-| Field Type | Storage | Notes |
-|------------|---------|-------|
-| S9(4) | 4 bytes display | Signed numeric, DISPLAY format |
-| X(n) | n bytes | Alphanumeric |
-
-**Note:** Unlike BCHCON, this copybook uses `DISPLAY` format (not `COMP`) for return codes. This provides easier debugging but less efficient arithmetic.
-
-### No COMP Fields
-
-The return codes in this copybook use standard DISPLAY format (`PIC S9(4)`) rather than COMP. This means:
-- Values are stored as EBCDIC characters
-- Easier to view in dumps and traces
-- Less efficient for arithmetic operations
-- 4 bytes storage vs 2 bytes for COMP
-
-### Value Clause Initialization
-
-All constant fields include VALUE clauses and are automatically initialized when the copybook is included:
-- Return codes: Pre-set to standard values
-- Status codes: Pre-set to character values
-- Transaction types: Pre-set to standard codes
-- Currency codes: Pre-set to ISO codes
-
-Work area fields (COMMON-DATETIME, ERROR-HANDLING, AUDIT-FIELDS) should be explicitly initialized or populated before use.
-
-### Date/Time Compatibility
-
-The COMMON-DATETIME structure is designed to work with:
-- `ACCEPT FROM DATE YYYYMMDD`
-- `ACCEPT FROM TIME`
-- Manual population from system calls
-
-The AUDIT-TIMESTAMP field (26 characters) is compatible with DB2 TIMESTAMP format.
+| ERRHAND | Extended error handling with categories and VSAM status |
+| RTNCODE | Return code management with logging capabilities |
+| AUDITLOG | Full audit trail record using AUDIT-FIELDS |
+| POSREC | Position records using STATUS-CODES |
+| TRNREC | Transaction records using TRANSACTION-TYPES |
 
 ## Best Practices
 
-1. **Use named constants** - Always reference RC-SUCCESS, STATUS-ACTIVE, etc. instead of literal values
-2. **Initialize work areas** - Explicitly initialize ERROR-HANDLING and AUDIT-FIELDS before use
-3. **Validate transaction types** - Always validate incoming transaction types against defined constants
-4. **Default currency** - Consider USD as the default when currency is not specified
-5. **Complete audit fields** - Populate all audit fields for compliance and traceability
-6. **Consistent status usage** - Use the same status codes across all entities for consistency
+### Do's
 
-## Extension Guidelines
+- ✅ Use named constants instead of literal values
+- ✅ Include COMMON in all new programs for consistency
+- ✅ Use EVALUATE with constants for readable code
+- ✅ Populate AUDIT-FIELDS for all data modifications
+- ✅ Set appropriate return codes before GOBACK
 
-When extending this copybook for specialized needs:
+### Don'ts
 
-```cobol
-*   In your program's WORKING-STORAGE:
-    COPY COMMON.
-    
-*   Add program-specific extensions:
-    01  WS-EXTENDED-STATUS.
-        05  WS-STATUS-REVIEW    PIC X(1) VALUE 'V'.
-        05  WS-STATUS-APPROVED  PIC X(1) VALUE 'Y'.
-```
+- ❌ Don't use literal values like 'A' instead of STATUS-ACTIVE
+- ❌ Don't redefine constants in individual programs
+- ❌ Don't skip error handling structures
+- ❌ Don't ignore return codes from called programs
 
-This approach preserves the standard definitions while adding domain-specific values.
+## Extending COMMON
+
+When adding new constants to COMMON:
+
+1. **Add to appropriate section** - Group related values together
+2. **Use consistent naming** - Follow existing prefix conventions
+3. **Document the values** - Add comments explaining usage
+4. **Update all copies** - Ensure all environments have updated copybook
+5. **Test thoroughly** - Verify existing programs still compile
+
+## Technical Notes
+
+- **VALUE Clauses**: All constants have VALUE clauses for automatic initialization
+- **PIC S9(4)**: Return codes are signed to match RETURN-CODE register
+- **PIC X(n)**: Character fields match standard mainframe field sizes
+- **26-byte Timestamp**: AUDIT-TIMESTAMP matches DB2 TIMESTAMP format
+- **No COMP/COMP-3**: Character constants avoid binary representation issues
+- **FUNCTION CURRENT-DATE**: Returns 16 chars (YYYYMMDDHHMMSSCC) + 5 for offset
+
+## Related Copybooks
+
+| Copybook | Description |
+|----------|-------------|
+| ERRHAND | Extended error handling definitions |
+| RTNCODE | Return code management structures |
+| AUDITLOG | Complete audit trail record |
+| BCHCON | Batch control constants |
